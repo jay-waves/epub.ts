@@ -1,0 +1,24 @@
+{
+	"name": "epub-viewer-extension",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"prebuild": "node scripts/sync-manifest-version.mjs",
+		"build": "vite build",
+		"package": "pnpm build && pwsh -NoProfile -File ./scripts/package-extension.ps1",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.2.4",
+		"@types/chrome": "^0.1.40",
+		"daisyui": "^5.5.19",
+		"tailwindcss": "^4.2.4",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.10"
+	},
+	"dependencies": {
+		"foliate-js": "^1.0.1",
+		"lucide": "^1.14.0"
+	}
+}

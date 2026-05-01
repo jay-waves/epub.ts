@@ -1,0 +1,305 @@
+@import "tailwindcss";
+@import "daisyui/daisyui.css";
+
+@layer base {
+  html,
+  body {
+    min-height: 100%;
+    margin: 0;
+  }
+
+  html {
+    background: var(--reader-chrome-bg, #fbfaf7);
+    color-scheme: var(--reader-color-scheme, light);
+    scrollbar-color: var(--reader-scrollbar-thumb, rgba(82, 94, 110, 0.35))
+      var(--reader-scrollbar-track, rgba(255, 255, 255, 0.15));
+  }
+
+  body {
+    background: var(--reader-chrome-bg, #fbfaf7);
+    color: var(--reader-chrome-fg, #1f2933);
+    color-scheme: var(--reader-color-scheme, light);
+    scrollbar-color: var(--reader-scrollbar-thumb, rgba(82, 94, 110, 0.35))
+      var(--reader-scrollbar-track, rgba(255, 255, 255, 0.15));
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  html::-webkit-scrollbar-track,
+  body::-webkit-scrollbar-track {
+    background: var(--reader-scrollbar-track, rgba(255, 255, 255, 0.15));
+  }
+
+  html::-webkit-scrollbar-thumb,
+  body::-webkit-scrollbar-thumb {
+    background: var(--reader-scrollbar-thumb, rgba(82, 94, 110, 0.35));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  .reader-app {
+    @apply min-h-screen;
+    background: var(--reader-chrome-bg, #fbfaf7);
+    color: var(--reader-chrome-fg, #1f2933);
+  }
+
+  .reader-dock-shell {
+    @apply pointer-events-none fixed inset-y-0 left-3 z-20 flex w-14 items-center justify-center;
+  }
+
+  .reader-dock {
+    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-2 rounded-2xl border border-white/45 bg-white/55 p-2 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
+    backdrop-filter: blur(22px) saturate(165%);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  .reader-dock button {
+    @apply relative flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition-all duration-200;
+  }
+
+  .reader-dock svg {
+    @apply size-5;
+  }
+
+  .reader-dock button:hover {
+    @apply bg-slate-100 text-slate-950;
+  }
+
+  .reader-dock button.dock-active {
+    @apply bg-sky-600 text-white shadow-md;
+  }
+
+  .dock-button-count {
+    @apply absolute bottom-1 right-1 min-w-4 rounded-full bg-black/8 px-1 text-[10px] font-semibold leading-4 text-current;
+  }
+
+  .reader-stage {
+    @apply flex min-h-screen p-0;
+    background: var(--reader-chrome-bg, #fbfaf7);
+  }
+
+  .reader-frame {
+    @apply min-h-screen flex-1 overflow-hidden;
+    background: var(--reader-chrome-bg, #fffefd);
+  }
+
+  .reader-frame > foliate-view {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: var(--reader-chrome-bg, #fffefd);
+  }
+
+  .reader-frame > foliate-view::part(container),
+  .reader-frame > foliate-view::part(filter) {
+    background: var(--reader-chrome-bg, #fffefd);
+  }
+
+  .page-click-zone {
+    @apply fixed inset-y-0 z-10 border-0 bg-transparent p-0;
+  }
+
+  .page-click-zone--left {
+    @apply left-0 w-[12vw];
+  }
+
+  .page-click-zone--right {
+    @apply right-0 w-[12vw];
+  }
+
+  .page-click-zone:focus-visible {
+    @apply outline outline-2 outline-offset-[-8px] outline-sky-500/50;
+  }
+
+  .reader-page-status {
+    @apply pointer-events-auto fixed bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/45 bg-white/55 px-4 py-2 text-sm font-medium text-slate-700 shadow-xl shadow-slate-950/10 backdrop-blur-2xl transition-all duration-200;
+    backdrop-filter: blur(22px) saturate(165%);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  .reader-page-status:hover {
+    @apply bg-white/65 text-slate-950;
+  }
+
+  .reader-page-status:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-sky-500/40;
+  }
+
+  .search-nav {
+    @apply fixed top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/45 bg-white/55 p-1.5 text-slate-700 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
+    backdrop-filter: blur(22px) saturate(165%);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  .search-nav[hidden] {
+    @apply hidden;
+  }
+
+  .search-nav button {
+    @apply flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors duration-150;
+  }
+
+  .search-nav button:hover {
+    @apply bg-slate-100 text-slate-950;
+  }
+
+  .search-nav button:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  .search-nav svg {
+    @apply size-4;
+  }
+
+  .search-count {
+    @apply min-w-14 px-2 text-center text-sm font-medium tabular-nums text-slate-700;
+  }
+
+  .toc-root {
+    @apply max-h-[68vh] space-y-2 overflow-auto pr-1;
+    scrollbar-width: none;
+  }
+
+  .toc-root::-webkit-scrollbar {
+    display: none;
+  }
+
+  .toc-list {
+    @apply m-0 list-none space-y-1.5 p-0;
+  }
+
+  .toc-link {
+    @apply h-auto min-h-0 w-full justify-start rounded-2xl border border-transparent bg-transparent px-4 py-3 text-left text-[15px] font-medium normal-case text-slate-700 transition-colors duration-150;
+  }
+
+  .toc-link:hover {
+    @apply border-slate-200/80 bg-slate-100 text-slate-950 shadow-none;
+  }
+
+  .toc-children {
+    @apply mt-2 space-y-1 border-l border-black/8 pl-4;
+  }
+
+  .toc-modal-box {
+    @apply rounded-[28px] border border-white/55 bg-white/60 p-4 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    backdrop-filter: blur(26px) saturate(165%);
+    -webkit-backdrop-filter: blur(26px) saturate(165%);
+  }
+
+  .search-modal-box {
+    @apply space-y-3;
+  }
+
+  .search-form {
+    @apply flex items-center;
+  }
+
+  .search-input {
+    @apply h-12 flex-1 rounded-2xl border border-black/8 bg-white/70 px-4 text-[15px] text-slate-900 outline-none transition-colors duration-150;
+  }
+
+  .search-input::placeholder {
+    @apply text-slate-400;
+  }
+
+  .search-input:focus {
+    @apply border-sky-400/60 bg-white/85;
+  }
+}
+
+html[data-reader-mode="dark"] .reader-dock {
+  @apply border-white/10 bg-[#2a3441]/48 shadow-black/25;
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+html[data-reader-mode="dark"] .reader-dock button {
+  @apply text-[#d8dee9];
+}
+
+html[data-reader-mode="dark"] .reader-dock button:hover {
+  @apply bg-white/10 text-white;
+}
+
+html[data-reader-mode="dark"] .reader-frame {
+  background: var(--reader-chrome-bg, #212830);
+}
+
+html[data-reader-mode="dark"] .reader-page-status {
+  @apply border-white/10 bg-[#2a3441]/48 text-[#e5ebf3] shadow-black/25;
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+html[data-reader-mode="dark"] .reader-page-status:hover {
+  @apply bg-[#32404f]/60 text-white;
+}
+
+html[data-reader-mode="dark"] .search-nav {
+  @apply border-white/10 bg-[#2a3441]/48 text-[#e5ebf3] shadow-black/25;
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+html[data-reader-mode="dark"] .search-nav button {
+  @apply text-[#d8dee9];
+}
+
+html[data-reader-mode="dark"] .search-nav button:hover {
+  @apply bg-white/10 text-white;
+}
+
+html[data-reader-mode="dark"] .search-count {
+  @apply text-[#d8dee9];
+}
+
+html[data-reader-mode="dark"] .toc-modal-box {
+  @apply border-white/10 bg-[#24303d]/58 shadow-black/30;
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+}
+
+html[data-reader-mode="dark"] .search-input {
+  @apply border-white/8 bg-white/8 text-white;
+}
+
+html[data-reader-mode="dark"] .search-input::placeholder {
+  @apply text-[#8ea0b3];
+}
+
+html[data-reader-mode="dark"] .search-input:focus {
+  @apply border-sky-400/40 bg-white/12;
+}
+
+html[data-reader-mode="dark"] .toc-link {
+  @apply text-[#d8dee9];
+}
+
+html[data-reader-mode="dark"] .toc-link:hover {
+  @apply border-white/8 bg-white/8 text-white shadow-none;
+}
+
+html[data-reader-mode="dark"] .toc-link.btn-primary {
+  @apply border-sky-400/20 bg-sky-700/90 text-white;
+}
+
+html[data-reader-mode="dark"] .toc-children {
+  @apply border-white/10;
+}
+
+@media (max-width: 960px) {
+  .reader-dock-shell {
+    @apply left-2 w-12;
+  }
+
+  .reader-dock button {
+    @apply h-10 w-10;
+  }
+}
