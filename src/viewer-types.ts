@@ -6,11 +6,6 @@ export type TocItem = {
   items?: TocItem[];
 };
 
-export type TocView = {
-  element: HTMLOListElement;
-  setCurrentHref: (href: string) => void;
-};
-
 export type BookMetadata = {
   title?: string | Record<string, string>;
   author?: string | { name?: string | Record<string, string> } | Array<string | { name?: string | Record<string, string> }>;
@@ -50,7 +45,7 @@ export type FoliateViewElement = HTMLElement & {
 
 export type ReaderThemeMode = "light" | "dark";
 
-export type ReaderThemeId = "light" | "grey" | "solar" | "dark" | "one-dark";
+export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark";
 
 export type ReaderTheme = {
   id: ReaderThemeId;

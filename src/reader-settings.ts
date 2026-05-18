@@ -43,7 +43,6 @@ const READER_MONO_STACK =
 export const READER_THEMES: ReaderTheme[] = [
   { id: "light", label: "Light", bodyTheme: "lofi", mode: "light", background: "#fffefd", foreground: "#1f2933", link: "#1f5f8f" },
   { id: "grey", label: "Grey", bodyTheme: "corporate", mode: "light", background: "#f1f1ee", foreground: "#2f3438", link: "#4c6a7f" },
-  { id: "solar", label: "Solar", bodyTheme: "cupcake", mode: "light", background: "#fdf6e3", foreground: "#4b3f2f", link: "#9c6a1c" },
   { id: "dark", label: "Dark", bodyTheme: "nord", mode: "dark", background: "#212830", foreground: "#e5e9f0", link: "#88c0d0" },
   { id: "one-dark", label: "One Dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
 ];

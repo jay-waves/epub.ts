@@ -142,13 +142,12 @@
   }
 
   .reader-progress {
-    @apply pointer-events-none fixed top-0 left-0 z-20 h-5 w-full overflow-hidden;
+    @apply pointer-events-none fixed top-0 left-0 z-20 h-0.5 w-full overflow-hidden;
   }
 
   .reader-progress-fill {
-    @apply absolute top-0 left-0 h-0.5 w-full origin-left transition-transform duration-300 ease-out;
-    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent);
-    box-shadow: 0 10px 28px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 18%, transparent);
+    @apply absolute top-0 left-0 h-full w-full origin-left transition-transform duration-300 ease-out;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 42%, transparent);
     transform: scaleX(0);
   }
 
@@ -207,44 +206,83 @@
     display: none;
   }
 
-  .toc-list {
-    @apply m-0 list-none p-0;
+  .toc-accordion {
+    @apply space-y-1;
+  }
+
+  .toc-collapse {
+    @apply my-1 min-h-0 rounded-xl border border-transparent text-slate-700 backdrop-blur-xl;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 68%, transparent);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    box-shadow: none;
+  }
+
+  .toc-collapse[open] {
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 78%, transparent);
+    box-shadow: none;
+  }
+
+  .toc-collapse .collapse-title {
+    @apply min-h-0 py-2 px-3;
+  }
+
+  .toc-collapse .collapse-content {
+    @apply px-2 pb-2;
+  }
+
+  .toc-collapse .collapse-content > * {
+    @apply pb-0;
+  }
+
+  .toc-child-list {
+    @apply space-y-0.5 border-t border-white/35 pt-1;
   }
 
   .toc-link {
-    @apply my-1 block h-auto min-h-0 w-full rounded-xl border border-transparent bg-transparent py-2 pe-3 text-left text-[13px] font-medium leading-snug normal-case text-slate-700 no-underline transition-colors duration-150;
+    @apply flex h-auto min-h-0 w-full items-center gap-3 rounded-lg border border-transparent bg-transparent py-2 pe-3 text-left text-[13px] font-medium leading-snug normal-case text-slate-700 no-underline transition-all duration-150;
   }
 
   .toc-link:hover {
-    @apply border-slate-200/80 bg-slate-100 text-slate-950 shadow-none;
+    @apply text-slate-950;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 86%, transparent);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
   }
 
   .toc-link[aria-current="page"] {
-    @apply border-sky-400/30 bg-sky-600 text-white;
+    @apply bg-sky-600/86 text-white;
+    box-shadow: 0 8px 20px rgb(2 132 199 / 22%);
   }
 
-  .toc-link svg {
-    @apply inline size-3 fill-current opacity-55 transition-transform duration-150;
-    margin-inline-start: -1.25rem;
-    margin-inline-end: 0.5rem;
+  .toc-link-label {
+    @apply min-w-0 flex-1 truncate;
   }
 
-  .toc-link[aria-expanded="false"] svg {
-    transform: rotate(-90deg);
+  .toc-link-primary {
+    @apply font-semibold;
   }
 
-  .toc-link[aria-expanded="false"] + [role="group"] {
-    display: none;
-  }
-
-  .toc-children {
-    @apply m-0 p-0;
+  .toc-link-child {
+    padding-inline-start: calc(0.75rem + var(--toc-depth, 0) * 0.875rem);
   }
 
   .toc-modal-box {
-    @apply rounded-3xl border border-white/55 bg-white/58 p-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
-    backdrop-filter: blur(26px) saturate(165%);
-    -webkit-backdrop-filter: blur(26px) saturate(165%);
+    @apply rounded-3xl border border-white/45 p-3 text-slate-700 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, transparent) !important;
+    backdrop-filter: blur(22px) saturate(165%);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  #toc-modal,
+  #toc-modal[open] {
+    background-color: transparent !important;
+  }
+
+  #toc-modal::backdrop,
+  #toc-modal .modal-backdrop {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 }
 
@@ -285,9 +323,10 @@ html[data-reader-mode="dark"] .search-count {
 }
 
 html[data-reader-mode="dark"] .toc-modal-box {
-  @apply border-white/10 bg-[#24303d]/62 shadow-black/30;
-  backdrop-filter: blur(26px) saturate(150%);
-  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  @apply border-white/10 text-[#e5ebf3] shadow-black/30;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 62%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
 }
 
 html[data-reader-mode="dark"] .search-input {
@@ -307,14 +346,27 @@ html[data-reader-mode="dark"] .toc-link {
 }
 
 html[data-reader-mode="dark"] .toc-link:hover {
-  @apply border-white/8 bg-white/8 text-white shadow-none;
+  @apply text-white;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 10%);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 18%);
 }
 
 html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
   @apply border-sky-400/20 bg-sky-700/90 text-white;
 }
 
-html[data-reader-mode="dark"] .toc-children {
+html[data-reader-mode="dark"] .toc-collapse {
+  @apply border-transparent text-[#d8dee9];
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 54%, transparent);
+  box-shadow: none;
+}
+
+html[data-reader-mode="dark"] .toc-collapse[open] {
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 68%, transparent);
+  box-shadow: none;
+}
+
+html[data-reader-mode="dark"] .toc-child-list {
   @apply border-white/10;
 }
 

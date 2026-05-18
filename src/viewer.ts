@@ -330,6 +330,7 @@ function setupCriticalInteractions() {
 function setupExtraInteractions() {
   openTocButton.addEventListener("click", () => {
     tocModal.showModal();
+    tocController.resetViewState();
   });
 
   openSearchButton.addEventListener("click", () => {
