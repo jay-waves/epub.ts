@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       foliate-js:
-        specifier: ^1.0.1
-        version: 1.0.1
+        specifier: github:johnfactotum/foliate-js#main
+        version: https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1
       lucide:
         specifier: ^1.14.0
         version: 1.14.0
@@ -277,9 +277,6 @@ packages:
   '@types/har-format@1.2.16':
     resolution: {integrity: sha512-fluxdy7ryD3MV6h8pTfTYpy/xQzCFC7m89nOH9y94cNqJ1mDIDPut7MnRHI3F6qRmh/cT2fUjG1MLdCNb4hE9A==}
 
-  construct-style-sheets-polyfill@3.1.0:
-    resolution: {integrity: sha512-HBLKP0chz8BAY6rBdzda11c3wAZeCZ+kIG4weVC2NM3AXzxx09nhe8t0SQNdloAvg5GLuHwq/0SPOOSPvtCcKw==}
-
   daisyui@5.5.19:
     resolution: {integrity: sha512-pbFAkl1VCEh/MPCeclKL61I/MqRIFFhNU7yiXoDDRapXN4/qNCoMxeCCswyxEEhqL5eiTTfwHvucFtOE71C9sA==}
 
@@ -300,8 +297,9 @@ packages:
       picomatch:
         optional: true
 
-  foliate-js@1.0.1:
-    resolution: {integrity: sha512-Cj4h2ub5aVA+yUgbhvVhCyxwi0GPF4pyNBa6Lw9+6WKY1ReBxipItn2kEBO6u7Vu/xYXjK711R74+t+yW/0u5w==}
+  foliate-js@https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1:
+    resolution: {tarball: https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1}
+    version: 0.0.0
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -665,8 +663,6 @@ snapshots:
 
   '@types/har-format@1.2.16': {}
 
-  construct-style-sheets-polyfill@3.1.0: {}
-
   daisyui@5.5.19: {}
 
   detect-libc@2.1.2: {}
@@ -680,9 +676,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
-  foliate-js@1.0.1:
-    dependencies:
-      construct-style-sheets-polyfill: 3.1.0
+  foliate-js@https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1: {}
 
   fsevents@2.3.3:
     optional: true

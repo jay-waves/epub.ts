@@ -16,12 +16,12 @@ Chrome MV3 EPUB reader extension built with `pnpm`, `Vite`, `TypeScript`, and `f
 pnpm install
 pnpm typecheck
 pnpm build
-pnpm package
+pnpm run release:prepare
 ```
 
 `pnpm build` generates an unpacked extension in `dist/`.
 
-`pnpm package` builds the extension and creates a release ZIP in `release/`, for example `release/epub-viewer-extension-v0.1.0.zip`.
+`pnpm run release:prepare` builds the extension and creates a release ZIP in `release/`, for example `release/epub-viewer-extension-v0.1.0.zip`.
 
 ## Load In Chrome
 
@@ -36,7 +36,7 @@ pnpm package
 
 ### Release ZIP
 
-1. Download the latest ZIP from the repository's GitHub Release page.
+1. Run `pnpm run release:prepare`.
 2. Extract it locally.
 3. Open `chrome://extensions`.
 4. Enable `Developer mode`.
@@ -46,12 +46,9 @@ pnpm package
 
 ## Release Flow
 
-The repository includes a GitHub Actions workflow that packages the extension and uploads the ZIP to a GitHub Release.
-
 1. Update `package.json` version.
-2. Commit and push.
-3. Create and publish a GitHub Release for the matching tag such as `v0.1.0`.
-4. GitHub Actions will run `pnpm package` and attach the generated ZIP to that Release.
+2. Run `pnpm run release:prepare`.
+3. Upload the generated `release/*.zip` wherever you want to distribute it.
 
 The extension `manifest.json` version is synced automatically from `package.json` during build, so the version only needs to be maintained in one place.
 

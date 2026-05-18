@@ -172,19 +172,37 @@
   }
 
   .toc-list {
-    @apply m-0 list-none space-y-1.5 p-0;
+    @apply m-0 list-none p-0;
   }
 
   .toc-link {
-    @apply h-auto min-h-0 w-full justify-start rounded-2xl border border-transparent bg-transparent px-4 py-3 text-left text-[15px] font-medium normal-case text-slate-700 transition-colors duration-150;
+    @apply my-1.5 block h-auto min-h-0 w-full rounded-2xl border border-transparent bg-transparent py-3 pe-4 text-left text-[15px] font-medium normal-case text-slate-700 no-underline transition-colors duration-150;
   }
 
   .toc-link:hover {
     @apply border-slate-200/80 bg-slate-100 text-slate-950 shadow-none;
   }
 
+  .toc-link[aria-current="page"] {
+    @apply border-sky-400/30 bg-sky-600 text-white;
+  }
+
+  .toc-link svg {
+    @apply inline size-3.5 fill-current opacity-55 transition-transform duration-150;
+    margin-inline-start: -1.5rem;
+    margin-inline-end: 0.625rem;
+  }
+
+  .toc-link[aria-expanded="false"] svg {
+    transform: rotate(-90deg);
+  }
+
+  .toc-link[aria-expanded="false"] + [role="group"] {
+    display: none;
+  }
+
   .toc-children {
-    @apply mt-2 space-y-1 border-l border-black/8 pl-4;
+    @apply m-0 p-0;
   }
 
   .toc-modal-box {
@@ -286,7 +304,7 @@ html[data-reader-mode="dark"] .toc-link:hover {
   @apply border-white/8 bg-white/8 text-white shadow-none;
 }
 
-html[data-reader-mode="dark"] .toc-link.btn-primary {
+html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
   @apply border-sky-400/20 bg-sky-700/90 text-white;
 }
 

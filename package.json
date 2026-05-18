@@ -6,7 +6,7 @@
 	"scripts": {
 		"prebuild": "node scripts/sync-manifest-version.mjs",
 		"build": "vite build",
-		"package": "pnpm build && pwsh -NoProfile -File ./scripts/package-extension.ps1",
+		"release:prepare": "pnpm build && pwsh -NoProfile -File ./scripts/package-extension.ps1",
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
@@ -18,7 +18,7 @@
 		"vite": "^8.0.10"
 	},
 	"dependencies": {
-		"foliate-js": "^1.0.1",
+		"foliate-js": "github:johnfactotum/foliate-js#main",
 		"lucide": "^1.14.0"
 	}
 }

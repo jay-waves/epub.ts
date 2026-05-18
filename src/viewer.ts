@@ -1,4 +1,5 @@
 import "foliate-js/view.js";
+import { createTOCView } from "foliate-js/ui/tree.js";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,6 +21,13 @@ type TocItem = {
   label?: string;
   href?: string;
   subitems?: TocItem[];
+  children?: TocItem[];
+  items?: TocItem[];
+};
+
+type TocView = {
+  element: HTMLOListElement;
+  setCurrentHref: (href: string) => void;
 };
 
 type BookMetadata = {
@@ -43,9 +51,12 @@ type FoliateViewElement = HTMLElement & {
   book?: FoliateBook;
   renderer: FoliateRenderer;
   clearSearch?: () => void;
+  init: (options: { lastLocation?: string | { fraction: number }; showTextStart?: boolean }) => Promise<void>;
   open: (input: File | string) => Promise<void>;
   prev: () => Promise<void>;
   next: () => Promise<void>;
+  goLeft: () => Promise<void>;
+  goRight: () => Promise<void>;
   goTo: (target: string | number | { fraction: number }) => Promise<void>;
   search?: (options: {
     index?: number;
@@ -216,6 +227,7 @@ const tocModal = must<HTMLDialogElement>("#toc-modal");
 let readerView: FoliateViewElement | null = null;
 let savePositionTimer: number | undefined;
 let searchRunId = 0;
+let tocView: TocView | null = null;
 let searchHits: SearchHit[] = [];
 let searchHitIndex = -1;
 
@@ -264,11 +276,14 @@ function getBookStyles(themeId = state.readerTheme) {
     }
     html {
       --theme-bg-color: ${background} !important;
+      --reader-font-size: ${state.readerFontSize}px;
+      --reader-line-height: ${lineHeight};
+      --reader-word-spacing: ${wordSpacing};
       --reader-font-serif: ${READER_SERIF_STACK};
       --reader-font-sans: ${READER_SANS_STACK};
       --reader-font-mono: ${READER_MONO_STACK};
       color-scheme: ${theme.mode};
-      font-size: ${state.readerFontSize}px !important;
+      font-size: var(--reader-font-size) !important;
       background: ${background} !important;
       color: ${foreground} !important;
       max-inline-size: none !important;
@@ -282,6 +297,8 @@ function getBookStyles(themeId = state.readerTheme) {
       background: ${background} !important;
       color: ${foreground} !important;
       font-family: var(--reader-font-serif) !important;
+      font-size: var(--reader-font-size) !important;
+      line-height: var(--reader-line-height) !important;
       letter-spacing: 0 !important;
       max-inline-size: none !important;
       max-width: none !important;
@@ -316,6 +333,37 @@ function getBookStyles(themeId = state.readerTheme) {
       max-width: none !important;
       width: auto !important;
     }
+    p, li, blockquote, dd, dt, td, th,
+    [epub|type~="bodymatter"] p,
+    [epub|type~="bodymatter"] div,
+    [class~="para"],
+    [class*="para-"],
+    [class*="paragraph"],
+    [class*="bodytext"],
+    [class*="body-text"] {
+      font-size: var(--reader-font-size) !important;
+      line-height: var(--reader-line-height) !important;
+      text-align: justify;
+      hyphens: auto !important;
+      hanging-punctuation: allow-end last;
+      word-spacing: var(--reader-word-spacing) !important;
+    }
+    p :where(span, a, em, strong, b, i),
+    li :where(span, a, em, strong, b, i),
+    blockquote :where(span, a, em, strong, b, i),
+    dd :where(span, a, em, strong, b, i),
+    dt :where(span, a, em, strong, b, i),
+    td :where(span, a, em, strong, b, i),
+    th :where(span, a, em, strong, b, i),
+    [class~="para"] :where(span, a, em, strong, b, i),
+    [class*="para-"] :where(span, a, em, strong, b, i),
+    [class*="paragraph"] :where(span, a, em, strong, b, i),
+    [class*="bodytext"] :where(span, a, em, strong, b, i),
+    [class*="body-text"] :where(span, a, em, strong, b, i) {
+      font-size: inherit !important;
+      line-height: inherit !important;
+      word-spacing: inherit !important;
+    }
     h1, h2, h3, h4, h5, h6,
     [role="heading"],
     [epub|type~="title"],
@@ -342,12 +390,43 @@ function getBookStyles(themeId = state.readerTheme) {
       text-shadow: none !important;
       opacity: 1 !important;
     }
-    p, li, blockquote, dd {
-      line-height: ${lineHeight} !important;
-      text-align: justify;
-      hyphens: auto !important;
-      hanging-punctuation: allow-end last;
-      word-spacing: ${wordSpacing} !important;
+    h1 {
+      font-size: calc(var(--reader-font-size) * 1.55) !important;
+      line-height: 1.35 !important;
+    }
+    h2 {
+      font-size: calc(var(--reader-font-size) * 1.35) !important;
+      line-height: 1.38 !important;
+    }
+    h3,
+    [role="heading"],
+    [epub|type~="title"],
+    [class*="title"],
+    [class*="heading"],
+    [class*="chapter"] {
+      font-size: calc(var(--reader-font-size) * 1.2) !important;
+      line-height: 1.42 !important;
+    }
+    h4, h5, h6,
+    [epub|type~="subtitle"] {
+      font-size: calc(var(--reader-font-size) * 1.1) !important;
+      line-height: 1.45 !important;
+    }
+    h1 :where(span, a, em, strong, b, i),
+    h2 :where(span, a, em, strong, b, i),
+    h3 :where(span, a, em, strong, b, i),
+    h4 :where(span, a, em, strong, b, i),
+    h5 :where(span, a, em, strong, b, i),
+    h6 :where(span, a, em, strong, b, i),
+    [role="heading"] :where(span, a, em, strong, b, i),
+    [epub|type~="title"] :where(span, a, em, strong, b, i),
+    [epub|type~="subtitle"] :where(span, a, em, strong, b, i),
+    [class*="title"] :where(span, a, em, strong, b, i),
+    [class*="heading"] :where(span, a, em, strong, b, i),
+    [class*="chapter"] :where(span, a, em, strong, b, i) {
+      font-size: inherit !important;
+      line-height: inherit !important;
+      font-weight: inherit !important;
     }
     figcaption, caption, small,
     [epub|type~="caption"],
@@ -552,26 +631,16 @@ function updateFlowButton() {
 }
 
 function updateTocCurrent() {
-  for (const button of tocRoot.querySelectorAll<HTMLButtonElement>(".toc-link")) {
-    const isCurrent = button.dataset.href === state.currentHref;
-    button.setAttribute("aria-current", isCurrent ? "true" : "false");
-    button.classList.toggle("btn-primary", isCurrent);
-    button.classList.toggle("btn-ghost", !isCurrent);
-  }
+  if (state.currentHref) tocView?.setCurrentHref(state.currentHref);
 }
 
-function getStorage<T>(key: string, fallback: T) {
-  return new Promise<T>((resolve) => {
-    chrome.storage.local.get(key, (items) => {
-      resolve((items[key] as T | undefined) ?? fallback);
-    });
-  });
+async function getStorage<T>(key: string, fallback: T) {
+  const items = await chrome.storage.local.get(key);
+  return (items[key] as T | undefined) ?? fallback;
 }
 
-function setStorage<T>(key: string, value: T) {
-  return new Promise<void>((resolve) => {
-    chrome.storage.local.set({ [key]: value }, () => resolve());
-  });
+async function setStorage<T>(key: string, value: T) {
+  await chrome.storage.local.set({ [key]: value });
 }
 
 async function getReadingHistory() {
@@ -606,6 +675,7 @@ function queuePositionSave(detail: RelocateDetail) {
 
 function renderToc(items?: TocItem[]) {
   tocRoot.replaceChildren();
+  tocView = null;
 
   if (!items?.length) {
     const empty = document.createElement("p");
@@ -615,44 +685,31 @@ function renderToc(items?: TocItem[]) {
     return;
   }
 
-  tocRoot.append(buildTocList(items));
+  const view = createTOCView(normalizeTocItems(items), (href: string) => {
+    void readerView?.goTo(href);
+    tocModal.close();
+  });
+  tocView = view;
+  const element = view.element as HTMLOListElement;
+  element.className = "toc-list";
+  for (const item of element.querySelectorAll('[role="treeitem"]')) {
+    const treeItem = item as HTMLElement;
+    treeItem.classList.add("toc-link");
+    if (treeItem.hasAttribute("aria-expanded")) treeItem.setAttribute("aria-expanded", "true");
+  }
+  tocRoot.append(element);
   updateTocCurrent();
 }
 
-function buildTocList(items: TocItem[]) {
-  const list = document.createElement("ol");
-  list.className = "toc-list";
-
-  for (const item of items) {
-    const listItem = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "btn btn-ghost toc-link";
-    button.textContent = item.label?.trim() || "未命名章节";
-
-    if (item.href) {
-      button.dataset.href = item.href;
-      button.addEventListener("click", () => {
-        void readerView?.goTo(item.href!);
-        tocModal.close();
-      });
-    } else {
-      button.disabled = true;
-    }
-
-    listItem.append(button);
-
-    if (item.subitems?.length) {
-      const childWrap = document.createElement("div");
-      childWrap.className = "toc-children";
-      childWrap.append(buildTocList(item.subitems));
-      listItem.append(childWrap);
-    }
-
-    list.append(listItem);
-  }
-
-  return list;
+function normalizeTocItems(items: TocItem[]): TocItem[] {
+  return items.map((item) => {
+    const subitems = item.subitems?.length ? item.subitems : item.children?.length ? item.children : item.items;
+    return {
+      label: item.label?.trim() || "未命名章节",
+      href: item.href,
+      subitems: subitems?.length ? normalizeTocItems(subitems) : undefined,
+    };
+  });
 }
 
 function wireReaderEvents(view: FoliateViewElement) {
@@ -772,23 +829,28 @@ async function collectSearchHits(query: string) {
   if (!searchOptions.query) return;
 
   const runId = ++searchRunId;
-  const sectionCount = readerView.book?.sections?.length ?? 0;
 
   try {
-    searchSections:
-    for (let index = 0; index < sectionCount; index += 1) {
-      for await (const entry of readerView.search({ index, ...searchOptions })) {
-        if (runId !== searchRunId) return;
+    searchBook:
+    for await (const entry of readerView.search(searchOptions)) {
+      if (runId !== searchRunId) return;
 
-        if (entry === "done") break;
+      if (entry === "done") break;
 
-        if (typeof entry === "object" && entry && "cfi" in entry) {
-          const hit = entry as SearchHit;
+      if (typeof entry === "object" && entry) {
+        const hits =
+          "subitems" in entry && Array.isArray(entry.subitems)
+            ? (entry.subitems as SearchHit[])
+            : "cfi" in entry
+              ? [entry as SearchHit]
+              : [];
+
+        for (const hit of hits) {
           searchHits.push({
             cfi: hit.cfi,
             excerpt: hit.excerpt,
           });
-          if (searchHits.length >= MAX_SEARCH_RESULTS) break searchSections;
+          if (searchHits.length >= MAX_SEARCH_RESULTS) break searchBook;
         }
       }
     }
@@ -818,34 +880,31 @@ function createView() {
   return view;
 }
 
-async function showInitialPage(view: FoliateViewElement) {
-  await view.next();
-}
-
 async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: ReadingPosition) {
-  if (!savedPosition) {
-    await showInitialPage(view);
-    return;
-  }
-
   state.isRestoring = true;
   try {
+    if (!savedPosition) {
+      await view.init({ showTextStart: true });
+      return;
+    }
+
     if (savedPosition.cfi) {
-      await view.goTo(savedPosition.cfi);
+      await view.init({ lastLocation: savedPosition.cfi });
       return;
     }
 
     if (typeof savedPosition.fraction === "number") {
-      await view.goTo({ fraction: savedPosition.fraction });
+      await view.init({ lastLocation: { fraction: savedPosition.fraction } });
       return;
     }
+
+    await view.init({ showTextStart: true });
   } catch (error) {
     console.warn("Failed to restore saved reading position.", error);
+    await view.init({ showTextStart: true });
   } finally {
     state.isRestoring = false;
   }
-
-  await showInitialPage(view);
 }
 
 async function openBook(input: File | string, sourceLabel: string) {
@@ -956,18 +1015,18 @@ function setupInteractions() {
   });
 
   pageLeftZone.addEventListener("click", () => {
-    readerView?.prev();
+    readerView?.goLeft();
   });
 
   pageRightZone.addEventListener("click", () => {
-    readerView?.next();
+    readerView?.goRight();
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft") {
-      readerView?.prev();
+      readerView?.goLeft();
     } else if (event.key === "ArrowRight") {
-      readerView?.next();
+      readerView?.goRight();
     }
   });
 
