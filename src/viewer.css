@@ -51,17 +51,40 @@
   }
 
   .reader-dock-shell {
-    @apply pointer-events-none fixed inset-y-0 left-3 z-20 flex w-14 items-center justify-center;
+    @apply fixed inset-y-0 left-0 z-20 flex w-16 items-center justify-start;
   }
 
   .reader-dock {
-    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-2 rounded-2xl border border-white/45 bg-white/55 p-2 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
+    @apply pointer-events-auto static flex h-auto -translate-x-[calc(100%-0.5rem)] flex-col items-center justify-center gap-1.5 rounded-xl border border-white/45 bg-white/55 p-1.5 opacity-0 shadow-xl shadow-slate-950/10 backdrop-blur-2xl transition-all duration-200;
     backdrop-filter: blur(22px) saturate(165%);
     -webkit-backdrop-filter: blur(22px) saturate(165%);
   }
 
+  .reader-dock-shell:hover .reader-dock,
+  .reader-dock-shell:focus-within .reader-dock {
+    @apply translate-x-3 opacity-100;
+  }
+
   .reader-dock button {
-    @apply relative flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition-all duration-200;
+    @apply relative grid h-10 w-10 place-items-center rounded-lg text-slate-500 transition-all duration-200;
+  }
+
+  .dock-button-content {
+    @apply pointer-events-none absolute inset-0 grid place-items-center;
+  }
+
+  .reader-dock .tooltip::before,
+  .reader-dock .tooltip::after {
+    left: calc(100% + 0.5rem);
+    right: auto;
+  }
+
+  .reader-dock .tooltip::before {
+    transform: translateX(0) translateY(-50%);
+  }
+
+  .reader-dock .tooltip::after {
+    transform: translateX(0) translateY(-50%) rotate(45deg);
   }
 
   .reader-dock svg {
@@ -118,22 +141,19 @@
     @apply outline outline-2 outline-offset-[-8px] outline-sky-500/50;
   }
 
-  .reader-page-status {
-    @apply pointer-events-auto fixed bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/45 bg-white/55 px-4 py-2 text-sm font-medium text-slate-700 shadow-xl shadow-slate-950/10 backdrop-blur-2xl transition-all duration-200;
-    backdrop-filter: blur(22px) saturate(165%);
-    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  .reader-progress {
+    @apply pointer-events-none fixed top-0 left-0 z-20 h-5 w-full overflow-hidden;
   }
 
-  .reader-page-status:hover {
-    @apply bg-white/65 text-slate-950;
-  }
-
-  .reader-page-status:focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-sky-500/40;
+  .reader-progress-fill {
+    @apply absolute top-0 left-0 h-0.5 w-full origin-left transition-transform duration-300 ease-out;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 18%, transparent);
+    transform: scaleX(0);
   }
 
   .search-nav {
-    @apply fixed top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/45 bg-white/55 p-1.5 text-slate-700 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
+    @apply fixed top-4 left-1/2 z-20 flex w-[min(38rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-1 rounded-2xl border border-white/65 bg-white/82 p-1.5 text-slate-700 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
     backdrop-filter: blur(22px) saturate(165%);
     -webkit-backdrop-filter: blur(22px) saturate(165%);
   }
@@ -160,6 +180,22 @@
 
   .search-count {
     @apply min-w-14 px-2 text-center text-sm font-medium tabular-nums text-slate-700;
+  }
+
+  .search-form {
+    @apply flex min-w-0 flex-1 items-center;
+  }
+
+  .search-input {
+    @apply h-9 min-w-0 flex-1 rounded-xl border-0 bg-white/72 px-3 text-[14px] text-slate-900 outline-none shadow-[inset_0_1px_2px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(255,255,255,0.72)] transition-colors duration-150;
+  }
+
+  .search-input::placeholder {
+    @apply text-slate-400;
+  }
+
+  .search-input:focus {
+    @apply bg-white/92 shadow-[inset_0_1px_3px_rgba(15,23,42,0.12),0_0_0_2px_rgba(14,165,233,0.18)];
   }
 
   .toc-root {
@@ -206,29 +242,9 @@
   }
 
   .toc-modal-box {
-    @apply rounded-3xl border border-white/55 bg-white/60 p-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    @apply rounded-3xl border border-white/55 bg-white/58 p-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
     backdrop-filter: blur(26px) saturate(165%);
     -webkit-backdrop-filter: blur(26px) saturate(165%);
-  }
-
-  .search-modal-box {
-    @apply space-y-3;
-  }
-
-  .search-form {
-    @apply flex items-center;
-  }
-
-  .search-input {
-    @apply h-12 flex-1 rounded-2xl border border-black/8 bg-white/70 px-4 text-[15px] text-slate-900 outline-none transition-colors duration-150;
-  }
-
-  .search-input::placeholder {
-    @apply text-slate-400;
-  }
-
-  .search-input:focus {
-    @apply border-sky-400/60 bg-white/85;
   }
 }
 
@@ -250,18 +266,8 @@ html[data-reader-mode="dark"] .reader-frame {
   background: var(--reader-chrome-bg, #212830);
 }
 
-html[data-reader-mode="dark"] .reader-page-status {
-  @apply border-white/10 bg-[#2a3441]/48 text-[#e5ebf3] shadow-black/25;
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-}
-
-html[data-reader-mode="dark"] .reader-page-status:hover {
-  @apply bg-[#32404f]/60 text-white;
-}
-
 html[data-reader-mode="dark"] .search-nav {
-  @apply border-white/10 bg-[#2a3441]/48 text-[#e5ebf3] shadow-black/25;
+  @apply border-white/12 bg-[#2a3441]/82 text-[#e5ebf3] shadow-black/25;
   backdrop-filter: blur(22px) saturate(150%);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
 }
@@ -279,13 +285,13 @@ html[data-reader-mode="dark"] .search-count {
 }
 
 html[data-reader-mode="dark"] .toc-modal-box {
-  @apply border-white/10 bg-[#24303d]/58 shadow-black/30;
+  @apply border-white/10 bg-[#24303d]/62 shadow-black/30;
   backdrop-filter: blur(26px) saturate(150%);
   -webkit-backdrop-filter: blur(26px) saturate(150%);
 }
 
 html[data-reader-mode="dark"] .search-input {
-  @apply border-white/8 bg-white/8 text-white;
+  @apply border-0 bg-white/10 text-white shadow-[inset_0_1px_3px_rgba(0,0,0,0.22),inset_0_-1px_0_rgba(255,255,255,0.05)];
 }
 
 html[data-reader-mode="dark"] .search-input::placeholder {
@@ -293,7 +299,7 @@ html[data-reader-mode="dark"] .search-input::placeholder {
 }
 
 html[data-reader-mode="dark"] .search-input:focus {
-  @apply border-sky-400/40 bg-white/12;
+  @apply bg-white/14 shadow-[inset_0_1px_4px_rgba(0,0,0,0.28),0_0_0_2px_rgba(125,211,252,0.16)];
 }
 
 html[data-reader-mode="dark"] .toc-link {
@@ -314,10 +320,10 @@ html[data-reader-mode="dark"] .toc-children {
 
 @media (max-width: 960px) {
   .reader-dock-shell {
-    @apply left-2 w-12;
+    @apply w-14;
   }
 
   .reader-dock button {
-    @apply h-10 w-10;
+    @apply h-9 w-9;
   }
 }
