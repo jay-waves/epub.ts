@@ -163,7 +163,7 @@
   }
 
   .toc-root {
-    @apply max-h-[68vh] space-y-2 overflow-auto pr-1;
+    @apply max-h-[68vh] space-y-1 overflow-auto pr-1;
     scrollbar-width: none;
   }
 
@@ -176,7 +176,7 @@
   }
 
   .toc-link {
-    @apply my-1.5 block h-auto min-h-0 w-full rounded-2xl border border-transparent bg-transparent py-3 pe-4 text-left text-[15px] font-medium normal-case text-slate-700 no-underline transition-colors duration-150;
+    @apply my-1 block h-auto min-h-0 w-full rounded-xl border border-transparent bg-transparent py-2 pe-3 text-left text-[13px] font-medium leading-snug normal-case text-slate-700 no-underline transition-colors duration-150;
   }
 
   .toc-link:hover {
@@ -188,9 +188,9 @@
   }
 
   .toc-link svg {
-    @apply inline size-3.5 fill-current opacity-55 transition-transform duration-150;
-    margin-inline-start: -1.5rem;
-    margin-inline-end: 0.625rem;
+    @apply inline size-3 fill-current opacity-55 transition-transform duration-150;
+    margin-inline-start: -1.25rem;
+    margin-inline-end: 0.5rem;
   }
 
   .toc-link[aria-expanded="false"] svg {
@@ -206,7 +206,7 @@
   }
 
   .toc-modal-box {
-    @apply rounded-[28px] border border-white/55 bg-white/60 p-4 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    @apply rounded-3xl border border-white/55 bg-white/60 p-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
     backdrop-filter: blur(26px) saturate(165%);
     -webkit-backdrop-filter: blur(26px) saturate(165%);
   }
