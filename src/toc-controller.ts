@@ -6,23 +6,63 @@ export function createTocController(options: {
   getCurrentHref: () => string;
   getReaderView: () => FoliateViewElement | null;
 }) {
-  const updateCurrent = () => {
-    const currentHref = options.getCurrentHref();
-    for (const link of options.tocRoot.querySelectorAll<HTMLElement>(".toc-link")) {
-      link.toggleAttribute("aria-current", Boolean(currentHref && link.dataset.href === currentHref));
+  const scrollLinkIntoTocView = (link: HTMLElement) => {
+    const rootRect = options.tocRoot.getBoundingClientRect();
+    const linkRect = link.getBoundingClientRect();
+    if (!rootRect.height || !linkRect.height) return;
+
+    const centeredDelta = linkRect.top - rootRect.top - options.tocRoot.clientHeight / 2 + linkRect.height / 2;
+    options.tocRoot.scrollTo({
+      top: Math.max(0, options.tocRoot.scrollTop + centeredDelta),
+      behavior: "auto",
+    });
+  };
+
+  const scheduleScrollToCurrent = (link: HTMLElement) => {
+    const run = () => scrollLinkIntoTocView(link);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        run();
+        window.setTimeout(run, 80);
+      });
+    });
+  };
+
+  const getMatchingHref = (linkHref?: string, currentHref?: string) => {
+    if (!linkHref || !currentHref) return false;
+    if (linkHref === currentHref) return true;
+    try {
+      const linkUrl = new URL(linkHref, "https://reader.local/");
+      const currentUrl = new URL(currentHref, "https://reader.local/");
+      return linkUrl.pathname === currentUrl.pathname && linkUrl.hash === currentUrl.hash;
+    } catch {
+      return false;
     }
   };
 
-  const resetViewState = () => {
-    updateCurrent();
-    options.tocRoot.scrollTop = 0;
-
-    let firstDetails: HTMLDetailsElement | null = null;
-    for (const details of options.tocRoot.querySelectorAll<HTMLDetailsElement>(".toc-collapse")) {
-      firstDetails ??= details;
-      details.open = false;
+  const updateCurrent = () => {
+    const currentHref = options.getCurrentHref();
+    let currentLink: HTMLElement | null = null;
+    for (const link of options.tocRoot.querySelectorAll<HTMLElement>(".toc-link")) {
+      const isCurrent = getMatchingHref(link.dataset.href, currentHref);
+      if (isCurrent) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+      if (isCurrent) currentLink = link;
     }
-    if (firstDetails) firstDetails.open = true;
+    return currentLink;
+  };
+
+  const resetViewState = () => {
+    const currentLink = updateCurrent();
+    if (currentLink) {
+      scheduleScrollToCurrent(currentLink);
+      return;
+    }
+
+    options.tocRoot.scrollTop = 0;
   };
 
   const reset = () => {
@@ -40,11 +80,11 @@ export function createTocController(options: {
       return;
     }
 
-    const list = document.createElement("div");
-    list.className = "toc-accordion";
+    const list = document.createElement("ul");
+    list.className = "menu toc-menu";
     const normalizedItems = normalizeTocItems(items);
-    normalizedItems.forEach((item, index) => {
-      list.append(createAccordionItem(item, index));
+    normalizedItems.forEach((item) => {
+      list.append(createMenuItem(item, 0));
     });
     options.tocRoot.append(list);
     updateCurrent();
@@ -56,52 +96,29 @@ export function createTocController(options: {
     options.tocModal.close();
   };
 
-  const createAccordionItem = (item: TocItem, index: number) => {
+  const createMenuItem = (item: TocItem, depth: number) => {
     const children = item.subitems ?? [];
-    const details = document.createElement("details");
-    details.className = "collapse toc-collapse";
-    details.name = "toc-accordion";
-    if (index === 0) details.open = true;
+    const listItem = document.createElement("li");
 
-    const summary = document.createElement("summary");
-    summary.className = "collapse-title toc-link toc-link-primary";
-    summary.dataset.href = item.href ?? "";
-    summary.append(createLabel(item.label));
-    summary.addEventListener("click", (event) => {
-      if (children.length && !details.open) return;
-      event.preventDefault();
-      navigate(item.href);
-    });
-    details.append(summary);
-
-    const content = document.createElement("div");
-    content.className = "collapse-content toc-collapse-content";
-    if (children.length) {
-      const childList = document.createElement("div");
-      childList.className = "toc-child-list";
-      for (const child of children) {
-        renderChildItem(child, childList, 0);
-      }
-      content.append(childList);
-    }
-    details.append(content);
-
-    return details;
-  };
-
-  const renderChildItem = (item: TocItem, parent: HTMLElement, depth: number) => {
     const link = document.createElement("button");
-    link.className = "toc-link toc-link-child";
+    link.className = depth === 0 ? "toc-link toc-link-primary" : "toc-link";
     link.type = "button";
     link.dataset.href = item.href ?? "";
     link.style.setProperty("--toc-depth", String(depth));
     link.append(createLabel(item.label));
     link.addEventListener("click", () => navigate(item.href));
-    parent.append(link);
+    listItem.append(link);
 
-    for (const child of item.subitems ?? []) {
-      renderChildItem(child, parent, depth + 1);
+    if (children.length) {
+      const childList = document.createElement("ul");
+      childList.className = "toc-child-list";
+      for (const child of children) {
+        childList.append(createMenuItem(child, depth + 1));
+      }
+      listItem.append(childList);
     }
+
+    return listItem;
   };
 
   return { render, reset, resetViewState, updateCurrent };

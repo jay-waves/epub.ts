@@ -142,13 +142,56 @@
   }
 
   .reader-progress {
-    @apply pointer-events-none fixed top-0 left-0 z-20 h-0.5 w-full overflow-hidden;
+    @apply fixed bottom-8 left-1/2 z-20 flex h-10 w-[min(20rem,72vw)] -translate-x-1/2 cursor-pointer touch-none items-center justify-center px-2 opacity-55 transition-opacity duration-200 ease-out;
+  }
+
+  .reader-progress:hover,
+  .reader-progress:focus-visible,
+  .reader-progress.is-dragging {
+    @apply opacity-100 outline-none;
+  }
+
+  .reader-progress-track {
+    @apply relative h-px w-4/5 rounded-sm transition-all duration-200 ease-out;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 22%, transparent);
+  }
+
+  .reader-progress-label {
+    @apply pointer-events-none absolute bottom-full left-1/2 mb-2 max-w-[min(22rem,78vw)] -translate-x-1/2 translate-y-1 truncate rounded-md px-2 py-1 text-xs font-medium opacity-0 shadow-lg transition-all duration-200;
+    background: color-mix(in srgb, var(--reader-chrome-bg, #fbfaf7) 82%, transparent);
+    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
+  }
+
+  .reader-progress-label[hidden] {
+    @apply hidden;
+  }
+
+  .reader-progress:hover .reader-progress-label,
+  .reader-progress:focus-visible .reader-progress-label,
+  .reader-progress.is-dragging .reader-progress-label {
+    @apply translate-y-0 opacity-100;
+  }
+
+  .reader-progress:hover .reader-progress-track,
+  .reader-progress:focus-visible .reader-progress-track,
+  .reader-progress.is-dragging .reader-progress-track {
+    @apply h-1.5 w-full -translate-y-2 rounded-md shadow-lg;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 14%, transparent);
   }
 
   .reader-progress-fill {
-    @apply absolute top-0 left-0 h-full w-full origin-left transition-transform duration-300 ease-out;
-    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 42%, transparent);
-    transform: scaleX(0);
+    @apply absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-sm transition-[width] duration-300 ease-out;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 68%, transparent);
+    width: var(--reader-progress, 0%);
+  }
+
+  .reader-progress:hover .reader-progress-fill,
+  .reader-progress:focus-visible .reader-progress-fill,
+  .reader-progress.is-dragging .reader-progress-fill {
+    @apply h-2.5 rounded-md;
   }
 
   .search-nav {
@@ -199,48 +242,46 @@
 
   .toc-root {
     @apply max-h-[68vh] space-y-1 overflow-auto pr-1;
-    scrollbar-width: none;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, hsl(var(--bc, 215 28% 17%)) 22%, transparent)
+      transparent;
   }
 
   .toc-root::-webkit-scrollbar {
-    display: none;
+    width: 0.5rem;
   }
 
-  .toc-accordion {
-    @apply space-y-1;
+  .toc-root::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  .toc-collapse {
-    @apply my-1 min-h-0 rounded-xl border border-transparent text-slate-700 backdrop-blur-xl;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 68%, transparent);
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    box-shadow: none;
+  .toc-root::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, hsl(var(--bc, 215 28% 17%)) 22%, transparent);
+    background-clip: padding-box;
   }
 
-  .toc-collapse[open] {
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 78%, transparent);
-    box-shadow: none;
+  .toc-root::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, hsl(var(--bc, 215 28% 17%)) 36%, transparent);
+    background-clip: padding-box;
   }
 
-  .toc-collapse .collapse-title {
-    @apply min-h-0 py-2 px-3;
+  .toc-menu {
+    @apply w-full gap-1 p-0 text-slate-700;
   }
 
-  .toc-collapse .collapse-content {
-    @apply px-2 pb-2;
-  }
-
-  .toc-collapse .collapse-content > * {
-    @apply pb-0;
+  .toc-menu :where(li ul) {
+    @apply ms-0 mt-1 ps-0;
   }
 
   .toc-child-list {
-    @apply space-y-0.5 border-t border-white/35 pt-1;
+    @apply space-y-0.5 pt-0.5;
   }
 
   .toc-link {
     @apply flex h-auto min-h-0 w-full items-center gap-3 rounded-lg border border-transparent bg-transparent py-2 pe-3 text-left text-[13px] font-medium leading-snug normal-case text-slate-700 no-underline transition-all duration-150;
+    padding-inline-start: calc(0.75rem + var(--toc-depth, 0) * 0.875rem);
   }
 
   .toc-link:hover {
@@ -250,8 +291,12 @@
   }
 
   .toc-link[aria-current="page"] {
-    @apply bg-sky-600/86 text-white;
-    box-shadow: 0 8px 20px rgb(2 132 199 / 22%);
+    @apply border-white/45 font-semibold text-slate-900;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, white 12%);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 36%) inset,
+      0 8px 18px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent),
+      0 2px 6px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 6%, transparent);
   }
 
   .toc-link-label {
@@ -260,10 +305,6 @@
 
   .toc-link-primary {
     @apply font-semibold;
-  }
-
-  .toc-link-child {
-    padding-inline-start: calc(0.75rem + var(--toc-depth, 0) * 0.875rem);
   }
 
   .toc-modal-box {
@@ -352,22 +393,12 @@ html[data-reader-mode="dark"] .toc-link:hover {
 }
 
 html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
-  @apply border-sky-400/20 bg-sky-700/90 text-white;
-}
-
-html[data-reader-mode="dark"] .toc-collapse {
-  @apply border-transparent text-[#d8dee9];
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 54%, transparent);
-  box-shadow: none;
-}
-
-html[data-reader-mode="dark"] .toc-collapse[open] {
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 68%, transparent);
-  box-shadow: none;
-}
-
-html[data-reader-mode="dark"] .toc-child-list {
-  @apply border-white/10;
+  @apply border-white/12 font-semibold text-white;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 8%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 8%) inset,
+    0 10px 22px rgb(0 0 0 / 22%),
+    0 2px 7px rgb(0 0 0 / 14%);
 }
 
 @media (max-width: 960px) {

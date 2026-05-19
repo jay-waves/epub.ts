@@ -60,8 +60,11 @@
       <button id="page-left-zone" class="page-click-zone page-click-zone--left" type="button" aria-label="Previous page"></button>
       <button id="page-right-zone" class="page-click-zone page-click-zone--right" type="button" aria-label="Next page"></button>
 
-      <div id="reading-progress" class="reader-progress" aria-hidden="true">
-        <div id="reading-progress-fill" class="reader-progress-fill"></div>
+      <div id="reading-progress" class="reader-progress" role="slider" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+        <div id="reading-progress-label" class="reader-progress-label" hidden></div>
+        <div class="reader-progress-track">
+          <div id="reading-progress-fill" class="reader-progress-fill"></div>
+        </div>
       </div>
 
       <div id="search-nav" class="search-nav" hidden>

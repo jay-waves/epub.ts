@@ -62,7 +62,10 @@ const openTocButton = must<HTMLButtonElement>("#open-toc-button");
 const exportButton = must<HTMLButtonElement>("#export-button");
 const pageLeftZone = must<HTMLButtonElement>("#page-left-zone");
 const pageRightZone = must<HTMLButtonElement>("#page-right-zone");
+const readingProgress = must<HTMLElement>("#reading-progress");
+const readingProgressTrack = must<HTMLElement>(".reader-progress-track");
 const readingProgressFill = must<HTMLElement>("#reading-progress-fill");
+const readingProgressLabel = must<HTMLElement>("#reading-progress-label");
 const searchForm = must<HTMLFormElement>("#search-form");
 const searchInput = must<HTMLInputElement>("#search-input");
 const searchNav = must<HTMLElement>("#search-nav");
@@ -76,6 +79,8 @@ const tocModal = must<HTMLDialogElement>("#toc-modal");
 let readerView: FoliateViewElement | null = null;
 let savePositionTimer: number | undefined;
 let extraUiReady = false;
+let currentProgress = 0;
+const showReadingProgressLabel = false;
 
 const tocController = createTocController({
   tocRoot,
@@ -149,7 +154,8 @@ function runWhenIdle(callback: () => void, timeout = 500) {
 
 function updatePageStatus(detail: RelocateDetail) {
   const progress = typeof detail.fraction === "number" ? detail.fraction : 0;
-  readingProgressFill.style.transform = `scaleX(${Math.min(1, Math.max(0, progress))})`;
+  setReadingProgress(progress);
+  updateReadingProgressLabel(showReadingProgressLabel ? detail.tocItem?.label : undefined);
 }
 
 function updateTocCurrent() {
@@ -327,6 +333,83 @@ function setupCriticalInteractions() {
   });
 }
 
+function getProgressFromPointer(event: PointerEvent) {
+  const bounds = readingProgressTrack.getBoundingClientRect();
+  if (bounds.width <= 0) return currentProgress;
+
+  return Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+}
+
+function setReadingProgress(progress: number) {
+  currentProgress = Math.min(1, Math.max(0, progress));
+  readingProgressFill.style.setProperty("--reader-progress", `${currentProgress * 100}%`);
+  readingProgress.setAttribute("aria-valuenow", String(Math.round(currentProgress * 100)));
+}
+
+function updateReadingProgressLabel(label?: string) {
+  const chapterLabel = label?.trim() ?? "";
+  readingProgressLabel.textContent = chapterLabel;
+  readingProgressLabel.hidden = !chapterLabel;
+}
+
+function previewReadingProgress(progress: number) {
+  setReadingProgress(progress);
+}
+
+function seekReadingProgress(progress: number) {
+  if (!readerView?.book) return;
+  previewReadingProgress(progress);
+  void readerView.goTo({ fraction: currentProgress }).catch((error) => {
+    console.warn("Failed to seek reading progress.", error);
+  });
+}
+
+function setupProgressInteractions() {
+  readingProgress.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    readingProgress.classList.add("is-dragging");
+    readingProgressFill.style.transitionDuration = "0ms";
+    readingProgress.setPointerCapture(event.pointerId);
+    previewReadingProgress(getProgressFromPointer(event));
+  });
+
+  readingProgress.addEventListener("pointermove", (event) => {
+    if (!readingProgress.hasPointerCapture(event.pointerId)) return;
+    previewReadingProgress(getProgressFromPointer(event));
+  });
+
+  const finishDrag = (event: PointerEvent) => {
+    if (!readingProgress.hasPointerCapture(event.pointerId)) return;
+
+    const progress = getProgressFromPointer(event);
+    readingProgress.releasePointerCapture(event.pointerId);
+    readingProgress.classList.remove("is-dragging");
+    readingProgressFill.style.transitionDuration = "";
+    seekReadingProgress(progress);
+  };
+
+  readingProgress.addEventListener("pointerup", finishDrag);
+  readingProgress.addEventListener("pointercancel", finishDrag);
+
+  readingProgress.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      event.preventDefault();
+      seekReadingProgress(currentProgress - 0.01);
+    } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      event.preventDefault();
+      seekReadingProgress(currentProgress + 0.01);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      seekReadingProgress(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      seekReadingProgress(1);
+    }
+  });
+}
+
 function setupExtraInteractions() {
   openTocButton.addEventListener("click", () => {
     tocModal.showModal();
@@ -444,6 +527,7 @@ async function bootstrap() {
   updateExportButton();
   updateFlowButton(toggleFlowButton);
   setupCriticalInteractions();
+  setupProgressInteractions();
 
   const src = readSourceFromQuery();
   if (src) {
