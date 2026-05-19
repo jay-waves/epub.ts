@@ -1,6 +1,14 @@
-import type { ReaderSettings, ReadingHistory, ReadingPosition, RelocateDetail } from "./viewer-types";
+import type {
+  ReaderHighlight,
+  ReaderHighlights,
+  ReaderSettings,
+  ReadingHistory,
+  ReadingPosition,
+  RelocateDetail,
+} from "./viewer-types";
 
 export const HISTORY_STORAGE_KEY = "reading-history";
+export const HIGHLIGHTS_STORAGE_KEY = "reading-highlights";
 
 export async function getStorage<T>(key: string, fallback: T) {
   const items = await chrome.storage.local.get(key);
@@ -49,4 +57,24 @@ export async function saveReaderSettings(bookKey: string, settings: ReaderSettin
     updatedAt: Date.now(),
   };
   await setStorage(HISTORY_STORAGE_KEY, history);
+}
+
+export async function getSavedHighlights(bookKey: string) {
+  const highlights = await getStorage<ReaderHighlights>(HIGHLIGHTS_STORAGE_KEY, {});
+  return highlights[bookKey] ?? [];
+}
+
+export async function saveHighlight(bookKey: string, highlight: ReaderHighlight) {
+  const highlights = await getStorage<ReaderHighlights>(HIGHLIGHTS_STORAGE_KEY, {});
+  const bookHighlights = highlights[bookKey] ?? [];
+  if (!bookHighlights.some((item) => item.value === highlight.value)) {
+    highlights[bookKey] = [...bookHighlights, highlight];
+    await setStorage(HIGHLIGHTS_STORAGE_KEY, highlights);
+  }
+}
+
+export async function setSavedHighlights(bookKey: string, bookHighlights: ReaderHighlight[]) {
+  const highlights = await getStorage<ReaderHighlights>(HIGHLIGHTS_STORAGE_KEY, {});
+  highlights[bookKey] = bookHighlights;
+  await setStorage(HIGHLIGHTS_STORAGE_KEY, highlights);
 }

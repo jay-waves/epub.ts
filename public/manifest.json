@@ -10,8 +10,7 @@
     "storage"
   ],
   "host_permissions": [
-    "file:///*",
-    "https://*/*"
+    "file:///*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -29,12 +28,11 @@
         "Monaspace Argon Var.ttf"
       ],
       "matches": [
-        "file:///*",
-        "https://*/*"
+        "file:///*"
       ]
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; frame-src 'self' blob: data: https:; connect-src 'self' blob: data: file: https:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; frame-src 'self' blob: data:; connect-src 'self' blob: data: file:;"
   }
 }

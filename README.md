@@ -55,7 +55,7 @@ The extension `manifest.json` version is synced automatically from `package.json
 ## How It Works
 
 - The background service worker installs a dynamic `declarativeNetRequest` rule.
-- Requests matching `file://...epub` or `https://...epub` are redirected to `viewer.html?src=<original-file-url>`.
+- Requests matching `file://...epub` are redirected to `viewer.html?src=<original-file-url>`.
 - The viewer page passes that source URL to `foliate-view`.
 
 ## Notes

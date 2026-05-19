@@ -11,6 +11,7 @@ export const elements = queryRequired<{
   increaseWidthButton: HTMLButtonElement;
   openSearchButton: HTMLButtonElement;
   openTocButton: HTMLButtonElement;
+  openHighlightsButton: HTMLButtonElement;
   exportButton: HTMLButtonElement;
   pageLeftZone: HTMLButtonElement;
   pageRightZone: HTMLButtonElement;
@@ -38,6 +39,7 @@ export const elements = queryRequired<{
   increaseWidthButton: "#increase-width-button",
   openSearchButton: "#open-search-button",
   openTocButton: "#open-toc-button",
+  openHighlightsButton: "#open-highlights-button",
   exportButton: "#export-button",
   pageLeftZone: "#page-left-zone",
   pageRightZone: "#page-right-zone",

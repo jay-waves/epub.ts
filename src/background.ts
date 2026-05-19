@@ -1,5 +1,6 @@
 const REDIRECT_RULE_ID = 1;
-const EPUB_URL_REGEX = "^(?:file:///|https://).+\\.epub(?:[?#].*)?$";
+const EPUB_URL_REGEX = "^file:///.+\\.epub(?:[?#].*)?$";
+const VIEWER_URL = chrome.runtime.getURL("viewer.html");
 
 async function installRedirectRule() {
   const redirectUrl = `${chrome.runtime.getURL("viewer.html")}?src=\\0`;
@@ -36,6 +37,6 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.action.onClicked.addListener(() => {
   void chrome.tabs.create({
-    url: chrome.runtime.getURL("viewer.html"),
+    url: VIEWER_URL,
   });
 });

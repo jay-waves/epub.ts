@@ -195,6 +195,31 @@
     width: var(--reader-progress, 0%);
   }
 
+  .highlight-action-popover {
+    @apply fixed z-30 flex items-center gap-0.5 rounded-xl border border-white/55 bg-white/52 p-0.5 shadow-lg shadow-slate-950/10 backdrop-blur-2xl;
+    color: var(--reader-chrome-fg, #1f2933);
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 52%, transparent) !important;
+    backdrop-filter: blur(18px) saturate(165%);
+    -webkit-backdrop-filter: blur(18px) saturate(165%);
+  }
+
+  .highlight-action-popover[hidden] {
+    @apply hidden;
+  }
+
+  .highlight-action-popover .btn {
+    @apply grid h-8 min-h-8 w-8 place-items-center border-0 bg-transparent p-0 text-current shadow-none;
+    line-height: 1;
+  }
+
+  .highlight-action-popover .btn:hover {
+    @apply bg-slate-950/8;
+  }
+
+  .highlight-action-popover svg {
+    @apply block size-4;
+  }
+
   .reader-progress:hover .reader-progress-fill,
   .reader-progress:focus-visible .reader-progress-fill,
   .reader-progress.is-dragging .reader-progress-fill {
@@ -213,7 +238,8 @@
   }
 
   .search-nav button {
-    @apply flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors duration-150;
+    @apply grid h-9 min-h-9 w-9 place-items-center rounded-full p-0 text-slate-500 transition-colors duration-150;
+    line-height: 1;
   }
 
   .search-nav button:hover {
@@ -225,7 +251,7 @@
   }
 
   .search-nav svg {
-    @apply size-4;
+    @apply block size-4;
   }
 
   .search-count {
@@ -322,13 +348,116 @@
     -webkit-backdrop-filter: blur(22px) saturate(165%);
   }
 
+  .highlights-modal-box {
+    @apply flex max-h-[min(82vh,52rem)] flex-col gap-1.5 rounded-none border-0 bg-transparent p-0 text-slate-700 shadow-none;
+    width: min(44rem, calc(100vw - 2rem)) !important;
+    min-width: min(44rem, calc(100vw - 2rem)) !important;
+    max-width: calc(100vw - 2rem) !important;
+    background-color: transparent !important;
+  }
+
+  #highlights-root {
+    @apply flex min-h-0 flex-1 flex-col gap-3;
+  }
+
+  .highlights-panel {
+    @apply flex min-h-0 flex-1 flex-col rounded-3xl border border-white/45 p-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 62%, transparent);
+    backdrop-filter: blur(22px) saturate(165%);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  .highlights-note-input {
+    @apply h-9 resize-none overflow-hidden bg-white/80 px-3 py-1.5 text-sm leading-5 text-slate-900;
+    min-height: 2.25rem !important;
+    max-height: 2.25rem !important;
+  }
+
+  .highlights-note-input:disabled {
+    @apply cursor-not-allowed bg-white/45 text-slate-400;
+  }
+
+  .highlights-actions {
+    @apply flex items-center justify-end gap-3.5;
+  }
+
+  .highlights-list {
+    @apply min-h-[20rem] flex-1 space-y-1.5 overflow-y-auto pr-1;
+    max-height: min(54vh, 34rem);
+    scrollbar-width: none;
+  }
+
+  .highlights-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .highlight-item {
+    @apply grid cursor-pointer grid-cols-[3.25rem_1fr] items-start gap-2.5 rounded-lg border border-white/45 bg-white/62 px-3 py-2.5 text-left transition-all duration-150;
+  }
+
+  .highlight-item:hover,
+  .highlight-item.is-active {
+    @apply bg-white/82 shadow-md shadow-slate-950/8;
+  }
+
+  .highlight-item.is-active {
+    @apply border-white/70 bg-white/88 shadow-lg shadow-slate-950/14;
+    transform: translateY(-1px);
+  }
+
+  .highlight-item:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-sky-500/40;
+  }
+
+  .highlight-progress {
+    @apply mt-0.5 rounded-md border border-white/55 bg-white/70 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-5 tabular-nums text-slate-600 shadow-sm shadow-slate-950/5;
+  }
+
+  .highlight-item-body {
+    @apply grid min-w-0 flex-1 gap-1;
+  }
+
+  .highlight-text {
+    @apply line-clamp-3 text-[13px] leading-5 text-slate-800;
+  }
+
+  .highlight-note {
+    @apply rounded-md bg-slate-100/80 px-2 py-0.5 text-xs leading-5 text-slate-600;
+  }
+
+  .highlight-action-bar {
+    @apply grid items-center gap-3 rounded-2xl border border-white/45 px-4 py-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    grid-template-columns: minmax(18rem, 1fr) auto;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 62%, transparent);
+    backdrop-filter: blur(22px) saturate(165%);
+    -webkit-backdrop-filter: blur(22px) saturate(165%);
+  }
+
+  .highlight-icon-button {
+    @apply border border-white/55 bg-white/64 text-slate-600 shadow-sm shadow-slate-950/10 transition-all duration-150;
+  }
+
+  .highlight-icon-button:hover {
+    @apply bg-white/86 text-slate-950 shadow-md shadow-slate-950/12;
+    transform: translateY(-1px);
+  }
+
+  .highlight-icon-button:active {
+    @apply shadow-sm;
+    transform: translateY(0);
+  }
+
   #toc-modal,
-  #toc-modal[open] {
+  #toc-modal[open],
+  #highlights-modal,
+  #highlights-modal[open] {
     background-color: transparent !important;
   }
 
   #toc-modal::backdrop,
-  #toc-modal .modal-backdrop {
+  #toc-modal .modal-backdrop,
+  #highlights-modal::backdrop,
+  #highlights-modal .modal-backdrop {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -380,6 +509,63 @@ html[data-reader-mode="dark"] .toc-modal-box {
   -webkit-backdrop-filter: blur(22px) saturate(150%);
 }
 
+html[data-reader-mode="dark"] .highlights-modal-box {
+  @apply border-0 text-[#e5ebf3] shadow-none;
+  background-color: transparent !important;
+}
+
+html[data-reader-mode="dark"] .highlights-panel {
+  @apply border-white/10 shadow-black/30;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 60%, transparent);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+html[data-reader-mode="dark"] .highlight-item {
+  @apply border-white/10 bg-white/8;
+}
+
+html[data-reader-mode="dark"] .highlight-item:hover {
+  @apply bg-white/12 shadow-black/20;
+}
+
+html[data-reader-mode="dark"] .highlight-item.is-active {
+  @apply border-white/16 bg-white/14 shadow-black/30;
+}
+
+html[data-reader-mode="dark"] .highlight-text {
+  @apply text-[#e5ebf3];
+}
+
+html[data-reader-mode="dark"] .highlight-progress {
+  @apply border-white/10 bg-white/10 text-[#c7d2df] shadow-black/15;
+}
+
+html[data-reader-mode="dark"] .highlight-note {
+  @apply bg-white/10 text-[#c7d2df];
+}
+
+html[data-reader-mode="dark"] .highlights-note-input {
+  @apply bg-white/10 text-white;
+}
+
+html[data-reader-mode="dark"] .highlights-note-input:disabled {
+  @apply bg-white/6 text-[#8ea0b3];
+}
+
+html[data-reader-mode="dark"] .highlight-action-bar {
+  @apply border-white/10 bg-white/8 shadow-black/25;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 62%, transparent);
+}
+
+html[data-reader-mode="dark"] .highlight-icon-button {
+  @apply border-white/10 bg-white/8 text-[#d8dee9] shadow-black/20;
+}
+
+html[data-reader-mode="dark"] .highlight-icon-button:hover {
+  @apply bg-white/14 text-white shadow-black/30;
+}
+
 html[data-reader-mode="dark"] .search-input {
   @apply border-0 bg-white/10 text-white shadow-[inset_0_1px_3px_rgba(0,0,0,0.22),inset_0_-1px_0_rgba(255,255,255,0.05)];
 }
@@ -418,5 +604,13 @@ html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
 
   .reader-dock button {
     @apply h-9 w-9;
+  }
+
+  .highlights-actions {
+    @apply justify-end gap-2.5;
+  }
+
+  .highlight-action-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }

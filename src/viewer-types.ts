@@ -32,6 +32,11 @@ export type FoliateRenderer = HTMLElement & {
   setStyles?: (cssText: string) => void;
   start?: number;
   viewSize?: number;
+  getContents?: () => Array<{
+    doc?: Document;
+    index: number;
+    overlayer?: unknown;
+  }>;
 };
 
 export type FoliateViewElement = HTMLElement & {
@@ -46,6 +51,12 @@ export type FoliateViewElement = HTMLElement & {
   goLeft: () => Promise<void>;
   goRight: () => Promise<void>;
   goTo: (target: string | number | { fraction: number }) => Promise<void>;
+  addAnnotation?: (annotation: ReaderHighlight, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
+  deleteAnnotation?: (annotation: ReaderHighlight) => Promise<{ index: number; label: string } | undefined>;
+  deselect?: () => void;
+  getCFI?: (index: number, range?: Range) => string;
+  getSectionFractions?: () => number[];
+  showAnnotation?: (annotation: ReaderHighlight) => Promise<void>;
   search?: (options: {
     index?: number;
     matchCase?: boolean;
@@ -87,6 +98,18 @@ export type ReadingPosition = {
 };
 
 export type ReadingHistory = Record<string, ReadingPosition>;
+
+export type ReaderHighlight = {
+  value: string;
+  color: string;
+  text?: string;
+  note?: string;
+  index?: number;
+  fraction?: number;
+  createdAt: number;
+};
+
+export type ReaderHighlights = Record<string, ReaderHighlight[]>;
 
 export type RelocateDetail = {
   cfi?: string;
