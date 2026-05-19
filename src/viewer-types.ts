@@ -35,7 +35,9 @@ export type FoliateRenderer = HTMLElement & {
   getContents?: () => Array<{
     doc?: Document;
     index: number;
-    overlayer?: unknown;
+    overlayer?: {
+      hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
+    };
   }>;
 };
 

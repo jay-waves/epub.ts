@@ -1,7 +1,7 @@
 {
 	"name": "epub-viewer-extension",
 	"private": true,
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"type": "module",
 	"scripts": {
 		"prebuild": "node scripts/sync-manifest-version.mjs",
@@ -12,13 +12,17 @@
 	"devDependencies": {
 		"@tailwindcss/vite": "^4.2.4",
 		"@types/chrome": "^0.1.40",
-		"daisyui": "^5.5.19",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.2",
 		"tailwindcss": "^4.2.4",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.10"
 	},
 	"dependencies": {
 		"foliate-js": "github:johnfactotum/foliate-js#main",
-		"lucide": "^1.14.0"
+		"lucide": "^1.14.0",
+		"react": "^19.2.6",
+		"react-dom": "^19.2.6"
 	}
 }

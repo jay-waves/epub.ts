@@ -64,8 +64,14 @@ export function getBookStyles(themeId = state.readerTheme) {
       font-style: normal;
       font-display: block;
     }
-    html {
+    html,
+    body {
       --theme-bg-color: ${background} !important;
+      --reader-fg-color: ${foreground};
+      --reader-link-color: ${link};
+      --reader-muted-color: color-mix(in srgb, ${foreground} 72%, ${background});
+      --reader-border-color: color-mix(in srgb, ${foreground} 18%, transparent);
+      --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, transparent);
       --reader-font-size: ${state.readerFontSize}px;
       --reader-line-height: ${lineHeight};
       --reader-word-spacing: ${wordSpacing};
@@ -76,37 +82,52 @@ export function getBookStyles(themeId = state.readerTheme) {
       font-size: var(--reader-font-size) !important;
       background: ${background} !important;
       color: ${foreground} !important;
+      margin: 0 !important;
+      padding: 0 !important;
       max-inline-size: none !important;
       max-width: none !important;
       inline-size: auto !important;
       width: auto !important;
-      margin: 0 !important;
-      padding: 0 !important;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
     }
     body {
-      background: ${background} !important;
-      color: ${foreground} !important;
       font-family: var(--reader-font-serif) !important;
-      font-size: var(--reader-font-size) !important;
       line-height: var(--reader-line-height) !important;
       letter-spacing: 0 !important;
-      max-inline-size: none !important;
-      max-width: none !important;
-      inline-size: auto !important;
-      width: auto !important;
-      margin: 0 !important;
-      padding: 0 !important;
     }
-    body, body * {
-      color: ${foreground};
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar,
+    *::-webkit-scrollbar {
+      width: 0 !important;
+      height: 0 !important;
+      display: none !important;
+    }
+    body,
+    body :where(*:not(svg):not(svg *):not(a):not(a *)) {
+      color: var(--reader-fg-color) !important;
+      -webkit-text-fill-color: var(--reader-fg-color) !important;
+      caret-color: var(--reader-fg-color) !important;
+      text-shadow: none !important;
+    }
+    a,
+    a :where(*:not(svg):not(svg *)) {
+      color: var(--reader-link-color) !important;
+      -webkit-text-fill-color: var(--reader-link-color) !important;
     }
     body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button) {
       font-family: var(--reader-font-serif) !important;
     }
-    code, pre, kbd, samp, textarea {
+    :is(code, pre, kbd, samp, textarea, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]) {
       font-family: var(--reader-font-mono) !important;
     }
-    input, textarea, select, button {
+    :is(code, pre, kbd, samp, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]),
+    :is(code, pre, kbd, samp) * {
+      color: var(--reader-fg-color) !important;
+      -webkit-text-fill-color: var(--reader-fg-color) !important;
+      text-shadow: none !important;
+    }
+    :is(input, textarea, select, button) {
       font-family: var(--reader-font-sans) !important;
     }
     body *:not(img):not(svg):not(video):not(audio):not(canvas):not(iframe) {
@@ -117,20 +138,14 @@ export function getBookStyles(themeId = state.readerTheme) {
       width: auto !important;
       box-sizing: border-box !important;
     }
-    section, article, main, div, p, li, ul, ol, dl, blockquote,
-    h1, h2, h3, h4, h5, h6, table, thead, tbody, tfoot, tr, td, th {
-      max-inline-size: none !important;
-      max-width: none !important;
-      width: auto !important;
-    }
-    p, li, blockquote, dd, dt, td, th,
+    :is(p, li, blockquote, dd, dt, td, th),
     [epub|type~="bodymatter"] p,
     [epub|type~="bodymatter"] div,
     [class~="para"],
-    [class*="para-"],
-    [class*="paragraph"],
-    [class*="bodytext"],
-    [class*="body-text"] {
+    [class*="para-" i],
+    [class*="paragraph" i],
+    [class*="bodytext" i],
+    [class*="body-text" i] {
       font-size: var(--reader-font-size) !important;
       line-height: var(--reader-line-height) !important;
       text-align: justify;
@@ -138,44 +153,20 @@ export function getBookStyles(themeId = state.readerTheme) {
       hanging-punctuation: allow-end last;
       word-spacing: var(--reader-word-spacing) !important;
     }
-    p :where(span, a, em, strong, b, i),
-    li :where(span, a, em, strong, b, i),
-    blockquote :where(span, a, em, strong, b, i),
-    dd :where(span, a, em, strong, b, i),
-    dt :where(span, a, em, strong, b, i),
-    td :where(span, a, em, strong, b, i),
-    th :where(span, a, em, strong, b, i),
-    [class~="para"] :where(span, a, em, strong, b, i),
-    [class*="para-"] :where(span, a, em, strong, b, i),
-    [class*="paragraph"] :where(span, a, em, strong, b, i),
-    [class*="bodytext"] :where(span, a, em, strong, b, i),
-    [class*="body-text"] :where(span, a, em, strong, b, i) {
+    :is(p, li, blockquote, dd, dt, td, th, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i])
+      :where(span, a, em, strong, b, i) {
       font-size: inherit !important;
       line-height: inherit !important;
       word-spacing: inherit !important;
     }
-    h1, h2, h3, h4, h5, h6,
-    [role="heading"],
-    [epub|type~="title"],
-    [epub|type~="subtitle"],
-    [class*="title"],
-    [class*="heading"],
-    [class*="chapter"],
-    h1 *, h2 *, h3 *, h4 *, h5 *, h6 *,
-    [role="heading"] *,
-    [epub|type~="title"] *,
-    [epub|type~="subtitle"] *,
-    [class*="title"] *,
-    [class*="heading"] *,
-    [class*="chapter"] * {
+    :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i]),
+    :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i]) * {
       font-family: var(--reader-font-serif) !important;
       font-weight: 700 !important;
       font-style: normal !important;
-      color: ${foreground} !important;
       letter-spacing: 0 !important;
       font-variation-settings: "wght" 700 !important;
       font-synthesis: weight !important;
-      -webkit-text-fill-color: ${foreground} !important;
       -webkit-text-stroke: 0 transparent !important;
       text-shadow: none !important;
       opacity: 1 !important;
@@ -190,55 +181,251 @@ export function getBookStyles(themeId = state.readerTheme) {
       font-size: calc(var(--reader-font-size) * 1.1) !important;
       line-height: 1.45 !important;
     }
-    h1 :where(span, a, em, strong, b, i),
-    h2 :where(span, a, em, strong, b, i),
-    h3 :where(span, a, em, strong, b, i),
-    h4 :where(span, a, em, strong, b, i),
-    h5 :where(span, a, em, strong, b, i),
-    h6 :where(span, a, em, strong, b, i),
-    [role="heading"] :where(span, a, em, strong, b, i),
-    [epub|type~="title"] :where(span, a, em, strong, b, i),
-    [epub|type~="subtitle"] :where(span, a, em, strong, b, i),
-    [class*="title"] :where(span, a, em, strong, b, i),
-    [class*="heading"] :where(span, a, em, strong, b, i),
-    [class*="chapter"] :where(span, a, em, strong, b, i) {
+    :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i])
+      :where(span, a, em, strong, b, i) {
       font-size: inherit !important;
       line-height: inherit !important;
       font-weight: inherit !important;
     }
-    figcaption, caption, small,
+    :is(figcaption, caption,
     [epub|type~="caption"],
     [epub|type~="subtitle"],
     [epub|type~="credit"],
-    [class*="caption"],
-    [class*="figcaption"],
-    [class*="legend"],
-    [class*="note"],
-    [class*="annotation"] {
-      font-family: var(--reader-font-serif) !important;
-      color: ${foreground} !important;
-      -webkit-text-fill-color: ${foreground} !important;
-      font-size: 0.88em !important;
-      line-height: 1.5 !important;
+    [class*="caption" i],
+    [class*="figcaption" i],
+    [class*="legend" i],
+    [class*="credit" i]) {
+      color: var(--reader-muted-color) !important;
+      -webkit-text-fill-color: var(--reader-muted-color) !important;
+      font-size: 0.82em !important;
+      line-height: 1.45 !important;
+      text-align: center !important;
       word-spacing: 0 !important;
-      opacity: 0.9 !important;
+      opacity: 1 !important;
+    }
+    :is(a[epub|type~="noteref"],
+    a[role~="doc-noteref"],
+    a[epub|type~="biblioref"],
+    a[role~="doc-biblioref"],
+    a[epub|type~="glossref"],
+    a[role~="doc-glossref"],
+    sup a,
+    a sup,
+    small a[href^="#"]) {
+      display: inline !important;
+      margin: 0 !important;
+      padding: 0 0.08em !important;
+      border: 0 !important;
+      background: transparent !important;
+      font-size: 0.72em !important;
+      line-height: 0 !important;
+      text-align: inherit !important;
+      vertical-align: super !important;
+      word-spacing: 0 !important;
+    }
+    :is(a[epub|type~="noteref"],
+    a[role~="doc-noteref"]) img.epub-footnote,
+    :is(a[epub|type~="noteref"],
+    a[role~="doc-noteref"]) img[alt] {
+      display: none !important;
+    }
+    :is(a[epub|type~="noteref"],
+    a[role~="doc-noteref"]):has(img.epub-footnote)::after,
+    :is(a[epub|type~="noteref"],
+    a[role~="doc-noteref"]):has(img[alt])::after {
+      content: attr(data-footnote-label) !important;
+      display: inline !important;
+      font-size: 0.9em !important;
+      line-height: 1 !important;
+      vertical-align: baseline !important;
+    }
+    :is(a[epub|type~="noteref"],
+    a[role~="doc-noteref"],
+    a[epub|type~="biblioref"],
+    a[role~="doc-biblioref"],
+    a[epub|type~="glossref"],
+    a[role~="doc-glossref"],
+    sup a,
+    a sup,
+    small a[href^="#"]) * {
+      display: inline !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
+      text-align: inherit !important;
+      vertical-align: baseline !important;
+    }
+    :is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i]),
+    :is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i]) * {
+      font-size: 0.94em !important;
+      line-height: 1.62 !important;
+      word-spacing: 0 !important;
+      opacity: 0.94 !important;
+    }
+    blockquote {
+      margin-block: 1.1em !important;
+      margin-inline: 1.25em !important;
+      padding-inline-start: 1em !important;
+      border-inline-start: 0.18em solid var(--reader-border-color) !important;
+    }
+    :is(aside, details,
+    [epub|type~="note"],
+    [epub|type~="footnote"],
+    [epub|type~="endnote"],
+    [epub|type~="rearnote"],
+    [epub|type~="sidebar"],
+    [epub|type~="annotation"],
+    [epub|type~="z3998:annotation"],
+    [class*="note" i],
+    [class*="annotation" i],
+    [class*="comment" i],
+    [class*="remark" i],
+    [class*="sidebar" i]),
+    :is(aside, details, [epub|type~="note"], [epub|type~="footnote"], [epub|type~="endnote"], [epub|type~="rearnote"], [epub|type~="sidebar"], [epub|type~="annotation"], [epub|type~="z3998:annotation"], [class*="note" i], [class*="annotation" i], [class*="comment" i], [class*="remark" i], [class*="sidebar" i]) * {
+      font-size: 0.86em !important;
+      line-height: 1.52 !important;
+      word-spacing: 0 !important;
+      opacity: 0.92 !important;
+    }
+    :is(aside, details, [epub|type~="sidebar"], [class*="sidebar" i]) {
+      margin-block: 1em !important;
+      padding: 0.85em 1em !important;
+      border: 1px solid var(--reader-border-color) !important;
+      border-radius: 0.35em !important;
+      background: var(--reader-panel-bg) !important;
+    }
+    :is(aside[epub|type~="footnote"],
+    aside[epub|type~="endnote"],
+    aside[epub|type~="rearnote"],
+    aside[role~="doc-footnote"],
+    aside[role~="doc-endnote"],
+    li[epub|type~="footnote"],
+    li[epub|type~="endnote"],
+    li[epub|type~="rearnote"],
+    li[role~="doc-footnote"],
+    li[role~="doc-endnote"],
+    [data-reader-footnote-target="true"]) {
+      display: block !important;
+      position: relative !important;
+      margin-block: 0.55em !important;
+      margin-inline: 0 !important;
+      padding: 0 0 0 2.1em !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: var(--reader-muted-color) !important;
+      -webkit-text-fill-color: var(--reader-muted-color) !important;
+      font-size: 0.72em !important;
+      line-height: 1.42 !important;
+      text-align: start !important;
+    }
+    :is(aside[epub|type~="footnote"],
+    aside[epub|type~="endnote"],
+    aside[epub|type~="rearnote"],
+    aside[role~="doc-footnote"],
+    aside[role~="doc-endnote"],
+    li[epub|type~="footnote"],
+    li[epub|type~="endnote"],
+    li[epub|type~="rearnote"],
+    li[role~="doc-footnote"],
+    li[role~="doc-endnote"],
+    [data-reader-footnote-target="true"])::before {
+      content: attr(data-footnote-label) !important;
+      position: absolute !important;
+      inset-inline-start: 0 !important;
+      top: 0 !important;
+      min-inline-size: 1.6em !important;
+      color: var(--reader-muted-color) !important;
+      -webkit-text-fill-color: var(--reader-muted-color) !important;
+      font-family: var(--reader-font-sans) !important;
+      font-size: 0.9em !important;
+      font-weight: 700 !important;
+      line-height: inherit !important;
+      text-align: end !important;
+    }
+    :is(aside[epub|type~="footnote"],
+    aside[epub|type~="endnote"],
+    aside[epub|type~="rearnote"],
+    aside[role~="doc-footnote"],
+    aside[role~="doc-endnote"],
+    li[epub|type~="footnote"],
+    li[epub|type~="endnote"],
+    li[epub|type~="rearnote"],
+    li[role~="doc-footnote"],
+    li[role~="doc-endnote"],
+    [data-reader-footnote-target="true"]) :is(p, div, span, a, small) {
+      color: var(--reader-muted-color) !important;
+      -webkit-text-fill-color: var(--reader-muted-color) !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
+      text-align: start !important;
     }
     nav, header, footer, aside, .sans, [class*="sans"] {
       font-family: var(--reader-font-sans) !important;
     }
-    ul, ol, dl, blockquote { margin-inline: 0 !important; }
+    :is(ul, ol, dl) { margin-inline: 0 !important; }
+    :is(figure, .figure, [class*="figure" i], [class*="illustration" i], [class*="image" i]) {
+      max-inline-size: 100% !important;
+      margin-inline: auto !important;
+      text-align: center !important;
+      box-sizing: border-box !important;
+    }
     img, svg, video {
       max-inline-size: 100% !important;
+      max-width: 100% !important;
       block-size: auto !important;
+      height: auto !important;
       filter: ${mediaFilter} !important;
     }
-    a { color: ${link} !important; }
-    pre { white-space: pre-wrap !important; }
-    aside[epub|type~="endnote"],
-    aside[epub|type~="footnote"],
-    aside[epub|type~="note"],
-    aside[epub|type~="rearnote"] {
-      display: none;
+    img {
+      display: block !important;
+      margin-inline: auto !important;
+    }
+    :is(table, .table, [class*="table" i]) {
+      max-inline-size: 100% !important;
+      max-width: 100% !important;
+      inline-size: auto !important;
+      width: auto !important;
+      margin-inline: auto !important;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+    :is(table, .table, [class*="table" i]) :is(img, svg, video) {
+      max-inline-size: 100% !important;
+      max-width: 100% !important;
+    }
+    :is(figure, table) :is(figcaption, caption),
+    :is(figcaption, caption,
+    [epub|type~="caption"],
+    [class*="caption" i],
+    [class*="figcaption" i],
+    [class*="legend" i]) {
+      display: block !important;
+      margin-inline: auto !important;
+      text-align: center !important;
+    }
+    a { color: var(--reader-link-color) !important; }
+    code, kbd, samp {
+      font-size: 0.9em !important;
+      line-height: 1.5 !important;
+      border-radius: 0.25em !important;
+      background: var(--reader-panel-bg) !important;
+      padding: 0.08em 0.28em !important;
+    }
+    pre {
+      white-space: pre-wrap !important;
+      font-size: 0.88em !important;
+      line-height: 1.55 !important;
+      margin-block: 1em !important;
+      padding: 0.9em 1em !important;
+      border: 1px solid var(--reader-border-color) !important;
+      border-radius: 0.35em !important;
+      background: var(--reader-panel-bg) !important;
+      overflow: auto !important;
+    }
+    pre code {
+      background: transparent !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
     }
   `;
 }
@@ -292,6 +479,7 @@ export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElem
 
   view.renderer?.setAttribute("max-inline-size", `${PAGINATED_SINGLE_COLUMN_MAX_INLINE_SIZE}px`);
   view.renderer?.removeAttribute("max-column-count");
+
 }
 
 export function applyBookRenderingPreferences(view: FoliateViewElement, readerRoot: HTMLElement) {

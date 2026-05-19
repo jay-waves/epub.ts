@@ -1,4 +1,6 @@
 import type { FoliateViewElement, SearchHit } from "./viewer-types";
+import { VIEWER_EVENTS } from "./viewer-events";
+import type { SearchUpdateDetail } from "./viewer-events";
 
 const LONG_SEARCH_QUERY_THRESHOLD = 24;
 const MAX_SEARCH_QUERY_LENGTH = 120;
@@ -6,11 +8,6 @@ const MAX_SEARCH_RESULTS = 200;
 
 export function createSearchController(options: {
   openSearchButton: HTMLButtonElement;
-  searchNav: HTMLElement;
-  searchInput: HTMLInputElement;
-  searchCount: HTMLElement;
-  searchPrevButton: HTMLButtonElement;
-  searchNextButton: HTMLButtonElement;
   getReaderView: () => FoliateViewElement | null;
 }) {
   let searchRunId = 0;
@@ -23,17 +20,22 @@ export function createSearchController(options: {
     options.openSearchButton.setAttribute("aria-disabled", canSearch ? "false" : "true");
   };
 
+  const emitUpdate = (detail: SearchUpdateDetail) => {
+    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchUpdate, { detail }));
+  };
+
   const clearHighlights = () => {
     options.getReaderView()?.clearSearch?.();
   };
 
-  const updateNav = () => {
+  const updateNav = (visible = searchHits.length > 0) => {
     const hasHits = searchHits.length > 0;
-    const isSearching = document.activeElement === options.searchInput || Boolean(options.searchInput.value.trim());
-    options.searchNav.hidden = !hasHits && !isSearching;
-    options.searchCount.textContent = hasHits ? `${searchHitIndex + 1} / ${searchHits.length}` : "0 / 0";
-    options.searchPrevButton.disabled = !hasHits;
-    options.searchNextButton.disabled = !hasHits;
+    emitUpdate({
+      canNavigate: hasHits,
+      countText: hasHits ? `${searchHitIndex + 1} / ${searchHits.length}` : "0 / 0",
+      placeholder: "Search text",
+      visible,
+    });
   };
 
   const showHit = async (index: number) => {
@@ -57,9 +59,7 @@ export function createSearchController(options: {
     ++searchRunId;
     searchHits = [];
     searchHitIndex = -1;
-    options.searchInput.value = "";
-    options.searchInput.placeholder = "Search text";
-    options.searchNav.hidden = true;
+    updateNav(false);
     clearHighlights();
   };
 
@@ -71,7 +71,7 @@ export function createSearchController(options: {
     clearHighlights();
     searchHits = [];
     searchHitIndex = -1;
-    updateNav();
+    updateNav(true);
 
     if (!searchOptions.query) return;
 
@@ -103,9 +103,12 @@ export function createSearchController(options: {
       if (searchHits.length) {
         await showHit(0);
       } else {
-        options.searchInput.select();
-        options.searchInput.placeholder = `No results for: ${searchOptions.query}`;
-        updateNav();
+        emitUpdate({
+          canNavigate: false,
+          countText: "0 / 0",
+          placeholder: `No results for: ${searchOptions.query}`,
+          visible: true,
+        });
       }
     } catch (error) {
       if (runId !== searchRunId) return;

@@ -1,11 +1,12 @@
-import type { FoliateViewElement, TocItem } from "./viewer-types";
+import type { TocItem } from "./viewer-types";
+import { VIEWER_EVENTS } from "./viewer-events";
 
 export function createTocController(options: {
   tocRoot: HTMLElement;
-  tocModal: HTMLDialogElement;
   getCurrentHref: () => string;
-  getReaderView: () => FoliateViewElement | null;
 }) {
+  let tocItems: TocItem[] = [];
+
   const scrollLinkIntoTocView = (link: HTMLElement) => {
     const rootRect = options.tocRoot.getBoundingClientRect();
     const linkRect = link.getBoundingClientRect();
@@ -28,37 +29,21 @@ export function createTocController(options: {
     });
   };
 
-  const getMatchingHref = (linkHref?: string, currentHref?: string) => {
-    if (!linkHref || !currentHref) return false;
-    if (linkHref === currentHref) return true;
-    try {
-      const linkUrl = new URL(linkHref, "https://reader.local/");
-      const currentUrl = new URL(currentHref, "https://reader.local/");
-      return linkUrl.pathname === currentUrl.pathname && linkUrl.hash === currentUrl.hash;
-    } catch {
-      return false;
-    }
+  const emitUpdate = () => {
+    window.dispatchEvent(
+      new CustomEvent(VIEWER_EVENTS.tocUpdate, {
+        detail: {
+          currentHref: options.getCurrentHref(),
+          items: tocItems,
+        },
+      }),
+    );
   };
 
   const updateCurrent = () => {
     const currentHref = options.getCurrentHref();
-    let currentLink: HTMLElement | null = null;
-    for (const details of options.tocRoot.querySelectorAll<HTMLDetailsElement>(".toc-details")) {
-      details.open = false;
-    }
-    for (const link of options.tocRoot.querySelectorAll<HTMLElement>(".toc-link")) {
-      const isCurrent = getMatchingHref(link.dataset.href, currentHref);
-      if (isCurrent) {
-        link.setAttribute("aria-current", "page");
-        for (const details of getAncestorDetails(link)) {
-          details.open = true;
-        }
-      } else {
-        link.removeAttribute("aria-current");
-      }
-      if (isCurrent) currentLink = link;
-    }
-    return currentLink;
+    emitUpdate();
+    return findCurrentLink(currentHref);
   };
 
   const resetViewState = () => {
@@ -72,106 +57,23 @@ export function createTocController(options: {
   };
 
   const reset = () => {
-    options.tocRoot.replaceChildren();
+    tocItems = [];
+    emitUpdate();
   };
 
   const render = (items?: TocItem[]) => {
-    reset();
-
-    if (!items?.length) {
-      const empty = document.createElement("p");
-      empty.className = "muted";
-      empty.textContent = "This book has no available table of contents.";
-      options.tocRoot.append(empty);
-      return;
-    }
-
-    const list = document.createElement("ul");
-    list.className = "menu toc-menu";
-    const normalizedItems = normalizeTocItems(items);
-    normalizedItems.forEach((item) => {
-      list.append(createMenuItem(item, 0));
-    });
-    options.tocRoot.append(list);
+    tocItems = items?.length ? normalizeTocItems(items) : [];
+    emitUpdate();
     updateCurrent();
-  };
-
-  const navigate = (href?: string) => {
-    if (!href) return;
-    void options.getReaderView()?.goTo(href);
-    options.tocModal.close();
-  };
-
-  const createMenuItem = (item: TocItem, depth: number) => {
-    const children = item.subitems ?? [];
-    const listItem = document.createElement("li");
-    listItem.className = "toc-list-item";
-
-    const link = document.createElement("button");
-    link.className = getTocLinkClass(depth);
-    link.type = "button";
-    link.dataset.href = item.href ?? "";
-    link.append(createLabel(item.label));
-    link.addEventListener("click", () => navigate(item.href));
-
-    if (children.length) {
-      const details = document.createElement("details");
-      details.className = "toc-details";
-
-      const summary = document.createElement("summary");
-      summary.className = `${getTocLinkClass(depth)} toc-summary`;
-      summary.dataset.href = item.href ?? "";
-      summary.append(createLabel(item.label));
-      summary.addEventListener("click", (event) => {
-        event.preventDefault();
-        if (!details.open) {
-          details.open = true;
-          scheduleScrollToCurrent(summary);
-          return;
-        }
-        navigate(item.href);
-      });
-
-      const childList = document.createElement("ul");
-      childList.className = "toc-child-list";
-      for (const child of children) {
-        childList.append(createMenuItem(child, depth + 1));
-      }
-
-      details.append(summary, childList);
-      listItem.append(details);
-      return listItem;
-    }
-
-    listItem.append(link);
-
-    return listItem;
   };
 
   return { render, reset, resetViewState, updateCurrent };
 }
 
-function createLabel(label?: string) {
-  const text = document.createElement("span");
-  text.className = "toc-link-label";
-  text.textContent = label ?? "Untitled section";
-  return text;
-}
-
-function getTocLinkClass(depth: number) {
-  return depth === 0 ? "toc-link toc-link-primary" : "toc-link";
-}
-
-function getAncestorDetails(element: Element) {
-  const details: HTMLDetailsElement[] = [];
-  let parent = element.parentElement;
-  while (parent) {
-    if (parent instanceof HTMLDetailsElement && parent.classList.contains("toc-details")) {
-      details.push(parent);
-    }
-    parent = parent.parentElement;
-  }
-  return details;
+function findCurrentLink(currentHref: string) {
+  return document.querySelector<HTMLElement>(
+    `.toc-link[data-current="true"], .toc-summary[data-current="true"], .toc-link[data-href="${CSS.escape(currentHref)}"]`,
+  );
 }
 
 function normalizeTocItems(items: TocItem[]): TocItem[] {

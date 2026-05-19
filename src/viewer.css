@@ -1,7 +1,19 @@
 @import "tailwindcss";
-@import "daisyui/daisyui.css";
 
 @layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 213 24% 16%;
+    --muted-foreground: 215 16% 47%;
+    --popover: 40 33% 98%;
+    --popover-foreground: 213 24% 16%;
+    --primary: 198 93% 39%;
+    --primary-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --ring: 198 93% 48%;
+    --radius: 0.5rem;
+  }
+
   html,
   body {
     min-height: 100%;
@@ -19,17 +31,15 @@
     background: var(--reader-chrome-bg, #fbfaf7);
     color: var(--reader-chrome-fg, #1f2933);
     color-scheme: var(--reader-color-scheme, light);
-    scrollbar-color: var(--reader-scrollbar-thumb, rgba(82, 94, 110, 0.35))
-      var(--reader-scrollbar-track, rgba(255, 255, 255, 0.15));
+    overflow: hidden;
   }
 
-  html::-webkit-scrollbar,
+  /* html::-webkit-scrollbar,
   body::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+    display: none;
   }
 
-  html::-webkit-scrollbar-track,
+  /* html::-webkit-scrollbar-track,
   body::-webkit-scrollbar-track {
     background: var(--reader-scrollbar-track, rgba(255, 255, 255, 0.15));
   }
@@ -40,10 +50,123 @@
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: padding-box;
-  }
+  } */
 }
 
 @layer components {
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .reader-tooltip {
+    position: relative;
+  }
+
+  .reader-tooltip::before {
+    position: absolute;
+    z-index: 50;
+    display: block;
+    width: max-content;
+    max-width: 14rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--popover-foreground));
+    color: hsl(var(--popover));
+    content: attr(data-tip);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.96);
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease;
+    white-space: nowrap;
+  }
+
+  .reader-tooltip:hover::before,
+  .reader-tooltip:focus-visible::before {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .reader-tooltip-right::before {
+    left: calc(100% + 0.5rem);
+    top: 50%;
+    transform: translateY(-50%) scale(0.96);
+  }
+
+  .reader-tooltip-right:hover::before,
+  .reader-tooltip-right:focus-visible::before {
+    transform: translateY(-50%) scale(1);
+  }
+
+  .reader-tooltip-bottom::before {
+    left: 50%;
+    top: calc(100% + 0.5rem);
+    transform: translateX(-50%) scale(0.96);
+  }
+
+  .reader-tooltip-bottom:hover::before,
+  .reader-tooltip-bottom:focus-visible::before {
+    transform: translateX(-50%) scale(1);
+  }
+
+  .reader-modal {
+    @apply fixed inset-0 z-40 m-auto max-h-none max-w-none border-0 bg-transparent p-0 text-inherit;
+  }
+
+  .reader-modal:not([open]) {
+    @apply hidden;
+  }
+
+  .reader-modal::backdrop,
+  .reader-modal-backdrop {
+    background: transparent;
+  }
+
+  .reader-modal-backdrop {
+    @apply fixed inset-0 cursor-default border-0 p-0 text-transparent;
+  }
+
+  .reader-modal-backdrop button {
+    @apply h-full w-full cursor-default border-0 bg-transparent p-0 text-transparent;
+  }
+
+  .ui-button {
+    @apply inline-flex shrink-0 items-center justify-center rounded-md text-sm font-medium outline-none transition-colors duration-150;
+  }
+
+  .ui-button:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-sky-500/45;
+  }
+
+  .ui-button:disabled,
+  .ui-button[aria-disabled="true"] {
+    @apply pointer-events-none opacity-40;
+  }
+
+  .ui-button-ghost {
+    @apply bg-transparent text-current;
+  }
+
+  .ui-button-ghost:hover {
+    @apply bg-slate-100 text-slate-950;
+  }
+
+  .ui-button-icon {
+    @apply h-10 w-10 p-0;
+  }
+
+  .ui-input {
+    @apply flex min-w-0 rounded-md border border-transparent bg-white/72 px-3 py-1 text-sm outline-none transition-colors duration-150;
+  }
+
+  .ui-input:focus {
+    @apply bg-white/92 shadow-[0_0_0_2px_rgba(14,165,233,0.18)];
+  }
+
   .reader-app {
     @apply min-h-screen;
     background: var(--reader-chrome-bg, #fbfaf7);
@@ -78,20 +201,6 @@
 
   .dock-button-content {
     @apply pointer-events-none absolute inset-0 grid place-items-center;
-  }
-
-  .reader-dock .tooltip::before,
-  .reader-dock .tooltip::after {
-    left: calc(100% + 0.5rem);
-    right: auto;
-  }
-
-  .reader-dock .tooltip::before {
-    transform: translateX(0) translateY(-50%);
-  }
-
-  .reader-dock .tooltip::after {
-    transform: translateX(0) translateY(-50%) rotate(45deg);
   }
 
   .reader-dock svg {
@@ -149,7 +258,7 @@
   }
 
   .reader-progress {
-    @apply fixed bottom-8 left-1/2 z-20 flex h-10 w-[min(20rem,72vw)] -translate-x-1/2 cursor-pointer touch-none items-center justify-center px-2 opacity-55 transition-opacity duration-200 ease-out;
+    @apply fixed bottom-8 left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 cursor-pointer touch-none items-center justify-center px-2 opacity-60 transition-opacity duration-200 ease-out;
   }
 
   .reader-progress:hover,
@@ -159,7 +268,7 @@
   }
 
   .reader-progress-track {
-    @apply relative h-1 w-4/5 rounded-sm transition-all duration-200 ease-out;
+    @apply relative h-1.5 w-4/5 rounded-md transition-all duration-200 ease-out;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 22%, transparent);
   }
 
@@ -185,50 +294,61 @@
   .reader-progress:hover .reader-progress-track,
   .reader-progress:focus-visible .reader-progress-track,
   .reader-progress.is-dragging .reader-progress-track {
-    @apply h-1.5 w-full -translate-y-2 rounded-md shadow-lg;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 14%, transparent);
+    @apply h-2.5 w-full -translate-y-3 rounded-lg shadow-lg;
+    box-shadow: 0 14px 30px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent);
   }
 
   .reader-progress-fill {
-    @apply absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-sm transition-[width] duration-300 ease-out;
+    @apply absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-md transition-[width] duration-300 ease-out;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 68%, transparent);
     width: var(--reader-progress, 0%);
   }
 
-  .highlight-action-popover {
-    @apply fixed z-30 flex items-center gap-0.5 rounded-xl border border-white/55 bg-white/52 p-0.5 shadow-lg shadow-slate-950/10 backdrop-blur-2xl;
+  .reader-context-menu {
+    @apply fixed z-50 grid min-w-32 gap-0.5 rounded-md border border-slate-950/8 bg-white/92 p-1 shadow-md shadow-slate-950/10 backdrop-blur-xl;
     color: var(--reader-chrome-fg, #1f2933);
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 52%, transparent) !important;
-    backdrop-filter: blur(18px) saturate(165%);
-    -webkit-backdrop-filter: blur(18px) saturate(165%);
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, transparent) !important;
+    backdrop-filter: blur(14px) saturate(145%);
+    -webkit-backdrop-filter: blur(14px) saturate(145%);
   }
 
-  .highlight-action-popover[hidden] {
-    @apply hidden;
+  .reader-context-menu-item {
+    @apply flex h-7 w-full items-center gap-2 rounded px-2.5 text-left text-xs font-medium text-slate-700 outline-none transition-colors duration-100;
   }
 
-  .highlight-action-popover .btn {
-    @apply grid h-8 min-h-8 w-8 place-items-center border-0 bg-transparent p-0 text-current shadow-none;
-    line-height: 1;
+  .reader-context-menu-item svg {
+    @apply size-3.5 shrink-0;
   }
 
-  .highlight-action-popover .btn:hover {
-    @apply bg-slate-950/8;
+  .reader-context-menu-item:hover,
+  .reader-context-menu-item:focus-visible {
+    @apply bg-slate-950/8 text-slate-950;
   }
 
-  .highlight-action-popover svg {
-    @apply block size-4;
+  .reader-context-menu-item.is-destructive {
+    @apply text-red-600;
+  }
+
+  .reader-context-menu-item.is-destructive:hover,
+  .reader-context-menu-item.is-destructive:focus-visible {
+    @apply bg-red-50 text-red-700;
+  }
+
+  .reader-context-menu-item:disabled {
+    @apply pointer-events-none opacity-40;
   }
 
   .reader-progress:hover .reader-progress-fill,
   .reader-progress:focus-visible .reader-progress-fill,
   .reader-progress.is-dragging .reader-progress-fill {
-    @apply h-2 rounded-md;
+    @apply h-3 rounded-lg;
   }
 
   .search-nav {
-    @apply fixed top-4 left-1/2 z-20 flex w-[min(38rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-1 rounded-2xl border border-white/65 bg-white/82 p-1.5 text-slate-700 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
+    @apply fixed top-3 left-1/2 z-20 flex w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 items-center gap-1 rounded-xl border border-white/45 p-1.5 text-slate-700 shadow-xl backdrop-blur-2xl;
     background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 64%, transparent) !important;
+    box-shadow: 0 14px 34px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
+    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
     backdrop-filter: blur(22px) saturate(165%);
     -webkit-backdrop-filter: blur(22px) saturate(165%);
   }
@@ -238,12 +358,14 @@
   }
 
   .search-nav button {
-    @apply grid h-9 min-h-9 w-9 place-items-center rounded-full p-0 text-slate-500 transition-colors duration-150;
+    @apply grid h-9 min-h-9 w-9 place-items-center rounded-lg p-0 transition-colors duration-150;
+    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 58%, transparent);
     line-height: 1;
   }
 
   .search-nav button:hover {
-    @apply bg-slate-100 text-slate-950;
+    color: var(--reader-chrome-fg, #1f2933);
+    background-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
   }
 
   .search-nav button:disabled {
@@ -255,7 +377,8 @@
   }
 
   .search-count {
-    @apply min-w-14 px-2 text-center text-sm font-medium tabular-nums text-slate-700;
+    @apply min-w-14 px-1 text-center text-[13px] font-medium tabular-nums;
+    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 62%, transparent);
   }
 
   .search-form {
@@ -263,7 +386,10 @@
   }
 
   .search-input {
-    @apply h-9 min-w-0 flex-1 rounded-xl border-0 bg-white/72 px-3 text-[14px] text-slate-900 outline-none shadow-[inset_0_1px_2px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(255,255,255,0.72)] transition-colors duration-150;
+    @apply h-9 min-w-0 flex-1 rounded-lg border-0 px-3 text-[13px] outline-none transition-colors duration-150;
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    color: var(--reader-chrome-fg, #1f2933);
   }
 
   .search-input::placeholder {
@@ -271,7 +397,9 @@
   }
 
   .search-input:focus {
-    @apply bg-white/92 shadow-[inset_0_1px_3px_rgba(15,23,42,0.12),0_0_0_2px_rgba(14,165,233,0.18)];
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
   }
 
   .toc-root {
@@ -342,122 +470,19 @@
   }
 
   .toc-modal-box {
-    @apply w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-3xl border border-white/45 p-3 text-slate-700 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
+    @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-3xl border border-white/45 p-3 text-slate-700 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
     background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 62%, transparent) !important;
     backdrop-filter: blur(22px) saturate(165%);
     -webkit-backdrop-filter: blur(22px) saturate(165%);
   }
 
-  .highlights-modal-box {
-    @apply flex max-h-[min(82vh,52rem)] flex-col gap-1.5 rounded-none border-0 bg-transparent p-0 text-slate-700 shadow-none;
-    width: min(44rem, calc(100vw - 2rem)) !important;
-    min-width: min(44rem, calc(100vw - 2rem)) !important;
-    max-width: calc(100vw - 2rem) !important;
-    background-color: transparent !important;
-  }
-
-  #highlights-root {
-    @apply flex min-h-0 flex-1 flex-col gap-3;
-  }
-
-  .highlights-panel {
-    @apply flex min-h-0 flex-1 flex-col rounded-3xl border border-white/45 p-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 62%, transparent);
-    backdrop-filter: blur(22px) saturate(165%);
-    -webkit-backdrop-filter: blur(22px) saturate(165%);
-  }
-
-  .highlights-note-input {
-    @apply h-9 resize-none overflow-hidden bg-white/80 px-3 py-1.5 text-sm leading-5 text-slate-900;
-    min-height: 2.25rem !important;
-    max-height: 2.25rem !important;
-  }
-
-  .highlights-note-input:disabled {
-    @apply cursor-not-allowed bg-white/45 text-slate-400;
-  }
-
-  .highlights-actions {
-    @apply flex items-center justify-end gap-3.5;
-  }
-
-  .highlights-list {
-    @apply min-h-[20rem] flex-1 space-y-1.5 overflow-y-auto pr-1;
-    max-height: min(54vh, 34rem);
-    scrollbar-width: none;
-  }
-
-  .highlights-list::-webkit-scrollbar {
-    display: none;
-  }
-
-  .highlight-item {
-    @apply grid cursor-pointer grid-cols-[3.25rem_1fr] items-start gap-2.5 rounded-lg border border-white/45 bg-white/62 px-3 py-2.5 text-left transition-all duration-150;
-  }
-
-  .highlight-item:hover,
-  .highlight-item.is-active {
-    @apply bg-white/82 shadow-md shadow-slate-950/8;
-  }
-
-  .highlight-item.is-active {
-    @apply border-white/70 bg-white/88 shadow-lg shadow-slate-950/14;
-    transform: translateY(-1px);
-  }
-
-  .highlight-item:focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-sky-500/40;
-  }
-
-  .highlight-progress {
-    @apply mt-0.5 rounded-md border border-white/55 bg-white/70 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-5 tabular-nums text-slate-600 shadow-sm shadow-slate-950/5;
-  }
-
-  .highlight-item-body {
-    @apply grid min-w-0 flex-1 gap-1;
-  }
-
-  .highlight-text {
-    @apply line-clamp-3 text-[13px] leading-5 text-slate-800;
-  }
-
-  .highlight-note {
-    @apply rounded-md bg-slate-100/80 px-2 py-0.5 text-xs leading-5 text-slate-600;
-  }
-
-  .highlight-action-bar {
-    @apply grid items-center gap-3 rounded-2xl border border-white/45 px-4 py-3 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
-    grid-template-columns: minmax(18rem, 1fr) auto;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 62%, transparent);
-    backdrop-filter: blur(22px) saturate(165%);
-    -webkit-backdrop-filter: blur(22px) saturate(165%);
-  }
-
-  .highlight-icon-button {
-    @apply border border-white/55 bg-white/64 text-slate-600 shadow-sm shadow-slate-950/10 transition-all duration-150;
-  }
-
-  .highlight-icon-button:hover {
-    @apply bg-white/86 text-slate-950 shadow-md shadow-slate-950/12;
-    transform: translateY(-1px);
-  }
-
-  .highlight-icon-button:active {
-    @apply shadow-sm;
-    transform: translateY(0);
-  }
-
   #toc-modal,
-  #toc-modal[open],
-  #highlights-modal,
-  #highlights-modal[open] {
+  #toc-modal[open] {
     background-color: transparent !important;
   }
 
   #toc-modal::backdrop,
-  #toc-modal .modal-backdrop,
-  #highlights-modal::backdrop,
-  #highlights-modal .modal-backdrop {
+  #toc-modal .reader-modal-backdrop {
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -479,15 +504,37 @@ html[data-reader-mode="dark"] .reader-dock button:hover {
   @apply bg-white/10 text-white;
 }
 
+html[data-reader-mode="dark"] .reader-context-menu {
+  @apply border-white/8 shadow-black/25;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 88%, transparent) !important;
+}
+
+html[data-reader-mode="dark"] .reader-context-menu-item {
+  @apply text-[#d8dee9];
+}
+
+html[data-reader-mode="dark"] .reader-context-menu-item:hover,
+html[data-reader-mode="dark"] .reader-context-menu-item:focus-visible {
+  @apply bg-white/10 text-white;
+}
+
+html[data-reader-mode="dark"] .reader-context-menu-item.is-destructive {
+  @apply text-red-300;
+}
+
+html[data-reader-mode="dark"] .reader-context-menu-item.is-destructive:hover,
+html[data-reader-mode="dark"] .reader-context-menu-item.is-destructive:focus-visible {
+  @apply bg-red-500/14 text-red-200;
+}
+
 html[data-reader-mode="dark"] .reader-frame {
   background: var(--reader-chrome-bg, #212830);
 }
 
 html[data-reader-mode="dark"] .search-nav {
-  @apply border-white/12 bg-[#2a3441]/82 text-[#e5ebf3] shadow-black/25;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 62%, transparent) !important;
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  @apply shadow-black/25;
+  border-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 74%, transparent) !important;
 }
 
 html[data-reader-mode="dark"] .search-nav button {
@@ -495,7 +542,8 @@ html[data-reader-mode="dark"] .search-nav button {
 }
 
 html[data-reader-mode="dark"] .search-nav button:hover {
-  @apply bg-white/10 text-white;
+  @apply text-white;
+  background-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 10%, transparent);
 }
 
 html[data-reader-mode="dark"] .search-count {
@@ -509,65 +557,10 @@ html[data-reader-mode="dark"] .toc-modal-box {
   -webkit-backdrop-filter: blur(22px) saturate(150%);
 }
 
-html[data-reader-mode="dark"] .highlights-modal-box {
-  @apply border-0 text-[#e5ebf3] shadow-none;
-  background-color: transparent !important;
-}
-
-html[data-reader-mode="dark"] .highlights-panel {
-  @apply border-white/10 shadow-black/30;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 60%, transparent);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-}
-
-html[data-reader-mode="dark"] .highlight-item {
-  @apply border-white/10 bg-white/8;
-}
-
-html[data-reader-mode="dark"] .highlight-item:hover {
-  @apply bg-white/12 shadow-black/20;
-}
-
-html[data-reader-mode="dark"] .highlight-item.is-active {
-  @apply border-white/16 bg-white/14 shadow-black/30;
-}
-
-html[data-reader-mode="dark"] .highlight-text {
-  @apply text-[#e5ebf3];
-}
-
-html[data-reader-mode="dark"] .highlight-progress {
-  @apply border-white/10 bg-white/10 text-[#c7d2df] shadow-black/15;
-}
-
-html[data-reader-mode="dark"] .highlight-note {
-  @apply bg-white/10 text-[#c7d2df];
-}
-
-html[data-reader-mode="dark"] .highlights-note-input {
-  @apply bg-white/10 text-white;
-}
-
-html[data-reader-mode="dark"] .highlights-note-input:disabled {
-  @apply bg-white/6 text-[#8ea0b3];
-}
-
-html[data-reader-mode="dark"] .highlight-action-bar {
-  @apply border-white/10 bg-white/8 shadow-black/25;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 62%, transparent);
-}
-
-html[data-reader-mode="dark"] .highlight-icon-button {
-  @apply border-white/10 bg-white/8 text-[#d8dee9] shadow-black/20;
-}
-
-html[data-reader-mode="dark"] .highlight-icon-button:hover {
-  @apply bg-white/14 text-white shadow-black/30;
-}
-
 html[data-reader-mode="dark"] .search-input {
-  @apply border-0 bg-white/10 text-white shadow-[inset_0_1px_3px_rgba(0,0,0,0.22),inset_0_-1px_0_rgba(255,255,255,0.05)];
+  @apply border-0 text-white;
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, var(--reader-chrome-fg, #e5ebf3) 6%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 9%, transparent);
 }
 
 html[data-reader-mode="dark"] .search-input::placeholder {
@@ -575,7 +568,9 @@ html[data-reader-mode="dark"] .search-input::placeholder {
 }
 
 html[data-reader-mode="dark"] .search-input:focus {
-  @apply bg-white/14 shadow-[inset_0_1px_4px_rgba(0,0,0,0.28),0_0_0_2px_rgba(125,211,252,0.16)];
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 16%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
 }
 
 html[data-reader-mode="dark"] .toc-link {
@@ -606,11 +601,4 @@ html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
     @apply h-9 w-9;
   }
 
-  .highlights-actions {
-    @apply justify-end gap-2.5;
-  }
-
-  .highlight-action-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
 }

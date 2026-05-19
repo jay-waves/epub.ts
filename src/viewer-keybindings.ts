@@ -76,14 +76,24 @@ export function setupViewerKeybindings(options: {
     void (direction < 0 ? metrics.renderer.prev?.(Math.min(distance, remaining)) : metrics.renderer.next?.(Math.min(distance, remaining)));
   };
 
-  const goSectionLeft = () => {
+  const goLeft = () => {
     const readerView = options.getReaderView();
+    if (options.getFlow() === "paginated") {
+      void readerView?.goLeft?.();
+      return;
+    }
+
     const isRtl = readerView?.book?.dir === "rtl";
     void (isRtl ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
   };
 
-  const goSectionRight = () => {
+  const goRight = () => {
     const readerView = options.getReaderView();
+    if (options.getFlow() === "paginated") {
+      void readerView?.goRight?.();
+      return;
+    }
+
     const isRtl = readerView?.book?.dir === "rtl";
     void (isRtl ? readerView?.renderer?.prevSection?.() : readerView?.renderer?.nextSection?.());
   };
@@ -179,10 +189,10 @@ export function setupViewerKeybindings(options: {
 
     if (event.key === "ArrowLeft" || event.key === "h") {
       event.preventDefault();
-      goSectionLeft();
+      goLeft();
     } else if (event.key === "ArrowRight" || event.key === "l") {
       event.preventDefault();
-      goSectionRight();
+      goRight();
     } else if (options.getFlow() === "scrolled" && isScrollUpKey(event.key)) {
       handleScrollKeyDown(event, -1);
     } else if (options.getFlow() === "scrolled" && isScrollDownKey(event.key)) {

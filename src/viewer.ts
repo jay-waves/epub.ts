@@ -1,21 +1,18 @@
-import "foliate-js/view.js";
-import { Overlayer } from "foliate-js/overlayer.js";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import {
   ChevronLeft,
   ChevronRight,
-  Copy,
+  BookOpen,
   createIcons,
   Download,
-  Highlighter,
   ListTree,
   Maximize2,
   Minimize2,
   Minus,
   Palette,
   Plus,
-  Rows3,
   Search,
-  Trash2,
   X,
 } from "lucide";
 import {
@@ -40,25 +37,31 @@ import {
   READER_THEMES,
   updateFlowButton,
 } from "./reader-settings";
+import { createHighlightController } from "./highlight-controller";
 import { createSearchController } from "./search-controller";
 import { createTocController } from "./toc-controller";
-import { elements } from "./viewer-elements";
+import { App } from "./App";
+import { getViewerElements } from "./viewer-elements";
+import { VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
 import { state } from "./viewer-state";
 import {
   getSavedPosition,
-  getSavedHighlights,
   getSavedReaderSettings,
-  saveHighlight,
   saveReaderSettings,
   saveReadingPosition,
-  setSavedHighlights,
 } from "./viewer-storage";
-import type { FoliateViewElement, ReaderHighlight, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
+import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
+import type { HighlightContextActionDetail, TocNavigateDetail } from "./viewer-events";
 import "./viewer.css";
 
+const appRoot = document.querySelector("#app");
+if (!appRoot) throw new Error("Missing required element: #app");
+flushSync(() => {
+  createRoot(appRoot).render(App());
+});
+
 let readerFontsReady: Promise<void> | null = null;
-let readerModulesReady: Promise<unknown> | null = null;
 
 const {
   readerRoot,
@@ -71,7 +74,6 @@ const {
   increaseWidthButton,
   openSearchButton,
   openTocButton,
-  openHighlightsButton,
   exportButton,
   pageLeftZone,
   pageRightZone,
@@ -79,26 +81,17 @@ const {
   readingProgressTrack,
   readingProgressFill,
   readingProgressLabel,
-  searchForm,
-  searchInput,
-  searchNav,
-  searchPrevButton,
-  searchNextButton,
-  searchCloseButton,
-  searchCount,
   tocRoot,
   tocModal,
-} = elements;
+} = getViewerElements();
 
 let readerView: FoliateViewElement | null = null;
+let foliateViewReady: Promise<unknown> | null = null;
+let foliateScrollbarPatchReady = false;
 let savePositionTimer: number | undefined;
 let extraUiReady = false;
 let currentProgress = 0;
-let currentHighlights: ReaderHighlight[] = [];
-const defaultHighlightColor = "#f4c430";
-const highlightSelectionDocs = new WeakSet<Document>();
-let highlightActionBar: HTMLElement | null = null;
-let activeHighlight: ReaderHighlight | null = null;
+let isSearchOpen = false;
 const showReadingProgressLabel = false;
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
@@ -110,7 +103,12 @@ const defaultReaderSettings: ReaderSettings = {
 let keybindings: ReturnType<typeof setupViewerKeybindings> | null = null;
 let tocController: ReturnType<typeof createTocController> | null = null;
 let searchController: ReturnType<typeof createSearchController> | null = null;
-let isHighlightSelectionMode = false;
+const highlightController = createHighlightController({
+  getBookKey: () => state.currentBookKey,
+  getProgress: () => currentProgress,
+  getReaderView: () => readerView,
+  runWhenIdle,
+});
 
 function ensureKeybindings() {
   keybindings ??= setupViewerKeybindings({
@@ -126,9 +124,7 @@ function ensureKeybindings() {
 function ensureTocController() {
   tocController ??= createTocController({
     tocRoot,
-    tocModal,
     getCurrentHref: () => state.currentHref,
-    getReaderView: () => readerView,
   });
   return tocController;
 }
@@ -136,11 +132,6 @@ function ensureTocController() {
 function ensureSearchController() {
   searchController ??= createSearchController({
     openSearchButton,
-    searchNav,
-    searchInput,
-    searchCount,
-    searchPrevButton,
-    searchNextButton,
     getReaderView: () => readerView,
   });
   return searchController;
@@ -176,13 +167,6 @@ function preloadReaderFonts() {
   return readerFontsReady;
 }
 
-function preloadReaderModules() {
-  readerModulesReady ??= import("foliate-js/paginator.js").catch((error) => {
-    console.warn("Failed to preload reader renderer.", error);
-  });
-  return readerModulesReady;
-}
-
 function runWhenIdle(callback: () => void, timeout = 500) {
   const requestIdle = globalThis.requestIdleCallback;
   if (requestIdle) {
@@ -190,6 +174,45 @@ function runWhenIdle(callback: () => void, timeout = 500) {
     return;
   }
   globalThis.setTimeout(callback, 0);
+}
+
+function installFoliateScrollbarPatch() {
+  if (foliateScrollbarPatchReady) return;
+  foliateScrollbarPatchReady = true;
+
+  const descriptor = Object.getOwnPropertyDescriptor(ShadowRoot.prototype, "innerHTML");
+  if (!descriptor?.set || !descriptor.get) return;
+
+  Object.defineProperty(ShadowRoot.prototype, "innerHTML", {
+    configurable: true,
+    enumerable: descriptor.enumerable,
+    get: descriptor.get,
+    set(value: string) {
+      descriptor.set!.call(this, value);
+      const hostName = this.host?.localName;
+      if (hostName !== "foliate-paginator" && hostName !== "foliate-fxl") return;
+
+      const style = document.createElement("style");
+      style.textContent = `
+        #container {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        #container::-webkit-scrollbar {
+          width: 0 !important;
+          height: 0 !important;
+          display: none !important;
+        }
+      `;
+      this.append(style);
+    },
+  });
+}
+
+function ensureFoliateView() {
+  installFoliateScrollbarPatch();
+  foliateViewReady ??= import("foliate-js/view.js");
+  return foliateViewReady;
 }
 
 function updatePageStatus(detail: RelocateDetail) {
@@ -216,6 +239,11 @@ function queuePositionSave(detail: RelocateDetail) {
 }
 
 function wireReaderEvents(view: FoliateViewElement) {
+  view.addEventListener("load", (event) => {
+    const { doc } = (event as CustomEvent<{ doc?: Document }>).detail;
+    if (doc) labelFootnotes(doc);
+  });
+
   view.addEventListener("relocate", (event) => {
     const detail = (event as CustomEvent<RelocateDetail>).detail;
 
@@ -223,35 +251,95 @@ function wireReaderEvents(view: FoliateViewElement) {
     updateTocCurrent();
     updatePageStatus(detail);
     queuePositionSave(detail);
-    bindHighlightSelectionListeners();
+    highlightController.bindContextTargets();
+    labelFootnoteTargets();
   });
 
   view.addEventListener("create-overlay", (event) => {
     const { index } = (event as CustomEvent<{ index: number }>).detail;
-    for (const annotation of currentHighlights) {
-      if (annotation.index === index) void view.addAnnotation?.(annotation);
-    }
-    bindHighlightSelectionListeners();
+    highlightController.addCurrentHighlightsToOverlay(view, index);
   });
 
   view.addEventListener("draw-annotation", (event) => {
-    const { draw, annotation } = (event as CustomEvent<{
-      draw: (func: typeof Overlayer.highlight, options: { color: string }) => void;
-      annotation: ReaderHighlight;
-    }>).detail;
-    draw(Overlayer.highlight, { color: annotation.color });
+    highlightController.drawAnnotation((event as CustomEvent<Parameters<typeof highlightController.drawAnnotation>[0]>).detail);
   });
 
   view.addEventListener("show-annotation", (event) => {
-    const detail = (event as CustomEvent<{
-      value: string;
-      index: number;
-      range: Range;
-    }>).detail;
-    const highlight = currentHighlights.find((item) => item.value === detail.value);
-    if (!highlight) return;
-    showHighlightActions(highlight, detail.range);
+    highlightController.openFromAnnotation((event as CustomEvent<Parameters<typeof highlightController.openFromAnnotation>[0]>).detail);
   });
+}
+
+function getFootnoteTargets(doc: Document) {
+  return Array.from(
+    doc.querySelectorAll<HTMLElement>(
+      [
+        `aside[epub\\:type~="footnote"]`,
+        `aside[epub\\:type~="endnote"]`,
+        `aside[epub\\:type~="rearnote"]`,
+        `aside[role~="doc-footnote"]`,
+        `aside[role~="doc-endnote"]`,
+        `li[epub\\:type~="footnote"]`,
+        `li[epub\\:type~="endnote"]`,
+        `li[epub\\:type~="rearnote"]`,
+        `li[role~="doc-footnote"]`,
+        `li[role~="doc-endnote"]`,
+      ].join(","),
+    ),
+  );
+}
+
+function getEpubType(element: Element) {
+  return element.getAttributeNS("http://www.idpf.org/2007/ops", "type")
+    || element.getAttribute("epub:type")
+    || "";
+}
+
+function isNoteref(anchor: HTMLAnchorElement) {
+  return getEpubType(anchor).split(/\s+/).includes("noteref")
+    || anchor.getAttribute("role")?.split(/\s+/).includes("doc-noteref")
+    || false;
+}
+
+function getFootnoteReferenceAnchors(doc: Document) {
+  return Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]")).filter(isNoteref);
+}
+
+function normalizeFootnoteLabel(value: string | undefined, fallbackIndex: number) {
+  const marker = value?.replace(/\s+/g, " ").trim().match(/^\[?(\d+)\]?/)?.[1];
+  const label = marker || String(fallbackIndex);
+  return /^\[.*\]$/.test(label) ? label : `[${label}]`;
+}
+
+function labelFootnotes(doc: Document) {
+  const labelsByTargetId = new Map<string, string>();
+  getFootnoteReferenceAnchors(doc).forEach((anchor, index) => {
+    const href = anchor.getAttribute("href")?.trim();
+    if (!href?.startsWith("#")) return;
+
+    const targetId = decodeURIComponent(href.slice(1));
+    const label = normalizeFootnoteLabel(anchor.textContent || anchor.querySelector("img")?.getAttribute("alt") || undefined, index + 1);
+    labelsByTargetId.set(targetId, label);
+    anchor.dataset.footnoteLabel = label;
+  });
+
+  for (const [targetId, label] of labelsByTargetId) {
+    const target = doc.getElementById(targetId);
+    if (!target) continue;
+    target.dataset.readerFootnoteTarget = "true";
+    target.dataset.footnoteLabel = label;
+  }
+
+  getFootnoteTargets(doc).forEach((element, index) => {
+    element.dataset.readerFootnoteTarget = "true";
+    element.dataset.footnoteLabel = labelsByTargetId.get(element.id)
+      || normalizeFootnoteLabel(element.textContent || undefined, index + 1);
+  });
+}
+
+function labelFootnoteTargets() {
+  for (const { doc } of readerView?.renderer?.getContents?.() ?? []) {
+    if (doc) labelFootnotes(doc);
+  }
 }
 
 async function ensureFileSchemeAccess(fileUrl?: string) {
@@ -296,6 +384,8 @@ async function exportCurrentBook() {
 }
 
 function clearSearchState() {
+  isSearchOpen = false;
+  openSearchButton.classList.remove("dock-active");
   searchController?.clear();
 }
 
@@ -316,17 +406,25 @@ function saveCurrentReaderSettings() {
 
 function openSearch() {
   ensureSearchController();
-  searchInput.placeholder = "Search text";
-  searchNav.hidden = false;
-  window.setTimeout(() => searchInput.focus(), 0);
+  isSearchOpen = true;
+  openSearchButton.classList.add("dock-active");
+  window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchOpen));
+}
+
+function toggleSearch() {
+  if (isSearchOpen) {
+    clearSearchState();
+    return;
+  }
+
+  openSearch();
 }
 
 function resetTransientBookState() {
   window.clearTimeout(savePositionTimer);
   clearSearchState();
   resetToc();
-  hideHighlightActions();
-  currentHighlights = [];
+  highlightController.reset();
 }
 
 function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
@@ -350,208 +448,6 @@ function createView() {
   wireReaderEvents(view);
   keybindings?.bindReaderView(view);
   return view;
-}
-
-function getSelectedReaderRange(view: FoliateViewElement) {
-  const contents = view.renderer?.getContents?.() ?? [];
-
-  for (const { doc, index } of contents) {
-    const selection = doc?.defaultView?.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) continue;
-
-    const range = selection.getRangeAt(0);
-    const text = selection.toString().trim();
-    if (text) return { index, range: range.cloneRange(), text };
-  }
-
-  return null;
-}
-
-async function restoreHighlights(view: FoliateViewElement, bookKey: string) {
-  currentHighlights = await getSavedHighlights(bookKey);
-  let shouldPersist = false;
-  const sectionFractions = view.getSectionFractions?.() ?? [];
-
-  currentHighlights = await Promise.all(
-    currentHighlights.map(async (annotation) => {
-      const restored = await view.addAnnotation?.(annotation);
-      if (typeof annotation.fraction === "number") return annotation;
-
-      const index = restored?.index ?? annotation.index;
-      const fraction = typeof index === "number" ? sectionFractions[index] : undefined;
-      if (typeof fraction !== "number") return annotation;
-
-      shouldPersist = true;
-      return { ...annotation, index, fraction };
-    }),
-  );
-  if (shouldPersist) await setSavedHighlights(bookKey, currentHighlights);
-}
-
-function updateHighlightSelectionButton() {
-  openHighlightsButton.classList.toggle("dock-active", isHighlightSelectionMode);
-  openHighlightsButton.setAttribute("aria-pressed", isHighlightSelectionMode ? "true" : "false");
-}
-
-function bindHighlightSelectionListeners() {
-  if (!isHighlightSelectionMode || !readerView) return;
-
-  for (const { doc } of readerView.renderer?.getContents?.() ?? []) {
-    if (!doc || highlightSelectionDocs.has(doc)) continue;
-
-    highlightSelectionDocs.add(doc);
-    const highlightSelection = () => {
-      if (!isHighlightSelectionMode) return;
-      window.setTimeout(() => void highlightSelectedText(), 0);
-    };
-
-    doc.addEventListener("mouseup", highlightSelection);
-    doc.addEventListener("touchend", highlightSelection);
-    doc.addEventListener("keyup", highlightSelection);
-  }
-}
-
-function setHighlightSelectionMode(enabled: boolean) {
-  isHighlightSelectionMode = enabled;
-  updateHighlightSelectionButton();
-  bindHighlightSelectionListeners();
-}
-
-function getHighlightActionPosition(range: Range) {
-  const rangeBounds = range.getBoundingClientRect();
-  const ownerDocument = range.startContainer.ownerDocument;
-  const frame = ownerDocument?.defaultView?.frameElement;
-  const frameBounds = frame?.getBoundingClientRect();
-  if (rangeBounds && frameBounds) {
-    return {
-      x: frameBounds.left + rangeBounds.left + rangeBounds.width / 2,
-      y: frameBounds.top + rangeBounds.bottom,
-    };
-  }
-
-  return {
-    x: window.innerWidth / 2,
-    y: window.innerHeight / 2,
-  };
-}
-
-function positionHighlightActions(x: number, y: number) {
-  if (!highlightActionBar) return;
-
-  const padding = 12;
-  highlightActionBar.hidden = false;
-  const bounds = highlightActionBar.getBoundingClientRect();
-  const left = Math.min(window.innerWidth - bounds.width - padding, Math.max(padding, x - bounds.width / 2));
-  const top = Math.min(window.innerHeight - bounds.height - padding, Math.max(padding, y + 8));
-
-  highlightActionBar.style.left = `${left}px`;
-  highlightActionBar.style.top = `${top}px`;
-}
-
-function hideHighlightActions() {
-  activeHighlight = null;
-  if (highlightActionBar) highlightActionBar.hidden = true;
-}
-
-async function copyHighlight(highlight: ReaderHighlight) {
-  const text = highlight.text?.trim() || highlight.value;
-  await navigator.clipboard.writeText(text);
-  hideHighlightActions();
-}
-
-async function deleteHighlight(highlight: ReaderHighlight) {
-  if (!readerView || !state.currentBookKey) return;
-
-  await readerView.deleteAnnotation?.(highlight);
-  currentHighlights = currentHighlights.filter((item) => item.value !== highlight.value);
-  await setSavedHighlights(state.currentBookKey, currentHighlights);
-  hideHighlightActions();
-}
-
-function showHighlightActions(highlight: ReaderHighlight, range: Range) {
-  activeHighlight = highlight;
-  ensureHighlightActionBar();
-
-  const { x, y } = getHighlightActionPosition(range);
-  positionHighlightActions(x, y);
-}
-
-function createHighlightActionButton(label: string, icon: string, onClick: () => void) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "btn btn-circle btn-sm tooltip tooltip-bottom tooltip-neutral";
-  button.dataset.tip = label;
-  button.setAttribute("aria-label", label);
-
-  const item = document.createElement("i");
-  item.dataset.lucide = icon;
-  button.append(item);
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    onClick();
-  });
-  return button;
-}
-
-function ensureHighlightActionBar() {
-  if (highlightActionBar) return highlightActionBar;
-
-  highlightActionBar = document.createElement("div");
-  highlightActionBar.className = "highlight-action-popover";
-  highlightActionBar.hidden = true;
-
-  highlightActionBar.append(
-    createHighlightActionButton("Copy", "copy", () => {
-      if (activeHighlight) void copyHighlight(activeHighlight);
-    }),
-    createHighlightActionButton("Delete", "trash-2", () => {
-      if (activeHighlight) void deleteHighlight(activeHighlight);
-    }),
-    createHighlightActionButton("Cancel", "x", hideHighlightActions),
-  );
-
-  document.body.append(highlightActionBar);
-  createIcons({ icons: { Copy, Trash2, X } });
-  return highlightActionBar;
-}
-
-function scheduleHighlightsRestore(view: FoliateViewElement, bookKey: string) {
-  runWhenIdle(() => {
-    if (readerView !== view || state.currentBookKey !== bookKey) return;
-    void restoreHighlights(view, bookKey).catch((error) => {
-      console.warn("Failed to restore highlights.", error);
-    });
-  }, 800);
-}
-
-async function highlightSelectedText() {
-  if (!readerView || !state.currentBookKey) return;
-
-  const selection = getSelectedReaderRange(readerView);
-  const value = selection && readerView.getCFI?.(selection.index, selection.range);
-  if (!selection || !value) return;
-  const existing = currentHighlights.find((item) => item.value === value);
-  if (existing) {
-    readerView.deselect?.();
-    hideHighlightActions();
-    return existing;
-  }
-
-  const annotation: ReaderHighlight = {
-    value,
-    color: defaultHighlightColor,
-    text: selection.text,
-    index: selection.index,
-    fraction: currentProgress,
-    createdAt: Date.now(),
-  };
-
-  currentHighlights = [...currentHighlights, annotation];
-  await readerView.addAnnotation?.(annotation);
-  await saveHighlight(state.currentBookKey, annotation);
-  readerView.deselect?.();
-  hideHighlightActions();
-  return annotation;
 }
 
 async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: ReadingPosition) {
@@ -586,6 +482,8 @@ async function openBook(input: File | string, sourceLabel: string) {
   const canRead = await ensureFileSchemeAccess(fileUrl);
   if (!canRead) return;
 
+  await ensureFoliateView();
+
   if (!readerView) {
     readerView = createView();
   }
@@ -597,7 +495,6 @@ async function openBook(input: File | string, sourceLabel: string) {
     resetTransientBookState();
     if (readerView.book) readerView.close();
     void preloadReaderFonts();
-    await preloadReaderModules();
     await readerView.open(input);
     applyReaderSettings(
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
@@ -611,8 +508,8 @@ async function openBook(input: File | string, sourceLabel: string) {
       readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
     );
-    if (state.currentBookKey) scheduleHighlightsRestore(readerView, state.currentBookKey);
-    bindHighlightSelectionListeners();
+    if (state.currentBookKey) highlightController.scheduleRestore(readerView, state.currentBookKey);
+    highlightController.bindContextTargets();
     scheduleExtraUiSetup();
     runWhenIdle(() => ensureTocController().render(readerView?.book?.toc), 1200);
   } catch (error) {
@@ -627,24 +524,34 @@ function readSourceFromQuery() {
 
 function setupCriticalInteractions() {
   pageLeftZone.addEventListener("click", () => {
+    if (state.flow === "paginated") {
+      void readerView?.goLeft?.();
+      return;
+    }
+
     const isRtl = readerView?.book?.dir === "rtl";
     void (isRtl ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
   });
 
   pageRightZone.addEventListener("click", () => {
+    if (state.flow === "paginated") {
+      void readerView?.goRight?.();
+      return;
+    }
+
     const isRtl = readerView?.book?.dir === "rtl";
     void (isRtl ? readerView?.renderer?.prevSection?.() : readerView?.renderer?.nextSection?.());
   });
 
   window.addEventListener("resize", () => {
     if (readerView) applyReaderLayout(readerView, readerRoot);
-    hideHighlightActions();
+    highlightController.close();
   });
 
-  window.addEventListener("pointerdown", (event) => {
-    if (!highlightActionBar || highlightActionBar.hidden) return;
-    if (event.target instanceof Node && highlightActionBar.contains(event.target)) return;
-    hideHighlightActions();
+  window.addEventListener("contextmenu", (event) => {
+    if (event.target instanceof Node && readerRoot.contains(event.target)) {
+      event.preventDefault();
+    }
   });
 }
 
@@ -726,17 +633,37 @@ function setupProgressInteractions() {
 }
 
 function setupExtraInteractions() {
+  window.addEventListener(VIEWER_EVENTS.tocNavigate, (event) => {
+    const { href } = (event as CustomEvent<TocNavigateDetail>).detail;
+    if (!href) return;
+    void readerView?.goTo(href);
+    tocModal.close();
+  });
+  window.addEventListener(VIEWER_EVENTS.searchCollect, (event) => {
+    const { query } = (event as CustomEvent<{ query: string }>).detail;
+    void ensureSearchController().collect(query);
+  });
+  window.addEventListener(VIEWER_EVENTS.searchPrevious, () => {
+    void ensureSearchController().showPrevious();
+  });
+  window.addEventListener(VIEWER_EVENTS.searchNext, () => {
+    void ensureSearchController().showNext();
+  });
+  window.addEventListener(VIEWER_EVENTS.searchClear, () => {
+    clearSearchState();
+  });
+  window.addEventListener(VIEWER_EVENTS.highlightContextAction, (event) => {
+    const { action } = (event as CustomEvent<HighlightContextActionDetail>).detail;
+    highlightController.handleContextAction(action);
+  });
+
   openTocButton.addEventListener("click", () => {
     tocModal.showModal();
     ensureTocController().resetViewState();
   });
 
-  openHighlightsButton.addEventListener("click", () => {
-    setHighlightSelectionMode(!isHighlightSelectionMode);
-  });
-
   openSearchButton.addEventListener("click", () => {
-    openSearch();
+    toggleSearch();
   });
 
   toggleFlowButton.addEventListener("click", () => {
@@ -782,22 +709,6 @@ function setupExtraInteractions() {
     void exportCurrentBook();
   });
 
-  searchForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void ensureSearchController().collect(searchInput.value);
-  });
-
-  searchPrevButton.addEventListener("click", () => {
-    void ensureSearchController().showPrevious();
-  });
-
-  searchNextButton.addEventListener("click", () => {
-    void ensureSearchController().showNext();
-  });
-
-  searchCloseButton.addEventListener("click", () => {
-    clearSearchState();
-  });
 }
 
 function setupExtraUi() {
@@ -808,24 +719,21 @@ function setupExtraUi() {
     icons: {
       ChevronLeft,
       ChevronRight,
-      Copy,
+      BookOpen,
       Download,
-      Highlighter,
       ListTree,
       Maximize2,
       Minimize2,
       Minus,
       Palette,
       Plus,
-      Rows3,
       Search,
-      Trash2,
       X,
     },
   });
   ensureKeybindings();
   ensureSearchController().updateButton();
-  updateHighlightSelectionButton();
+  highlightController.bindContextTargets();
   setupExtraInteractions();
 }
 
@@ -844,7 +752,6 @@ async function bootstrap() {
     void openBook(src, src.split("/").pop() || src);
   } else {
     void preloadReaderFonts();
-    void preloadReaderModules();
     scheduleExtraUiSetup();
   }
 }

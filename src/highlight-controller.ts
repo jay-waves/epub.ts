@@ -1,227 +1,355 @@
-import { Copy, LocateFixed, MessageSquareText, Trash2 } from "lucide";
-import type { IconNode } from "lucide";
-import type { ReaderHighlight } from "./viewer-types";
+import { Overlayer } from "foliate-js/overlayer.js";
+import { VIEWER_EVENTS } from "./viewer-events";
+import {
+  getSavedHighlights,
+  saveHighlight,
+  setSavedHighlights,
+} from "./viewer-storage";
+import type { HighlightContextActionDetail } from "./viewer-events";
+import type { FoliateViewElement, ReaderHighlight } from "./viewer-types";
 
-type HighlightControllerOptions = {
-  root: HTMLElement;
-  modal: HTMLDialogElement;
-  onComment: (highlight: ReaderHighlight, note: string) => void | Promise<void>;
-  onCopy: (highlight: ReaderHighlight) => void | Promise<void>;
-  onDelete: (highlight: ReaderHighlight) => void | Promise<void>;
-  onOpenHighlight: (highlight: ReaderHighlight) => void | Promise<void>;
+type ReaderContent = {
+  doc?: Document;
+  index: number;
+  overlayer?: {
+    hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
+  };
 };
 
-export function createHighlightController(options: HighlightControllerOptions) {
-  let highlights: ReaderHighlight[] = [];
-  let activeValue = "";
-
-  const render = (restoreScrollTop?: number) => {
-    options.root.replaceChildren(createPanel(), createActionBar());
-    if (typeof restoreScrollTop === "number") {
-      const list = options.root.querySelector<HTMLElement>(".highlights-list");
-      if (list) list.scrollTop = restoreScrollTop;
-    }
+type HighlightContext = {
+  highlight?: ReaderHighlight;
+  selection?: {
+    index: number;
+    range: Range;
+    text: string;
+    value: string;
   };
+} | null;
 
-  const getListScrollTop = () =>
-    options.root.querySelector<HTMLElement>(".highlights-list")?.scrollTop ?? 0;
+export function createHighlightController(options: {
+  getBookKey: () => string;
+  getProgress: () => number;
+  getReaderView: () => FoliateViewElement | null;
+  runWhenIdle: (callback: () => void, timeout?: number) => void;
+}) {
+  const defaultHighlightColor = "#f4c430";
+  const contextTargets = new WeakSet<EventTarget>();
+  let activeContext: HighlightContext = null;
+  let currentHighlights: ReaderHighlight[] = [];
 
-  const setHighlights = (nextHighlights: ReaderHighlight[]) => {
-    highlights = nextHighlights.slice().sort(compareHighlights);
-    if (!highlights.some((highlight) => highlight.value === activeValue)) activeValue = "";
-    render();
-  };
+  window.addEventListener(VIEWER_EVENTS.highlightContextClose, () => {
+    activeContext = null;
+  });
 
-  const open = () => {
-    render();
-    options.modal.showModal();
-  };
+  const getContents = () => options.getReaderView()?.renderer?.getContents?.() ?? [];
 
-  const openHighlight = (value: string, focusComment = false) => {
-    activeValue = value;
-    open();
-    window.setTimeout(() => {
-      const item = scrollToHighlight(value);
-      if (focusComment) options.root.querySelector<HTMLTextAreaElement>(".highlights-note-input")?.focus();
-      return item;
-    }, 0);
-  };
+  const findContentByIndex = (index: number) => getContents().find((item) => item.index === index);
 
-  const scrollToHighlight = (value: string) => {
-    const item = options.root.querySelector<HTMLElement>(`[data-highlight-value="${CSS.escape(value)}"]`);
-    item?.scrollIntoView({ block: "center", behavior: "smooth" });
-    return item;
-  };
+  const findContentByDocument = (doc: Document) => getContents().find((item) => item.doc === doc);
+
+  const findContentByFrame = (frame: Element) =>
+    getContents().find((item) => item.doc?.defaultView?.frameElement === frame);
 
   const close = () => {
-    options.modal.close();
+    activeContext = null;
+    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
   };
 
-  const createActionButton = (
-    label: string,
-    icon: IconNode,
-    toneClass: string,
-    onClick: () => void | Promise<void>,
-  ) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `btn btn-sm btn-square ${toneClass}`;
-    button.setAttribute("aria-label", label);
-    button.title = label;
-    button.append(createIcon(icon));
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      void onClick();
-    });
-    return button;
-  };
+  const getSelectedReaderRange = () => {
+    for (const { doc, index } of getContents()) {
+      const selection = doc?.defaultView?.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) continue;
 
-  const createIcon = (icon: IconNode) => {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", "16");
-    svg.setAttribute("height", "16");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    svg.setAttribute("aria-hidden", "true");
-
-    for (const [tag, attrs] of icon) {
-      const child = document.createElementNS("http://www.w3.org/2000/svg", tag);
-      for (const [name, value] of Object.entries(attrs)) child.setAttribute(name, String(value));
-      svg.append(child);
+      const range = selection.getRangeAt(0);
+      const text = selection.toString().trim();
+      if (text) return { index, range: range.cloneRange(), text };
     }
 
-    return svg;
+    return null;
   };
 
-  const createList = () => {
-    const list = document.createElement("div");
-    list.className = "highlights-list";
+  const getSelectedReaderContext = () => {
+    const readerView = options.getReaderView();
+    if (!readerView) return null;
 
-    if (!highlights.length) {
-      const empty = document.createElement("p");
-      empty.className = "text-sm text-base-content/60";
-      empty.textContent = "Select text and use the context menu to create highlights.";
-      list.append(empty);
-      return list;
+    const selection = getSelectedReaderRange();
+    const value = selection && readerView.getCFI?.(selection.index, selection.range);
+    if (!selection || !value) return null;
+    return { ...selection, value };
+  };
+
+  const getContentFrameBounds = (index: number) =>
+    findContentByIndex(index)?.doc?.defaultView?.frameElement?.getBoundingClientRect();
+
+  const getPagePoint = (event: MouseEvent, content: ReaderContent, convertFromFrame: boolean) => {
+    const frameBounds = getContentFrameBounds(content.index);
+    return {
+      x: frameBounds && !convertFromFrame ? frameBounds.left + event.clientX : event.clientX,
+      y: frameBounds && !convertFromFrame ? frameBounds.top + event.clientY : event.clientY,
+    };
+  };
+
+  const getHitPoint = (event: MouseEvent, content: ReaderContent, convertFromFrame: boolean) => {
+    const frameBounds = getContentFrameBounds(content.index);
+    if (convertFromFrame && frameBounds) {
+      return { x: event.clientX - frameBounds.left, y: event.clientY - frameBounds.top };
+    }
+    return { x: event.clientX, y: event.clientY };
+  };
+
+  const open = ({
+    highlight,
+    pageX,
+    pageY,
+    selection,
+  }: {
+    highlight?: ReaderHighlight;
+    pageX: number;
+    pageY: number;
+    selection?: NonNullable<HighlightContext>["selection"];
+  }) => {
+    activeContext = { highlight, selection };
+
+    const hasSelection = Boolean(selection);
+    const hasHighlight = Boolean(highlight);
+    if (!hasSelection && !hasHighlight) {
+      close();
+      return;
     }
 
-    for (const highlight of highlights) list.append(createItem(highlight));
-    return list;
-  };
-
-  const createItem = (highlight: ReaderHighlight) => {
-    const isActive = highlight.value === activeValue;
-    const item = document.createElement("article");
-    item.className = `highlight-item${isActive ? " is-active" : ""}`;
-    item.dataset.highlightValue = highlight.value;
-    item.setAttribute("aria-selected", isActive ? "true" : "false");
-    item.tabIndex = 0;
-    item.addEventListener("click", () => {
-      const scrollTop = getListScrollTop();
-      activeValue = highlight.value;
-      render(scrollTop);
-    });
-    item.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      const scrollTop = getListScrollTop();
-      activeValue = highlight.value;
-      render(scrollTop);
-    });
-
-    const progress = document.createElement("span");
-    progress.className = "highlight-progress";
-    progress.textContent = formatProgress(highlight);
-
-    const body = document.createElement("span");
-    body.className = "highlight-item-body";
-
-    const text = document.createElement("span");
-    text.className = "highlight-text";
-    text.textContent = highlight.text || highlight.value;
-    body.append(text);
-
-    if (highlight.note) {
-      const note = document.createElement("span");
-      note.className = "highlight-note";
-      note.textContent = highlight.note;
-      body.append(note);
-    }
-
-    item.append(progress, body);
-    return item;
-  };
-
-  const createPanel = () => {
-    const panel = document.createElement("div");
-    panel.className = "highlights-panel";
-    panel.append(createList());
-    return panel;
-  };
-
-  const createActionBar = () => {
-    const selected = highlights.find((highlight) => highlight.value === activeValue);
-    const wrapper = document.createElement("div");
-    wrapper.className = "highlight-action-bar";
-    wrapper.addEventListener("click", (event) => event.stopPropagation());
-
-    const noteInput = document.createElement("textarea");
-    noteInput.className = "textarea textarea-bordered textarea-sm highlights-note-input";
-    noteInput.placeholder = selected ? "Comment" : "Select a highlight";
-    noteInput.value = selected?.note ?? "";
-    noteInput.disabled = !selected;
-
-    const actions = document.createElement("div");
-    actions.className = "highlights-actions";
-    actions.append(
-      createActionButton("Go to highlight", LocateFixed, "highlight-icon-button", async () => {
-        if (selected) await options.onOpenHighlight(selected);
-      }),
-      createActionButton("Copy", Copy, "highlight-icon-button", async () => {
-        if (selected) await options.onCopy(selected);
-      }),
-      createActionButton("Comment", MessageSquareText, "highlight-icon-button", async () => {
-        if (selected) await options.onComment(selected, noteInput.value.trim());
-      }),
-      createActionButton("Delete", Trash2, "highlight-icon-button", async () => {
-        if (selected) await options.onDelete(selected);
+    window.dispatchEvent(
+      new CustomEvent(VIEWER_EVENTS.highlightContextOpen, {
+        detail: {
+          canCopy: hasSelection || hasHighlight,
+          canDelete: hasHighlight,
+          canHighlight: hasSelection,
+          x: pageX,
+          y: pageY,
+        },
       }),
     );
-
-    for (const button of actions.querySelectorAll<HTMLButtonElement>("button")) {
-      button.disabled = !selected;
-    }
-
-    wrapper.append(noteInput, actions);
-    return wrapper;
   };
 
-  const formatProgress = (highlight: ReaderHighlight) => {
-    if (typeof highlight.fraction === "number") return `${Math.round(highlight.fraction * 100)}%`;
-    return "--";
+  const openFromPointer = (event: MouseEvent, content: ReaderContent, convertFromFrame = false) => {
+    const hitPoint = getHitPoint(event, content, convertFromFrame);
+    const [hitValue] = content.overlayer?.hitTest?.(hitPoint) ?? [];
+    const highlight = hitValue ? currentHighlights.find((item) => item.value === hitValue) : undefined;
+    const selection = getSelectedReaderContext();
+    const pagePoint = getPagePoint(event, content, convertFromFrame);
+
+    open({
+      highlight,
+      pageX: pagePoint.x,
+      pageY: pagePoint.y,
+      selection: selection ?? undefined,
+    });
   };
 
-  const compareHighlights = (first: ReaderHighlight, second: ReaderHighlight) => {
-    if (typeof first.fraction === "number" && typeof second.fraction === "number") {
-      return first.fraction - second.fraction;
+  const openFromAnnotation = (detail: { index: number; range?: Range; value: string }) => {
+    const highlight = currentHighlights.find((item) => item.value === detail.value);
+    if (!highlight) return;
+
+    const frameBounds = getContentFrameBounds(detail.index);
+    const rangeBounds = detail.range?.getBoundingClientRect();
+    const hasBounds = Boolean(frameBounds && rangeBounds);
+
+    open({
+      highlight,
+      pageX: hasBounds ? frameBounds!.left + rangeBounds!.left + rangeBounds!.width / 2 : window.innerWidth / 2,
+      pageY: hasBounds ? frameBounds!.top + rangeBounds!.bottom : window.innerHeight / 2,
+    });
+  };
+
+  const bindContextTargets = () => {
+    for (const content of getContents()) {
+      const { doc } = content;
+      if (!doc) continue;
+
+      if (!contextTargets.has(doc)) {
+        contextTargets.add(doc);
+        doc.addEventListener("pointerdown", close, true);
+        doc.addEventListener("keydown", close, true);
+        doc.addEventListener("scroll", close, true);
+        doc.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const currentContent = findContentByDocument(doc);
+          if (currentContent) openFromPointer(event, currentContent);
+        });
+      }
+
+      const frameElement = doc.defaultView?.frameElement;
+      if (frameElement && !contextTargets.has(frameElement)) {
+        contextTargets.add(frameElement);
+        frameElement.addEventListener("contextmenu", (event) => {
+          if (!(event instanceof MouseEvent)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const currentContent = findContentByFrame(frameElement);
+          if (currentContent) openFromPointer(event, currentContent, true);
+        });
+      }
     }
-    if (typeof first.fraction === "number") return -1;
-    if (typeof second.fraction === "number") return 1;
-    if (typeof first.index === "number" && typeof second.index === "number") {
-      return first.index - second.index;
+  };
+
+  const drawAnnotation = (detail: {
+    annotation: ReaderHighlight;
+    draw: (func: typeof Overlayer.highlight, options: { color: string }) => void;
+  }) => {
+    detail.draw(Overlayer.highlight, { color: detail.annotation.color });
+  };
+
+  const addCurrentHighlightsToOverlay = (view: FoliateViewElement, index: number) => {
+    for (const annotation of currentHighlights) {
+      if (annotation.index === index) void view.addAnnotation?.(annotation);
     }
-    return first.createdAt - second.createdAt;
+    bindContextTargets();
+  };
+
+  const restore = async (view: FoliateViewElement, bookKey: string) => {
+    currentHighlights = await getSavedHighlights(bookKey);
+    let shouldPersist = false;
+    const sectionFractions = view.getSectionFractions?.() ?? [];
+
+    currentHighlights = await Promise.all(
+      currentHighlights.map(async (annotation) => {
+        const restored = await view.addAnnotation?.(annotation);
+        if (typeof annotation.fraction === "number") return annotation;
+
+        const index = restored?.index ?? annotation.index;
+        const fraction = typeof index === "number" ? sectionFractions[index] : undefined;
+        if (typeof fraction !== "number") return annotation;
+
+        shouldPersist = true;
+        return { ...annotation, index, fraction };
+      }),
+    );
+    if (shouldPersist) await setSavedHighlights(bookKey, currentHighlights);
+    bindContextTargets();
+  };
+
+  const scheduleRestore = (view: FoliateViewElement, bookKey: string) => {
+    options.runWhenIdle(() => {
+      if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
+      void restore(view, bookKey).catch((error) => {
+        console.warn("Failed to restore highlights.", error);
+      });
+    }, 800);
+  };
+
+  const copyHighlight = async (highlight: ReaderHighlight) => {
+    const text = highlight.text?.trim() || highlight.value;
+    await navigator.clipboard.writeText(text);
+    close();
+  };
+
+  const copySelectedText = async () => {
+    const text = activeContext?.selection?.text.trim();
+    if (!text) return;
+
+    await navigator.clipboard.writeText(text);
+    options.getReaderView()?.deselect?.();
+    close();
+  };
+
+  const getContextText = () => activeContext?.highlight?.text?.trim()
+    || activeContext?.selection?.text.trim()
+    || activeContext?.highlight?.value.trim()
+    || "";
+
+  const translateContextText = () => {
+    const text = getContextText();
+    if (!text) return;
+
+    const url = `https://translate.google.com/?sl=auto&tl=zh-CN&text=${encodeURIComponent(text)}&op=translate`;
+    if (globalThis.chrome?.tabs?.create) {
+      void globalThis.chrome.tabs.create({ url });
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+    close();
+  };
+
+  const deleteHighlight = async (highlight: ReaderHighlight) => {
+    const readerView = options.getReaderView();
+    const bookKey = options.getBookKey();
+    if (!readerView || !bookKey) return;
+
+    await readerView.deleteAnnotation?.(highlight);
+    currentHighlights = currentHighlights.filter((item) => item.value !== highlight.value);
+    await setSavedHighlights(bookKey, currentHighlights);
+    close();
+  };
+
+  const highlightSelectedText = async () => {
+    const readerView = options.getReaderView();
+    const bookKey = options.getBookKey();
+    if (!readerView || !bookKey || !activeContext?.selection) return;
+
+    const selection = activeContext.selection;
+    const { value } = selection;
+    const existing = currentHighlights.find((item) => item.value === value);
+    if (existing) {
+      readerView.deselect?.();
+      close();
+      return existing;
+    }
+
+    const annotation: ReaderHighlight = {
+      value,
+      color: defaultHighlightColor,
+      text: selection.text,
+      index: selection.index,
+      fraction: options.getProgress(),
+      createdAt: Date.now(),
+    };
+
+    currentHighlights = [...currentHighlights, annotation];
+    await readerView.addAnnotation?.(annotation);
+    await saveHighlight(bookKey, annotation);
+    readerView.deselect?.();
+    close();
+    return annotation;
+  };
+
+  const handleContextAction = (action: HighlightContextActionDetail["action"]) => {
+    if (action === "copy") {
+      if (activeContext?.highlight) {
+        void copyHighlight(activeContext.highlight);
+      } else {
+        void copySelectedText();
+      }
+      return;
+    }
+
+    if (action === "highlight") {
+      void highlightSelectedText();
+      return;
+    }
+
+    if (action === "translate") {
+      translateContextText();
+      return;
+    }
+
+    if (action === "delete" && activeContext?.highlight) {
+      void deleteHighlight(activeContext.highlight);
+    }
+  };
+
+  const reset = () => {
+    currentHighlights = [];
+    close();
   };
 
   return {
+    addCurrentHighlightsToOverlay,
+    bindContextTargets,
     close,
-    open,
-    openHighlight,
-    render,
-    setHighlights,
+    drawAnnotation,
+    handleContextAction,
+    openFromAnnotation,
+    reset,
+    scheduleRestore,
   };
 }
