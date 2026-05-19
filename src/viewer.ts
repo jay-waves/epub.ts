@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide";
 import {
-  applyBookRenderingPreferences,
+  applyReaderFlow,
   applyReaderFontSize,
   applyReaderLayout,
   applyReaderMargin,
@@ -23,12 +23,9 @@ import {
   applyReaderTheme,
   changeReaderDensity,
   changeReaderFontSize,
+  changeReaderFlow,
   changeReaderWidth,
   getBookStyles,
-  loadReaderFontSize,
-  loadReaderMargin,
-  loadReaderSpacing,
-  loadReaderTheme,
   READER_FONT_FAMILY,
   READER_FONT_SIZE_STEP,
   READER_FONT_URL,
@@ -42,9 +39,15 @@ import {
 import { createSearchController } from "./search-controller";
 import { createTocController } from "./toc-controller";
 import { elements } from "./viewer-elements";
+import { setupViewerKeybindings } from "./viewer-keybindings";
 import { state } from "./viewer-state";
-import { getSavedPosition, saveReaderTheme, saveReadingPosition } from "./viewer-storage";
-import type { FoliateViewElement, ReadingPosition, RelocateDetail } from "./viewer-types";
+import {
+  getSavedPosition,
+  getSavedReaderSettings,
+  saveReaderSettings,
+  saveReadingPosition,
+} from "./viewer-storage";
+import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
 import "./viewer.css";
 
 let readerFontsReady: Promise<void> | null = null;
@@ -84,6 +87,19 @@ let savePositionTimer: number | undefined;
 let extraUiReady = false;
 let currentProgress = 0;
 const showReadingProgressLabel = false;
+const defaultReaderSettings: ReaderSettings = {
+  flow: "paginated",
+  fontSize: 19,
+  margin: 8,
+  spacing: 0,
+  theme: "light",
+};
+const keybindings = setupViewerKeybindings({
+  getReaderView: () => readerView,
+  getFlow: () => state.flow,
+  openSearch,
+  closeSearch: clearSearchState,
+});
 
 const tocController = createTocController({
   tocRoot,
@@ -226,16 +242,53 @@ function clearSearchState() {
   searchController.clear();
 }
 
+function getCurrentReaderSettings(): ReaderSettings {
+  return {
+    flow: state.flow,
+    fontSize: state.readerFontSize,
+    margin: state.readerMargin,
+    spacing: state.readerSpacing,
+    theme: state.readerTheme,
+  };
+}
+
+function saveCurrentReaderSettings() {
+  if (!state.currentBookKey) return;
+  void saveReaderSettings(state.currentBookKey, getCurrentReaderSettings());
+}
+
+function openSearch() {
+  searchInput.placeholder = "Search text";
+  searchNav.hidden = false;
+  window.setTimeout(() => searchInput.focus(), 0);
+}
+
 function resetTransientBookState() {
   window.clearTimeout(savePositionTimer);
   clearSearchState();
   resetToc();
 }
 
+function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
+  const nextSettings = { ...defaultReaderSettings, ...settings };
+
+  applyReaderFlow(nextSettings.flow, readerView, readerRoot);
+  applyReaderSpacing(nextSettings.spacing, readerView);
+  applyReaderMargin(nextSettings.margin, readerView, readerRoot);
+  applyReaderFontSize(nextSettings.fontSize, readerView);
+  applyReaderTheme(nextSettings.theme, {
+    toggleThemeButton,
+    themeCount,
+    setBookStyles: () => readerView?.renderer?.setStyles?.(getBookStyles()),
+  });
+  updateFlowButton(toggleFlowButton);
+}
+
 function createView() {
   const view = document.createElement("foliate-view") as FoliateViewElement;
   readerRoot.replaceChildren(view);
   wireReaderEvents(view);
+  keybindings.bindReaderView(view);
   return view;
 }
 
@@ -284,12 +337,14 @@ async function openBook(input: File | string, sourceLabel: string) {
     await Promise.all([preloadReaderFonts(), preloadReaderModules()]);
     await readerView.open(input);
     updateSearchButton();
+    applyReaderSettings(
+      state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
+    );
 
     const metadata = readerView.book?.metadata;
     const title = formatLocalized(metadata?.title) || "Untitled Book";
 
     document.title = `${title} · EPUB Viewer`;
-    applyBookRenderingPreferences(readerView, readerRoot);
     await restoreSavedPosition(
       readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
@@ -308,19 +363,13 @@ function readSourceFromQuery() {
 
 function setupCriticalInteractions() {
   pageLeftZone.addEventListener("click", () => {
-    readerView?.goLeft();
+    const isRtl = readerView?.book?.dir === "rtl";
+    void (isRtl ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
   });
 
   pageRightZone.addEventListener("click", () => {
-    readerView?.goRight();
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowLeft") {
-      readerView?.goLeft();
-    } else if (event.key === "ArrowRight") {
-      readerView?.goRight();
-    }
+    const isRtl = readerView?.book?.dir === "rtl";
+    void (isRtl ? readerView?.renderer?.prevSection?.() : readerView?.renderer?.nextSection?.());
   });
 
   window.addEventListener("resize", () => {
@@ -412,15 +461,13 @@ function setupExtraInteractions() {
   });
 
   openSearchButton.addEventListener("click", () => {
-    searchInput.placeholder = "Search text";
-    searchNav.hidden = false;
-    window.setTimeout(() => searchInput.focus(), 0);
+    openSearch();
   });
 
   toggleFlowButton.addEventListener("click", () => {
-    state.flow = state.flow === "paginated" ? "scrolled" : "paginated";
+    changeReaderFlow(readerView, readerRoot);
     updateFlowButton(toggleFlowButton);
-    if (readerView) applyReaderLayout(readerView, readerRoot);
+    saveCurrentReaderSettings();
   });
 
   toggleThemeButton.addEventListener("click", () => {
@@ -431,25 +478,29 @@ function setupExtraInteractions() {
       themeCount,
       setBookStyles: () => readerView?.renderer?.setStyles?.(getBookStyles()),
     });
-    void saveReaderTheme(nextTheme.id);
+    saveCurrentReaderSettings();
   });
 
   decreaseFontButton.addEventListener("click", () => {
     changeReaderFontSize(-READER_FONT_SIZE_STEP, readerView);
+    saveCurrentReaderSettings();
   });
 
   increaseFontButton.addEventListener("click", () => {
     changeReaderFontSize(READER_FONT_SIZE_STEP, readerView);
+    saveCurrentReaderSettings();
   });
 
   decreaseWidthButton.addEventListener("click", () => {
     changeReaderWidth(-READER_MARGIN_STEP, readerView, readerRoot);
     changeReaderDensity(-READER_SPACING_STEP, readerView);
+    saveCurrentReaderSettings();
   });
 
   increaseWidthButton.addEventListener("click", () => {
     changeReaderWidth(READER_MARGIN_STEP, readerView, readerRoot);
     changeReaderDensity(READER_SPACING_STEP, readerView);
+    saveCurrentReaderSettings();
   });
 
   exportButton.addEventListener("click", () => {
@@ -503,24 +554,9 @@ function scheduleExtraUiSetup() {
 
 async function bootstrap() {
   const preloadReady = Promise.all([preloadReaderFonts(), preloadReaderModules()]);
-  const [readerSpacing, readerMargin, readerFontSize, readerTheme] = await Promise.all([
-    loadReaderSpacing(),
-    loadReaderMargin(),
-    loadReaderFontSize(),
-    loadReaderTheme(),
-  ]);
-
-  applyReaderSpacing(readerSpacing, readerView);
-  applyReaderMargin(readerMargin, readerView, readerRoot);
-  applyReaderFontSize(readerFontSize, readerView);
-  applyReaderTheme(readerTheme, {
-    toggleThemeButton,
-    themeCount,
-    setBookStyles: () => readerView?.renderer?.setStyles?.(getBookStyles()),
-  });
+  applyReaderSettings(undefined);
   updateSearchButton();
   updateExportButton();
-  updateFlowButton(toggleFlowButton);
   setupCriticalInteractions();
   setupProgressInteractions();
 

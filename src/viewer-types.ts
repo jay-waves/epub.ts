@@ -12,14 +12,26 @@ export type BookMetadata = {
 };
 
 export type FoliateBook = {
+  dir?: string;
   metadata?: BookMetadata;
   toc?: TocItem[];
 };
 
 export type FoliateRenderer = HTMLElement & {
+  atEnd?: boolean;
+  atStart?: boolean;
+  end?: number;
+  next?: (distance?: number) => Promise<void>;
   removeAttribute(name: string): void;
+  nextSection?: () => Promise<void>;
+  prev?: (distance?: number) => Promise<void>;
+  prevSection?: () => Promise<void>;
   setAttribute(name: string, value: string): void;
+  scrollToAnchor?: (anchor: number, select?: boolean) => Promise<void>;
+  scrollBy?: (dx: number, dy: number) => void;
   setStyles?: (cssText: string) => void;
+  start?: number;
+  viewSize?: number;
 };
 
 export type FoliateViewElement = HTMLElement & {
@@ -29,8 +41,8 @@ export type FoliateViewElement = HTMLElement & {
   close: () => void;
   init: (options: { lastLocation?: string | { fraction: number }; showTextStart?: boolean }) => Promise<void>;
   open: (input: File | string) => Promise<void>;
-  prev: () => Promise<void>;
-  next: () => Promise<void>;
+  prev: (distance?: number) => Promise<void>;
+  next: (distance?: number) => Promise<void>;
   goLeft: () => Promise<void>;
   goRight: () => Promise<void>;
   goTo: (target: string | number | { fraction: number }) => Promise<void>;
@@ -45,7 +57,17 @@ export type FoliateViewElement = HTMLElement & {
 
 export type ReaderThemeMode = "light" | "dark";
 
+export type ReaderFlow = "paginated" | "scrolled";
+
 export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark";
+
+export type ReaderSettings = {
+  flow: ReaderFlow;
+  fontSize: number;
+  margin: number;
+  spacing: number;
+  theme: ReaderThemeId;
+};
 
 export type ReaderTheme = {
   id: ReaderThemeId;
@@ -60,6 +82,7 @@ export type ReaderTheme = {
 export type ReadingPosition = {
   cfi?: string;
   fraction?: number;
+  settings?: Partial<ReaderSettings>;
   updatedAt: number;
 };
 

@@ -1,7 +1,7 @@
-import type { ReaderThemeId } from "./viewer-types";
+import type { ReaderFlow, ReaderThemeId } from "./viewer-types";
 
 export const state = {
-  flow: "paginated" as "paginated" | "scrolled",
+  flow: "paginated" as ReaderFlow,
   currentHref: "",
   currentBookKey: "",
   currentSourceUrl: "",

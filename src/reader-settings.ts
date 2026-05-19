@@ -1,16 +1,5 @@
 import { state } from "./viewer-state";
-import {
-  FONT_SIZE_STORAGE_KEY,
-  getStorage,
-  MARGIN_STORAGE_KEY,
-  saveReaderFontSize,
-  saveReaderMargin,
-  saveReaderSpacing,
-  saveReaderTheme,
-  SPACING_STORAGE_KEY,
-  THEME_STORAGE_KEY,
-} from "./viewer-storage";
-import type { FoliateViewElement, ReaderTheme, ReaderThemeId } from "./viewer-types";
+import type { FoliateViewElement, ReaderFlow, ReaderTheme, ReaderThemeId } from "./viewer-types";
 
 export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
@@ -281,26 +270,6 @@ export function applyReaderTheme(
   controls.setBookStyles();
 }
 
-export async function loadReaderTheme() {
-  const saved = await getStorage<ReaderThemeId>(THEME_STORAGE_KEY, "light");
-  return getTheme(saved).id;
-}
-
-export async function loadReaderFontSize() {
-  const saved = await getStorage<number>(FONT_SIZE_STORAGE_KEY, state.readerFontSize);
-  return clampReaderFontSize(saved);
-}
-
-export async function loadReaderSpacing() {
-  const saved = await getStorage<number>(SPACING_STORAGE_KEY, state.readerSpacing);
-  return clampReaderSpacing(saved);
-}
-
-export async function loadReaderMargin() {
-  const saved = await getStorage<number>(MARGIN_STORAGE_KEY, state.readerMargin);
-  return clampReaderMargin(saved);
-}
-
 export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElement) {
   const readerWidth = readerRoot.getBoundingClientRect().width;
   const allowMultipleColumns =
@@ -314,6 +283,7 @@ export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElem
   view.renderer?.setAttribute("flow", state.flow);
   view.renderer?.setAttribute("gap", state.flow === "paginated" ? PAGINATED_GAP : "1.5%");
   view.renderer?.setAttribute("margin", `${state.readerMargin}px`);
+  view.renderer?.setAttribute("animated", "");
   if (state.flow === "paginated") {
     view.renderer?.setAttribute("max-inline-size", `${maxInlineSize}px`);
     view.renderer?.setAttribute("max-column-count", allowThreeColumns ? "3" : "2");
@@ -360,21 +330,28 @@ export function changeReaderFontSize(delta: number, view?: FoliateViewElement | 
   const nextSize = clampReaderFontSize(state.readerFontSize + delta);
   if (nextSize === state.readerFontSize) return;
   applyReaderFontSize(nextSize, view);
-  void saveReaderFontSize(nextSize);
 }
 
 export function changeReaderWidth(delta: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
   const nextMargin = clampReaderMargin(state.readerMargin - delta);
   if (nextMargin === state.readerMargin) return;
   applyReaderMargin(nextMargin, view, readerRoot);
-  void saveReaderMargin(nextMargin);
 }
 
 export function changeReaderDensity(delta: number, view?: FoliateViewElement | null) {
   const nextSpacing = clampReaderSpacing(state.readerSpacing + delta);
   if (nextSpacing === state.readerSpacing) return;
   applyReaderSpacing(nextSpacing, view);
-  void saveReaderSpacing(nextSpacing);
+}
+
+export function applyReaderFlow(flow: ReaderFlow, view: FoliateViewElement | null, readerRoot: HTMLElement) {
+  state.flow = flow;
+  if (view) applyReaderLayout(view, readerRoot);
+}
+
+export function changeReaderFlow(view: FoliateViewElement | null, readerRoot: HTMLElement) {
+  const nextFlow = state.flow === "paginated" ? "scrolled" : "paginated";
+  applyReaderFlow(nextFlow, view, readerRoot);
 }
 
 export function updateFlowButton(toggleFlowButton: HTMLButtonElement) {
