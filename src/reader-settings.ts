@@ -330,15 +330,15 @@ export function applyBookRenderingPreferences(view: FoliateViewElement, readerRo
 }
 
 export function clampReaderFontSize(fontSize: number) {
-  return Math.min(MAX_READER_FONT_SIZE, Math.max(MIN_READER_FONT_SIZE, Math.round(fontSize)));
+  return clamp(fontSize, MIN_READER_FONT_SIZE, MAX_READER_FONT_SIZE);
 }
 
 export function clampReaderMargin(margin: number) {
-  return Math.min(MAX_READER_MARGIN, Math.max(MIN_READER_MARGIN, Math.round(margin)));
+  return clamp(margin, MIN_READER_MARGIN, MAX_READER_MARGIN);
 }
 
 export function clampReaderSpacing(spacing: number) {
-  return Math.min(MAX_READER_SPACING, Math.max(MIN_READER_SPACING, Math.round(spacing)));
+  return clamp(spacing, MIN_READER_SPACING, MAX_READER_SPACING);
 }
 
 export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement | null) {
@@ -384,4 +384,8 @@ export function updateFlowButton(toggleFlowButton: HTMLButtonElement) {
   toggleFlowButton.classList.toggle("dock-active", !isPaginated);
   toggleFlowButton.dataset.tip = label;
   toggleFlowButton.setAttribute("aria-label", label);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.round(value)));
 }

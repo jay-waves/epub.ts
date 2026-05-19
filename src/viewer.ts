@@ -41,6 +41,7 @@ import {
 } from "./reader-settings";
 import { createSearchController } from "./search-controller";
 import { createTocController } from "./toc-controller";
+import { elements } from "./viewer-elements";
 import { state } from "./viewer-state";
 import { getSavedPosition, saveReaderTheme, saveReadingPosition } from "./viewer-storage";
 import type { FoliateViewElement, ReadingPosition, RelocateDetail } from "./viewer-types";
@@ -49,32 +50,34 @@ import "./viewer.css";
 let readerFontsReady: Promise<void> | null = null;
 let readerModulesReady: Promise<unknown> | null = null;
 
-const readerRoot = must<HTMLDivElement>("#reader-root");
-const toggleFlowButton = must<HTMLButtonElement>("#toggle-flow-button");
-const toggleThemeButton = must<HTMLButtonElement>("#toggle-theme-button");
-const themeCount = must<HTMLElement>("#theme-count");
-const decreaseFontButton = must<HTMLButtonElement>("#decrease-font-button");
-const increaseFontButton = must<HTMLButtonElement>("#increase-font-button");
-const decreaseWidthButton = must<HTMLButtonElement>("#decrease-width-button");
-const increaseWidthButton = must<HTMLButtonElement>("#increase-width-button");
-const openSearchButton = must<HTMLButtonElement>("#open-search-button");
-const openTocButton = must<HTMLButtonElement>("#open-toc-button");
-const exportButton = must<HTMLButtonElement>("#export-button");
-const pageLeftZone = must<HTMLButtonElement>("#page-left-zone");
-const pageRightZone = must<HTMLButtonElement>("#page-right-zone");
-const readingProgress = must<HTMLElement>("#reading-progress");
-const readingProgressTrack = must<HTMLElement>(".reader-progress-track");
-const readingProgressFill = must<HTMLElement>("#reading-progress-fill");
-const readingProgressLabel = must<HTMLElement>("#reading-progress-label");
-const searchForm = must<HTMLFormElement>("#search-form");
-const searchInput = must<HTMLInputElement>("#search-input");
-const searchNav = must<HTMLElement>("#search-nav");
-const searchPrevButton = must<HTMLButtonElement>("#search-prev-button");
-const searchNextButton = must<HTMLButtonElement>("#search-next-button");
-const searchCloseButton = must<HTMLButtonElement>("#search-close-button");
-const searchCount = must<HTMLElement>("#search-count");
-const tocRoot = must<HTMLElement>("#toc-root");
-const tocModal = must<HTMLDialogElement>("#toc-modal");
+const {
+  readerRoot,
+  toggleFlowButton,
+  toggleThemeButton,
+  themeCount,
+  decreaseFontButton,
+  increaseFontButton,
+  decreaseWidthButton,
+  increaseWidthButton,
+  openSearchButton,
+  openTocButton,
+  exportButton,
+  pageLeftZone,
+  pageRightZone,
+  readingProgress,
+  readingProgressTrack,
+  readingProgressFill,
+  readingProgressLabel,
+  searchForm,
+  searchInput,
+  searchNav,
+  searchPrevButton,
+  searchNextButton,
+  searchCloseButton,
+  searchCount,
+  tocRoot,
+  tocModal,
+} = elements;
 
 let readerView: FoliateViewElement | null = null;
 let savePositionTimer: number | undefined;
@@ -97,14 +100,6 @@ const searchController = createSearchController({
   searchNextButton,
   getReaderView: () => readerView,
 });
-
-function must<T extends Element>(selector: string): T {
-  const node = document.querySelector<T>(selector);
-  if (!node) {
-    throw new Error(`Missing required element: ${selector}`);
-  }
-  return node;
-}
 
 function formatLocalized(value?: string | Record<string, string>) {
   if (!value) return "";
