@@ -1,5 +1,9 @@
 import { state } from "./viewer-state";
 import type { FoliateViewElement, ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./viewer-types";
+import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
+import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
+import atomOneLightHighlightTheme from "highlight.js/styles/atom-one-light.css?raw";
+import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
 
 export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
@@ -81,6 +85,24 @@ const READER_LAYOUT_PRESETS = [
 
 const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[2];
 
+function normalizeHighlightThemeCss(themeCss: string) {
+  return themeCss
+    .replaceAll("pre code.hljs", "pre.hljs")
+    .replaceAll("code.hljs", "pre.hljs")
+    .replaceAll("code .", "pre.hljs .")
+    .replace(
+      /\b(color|background|background-color|font-style|font-weight):\s*([^;!}{]+)(?:\s*!important)?/gu,
+      "$1: $2 !important",
+    );
+}
+
+const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
+  light: normalizeHighlightThemeCss(githubLightHighlightTheme),
+  grey: normalizeHighlightThemeCss(atomOneLightHighlightTheme),
+  dark: normalizeHighlightThemeCss(nordHighlightTheme),
+  "one-dark": normalizeHighlightThemeCss(githubDarkHighlightTheme),
+};
+
 function getTheme(themeId = state.readerTheme) {
   return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
 }
@@ -95,6 +117,7 @@ export function getBookStyles(themeId = state.readerTheme) {
   const { background, foreground, link } = theme;
   const mediaFilter =
     theme.mode === "dark" ? "brightness(0.72) contrast(0.92) saturate(0.88)" : "none";
+  const highlightThemeCss = READER_CODE_HIGHLIGHT_THEMES[theme.id];
 
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
@@ -118,8 +141,8 @@ export function getBookStyles(themeId = state.readerTheme) {
       --reader-fg-color: ${foreground};
       --reader-link-color: ${link};
       --reader-muted-color: color-mix(in srgb, ${foreground} 72%, ${background});
-      --reader-border-color: color-mix(in srgb, ${foreground} 18%, transparent);
-      --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, transparent);
+      --reader-border-color: color-mix(in srgb, ${foreground} 18%, ${background});
+      --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, ${background});
       --reader-font-size: ${state.readerFontSize}px;
       --reader-line-height: ${layout.lineHeight};
       --reader-letter-spacing: ${layout.letterSpacing};
@@ -154,7 +177,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       display: none !important;
     }
     body,
-    body :where(*:not(svg):not(svg *):not(a):not(a *)) {
+    body :where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *)) {
       color: var(--reader-fg-color) !important;
       -webkit-text-fill-color: var(--reader-fg-color) !important;
       caret-color: var(--reader-fg-color) !important;
@@ -165,14 +188,14 @@ export function getBookStyles(themeId = state.readerTheme) {
       color: var(--reader-link-color) !important;
       -webkit-text-fill-color: var(--reader-link-color) !important;
     }
-    body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button) {
+    body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *) {
       font-family: var(--reader-font-serif) !important;
     }
     :is(code, pre, kbd, samp, textarea, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]) {
       font-family: var(--reader-font-mono) !important;
     }
-    :is(code, pre, kbd, samp, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]),
-    :is(code, pre, kbd, samp) * {
+    :is(code, pre, kbd, samp, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]):not(.hljs),
+    :is(code, pre, kbd, samp):not(.hljs) *:not(.hljs *) {
       color: var(--reader-fg-color) !important;
       -webkit-text-fill-color: var(--reader-fg-color) !important;
       text-shadow: none !important;
@@ -180,7 +203,7 @@ export function getBookStyles(themeId = state.readerTheme) {
     :is(input, textarea, select, button) {
       font-family: var(--reader-font-sans) !important;
     }
-    body *:not(img):not(svg):not(video):not(audio):not(canvas):not(iframe) {
+    body *:not(img):not(svg):not(video):not(audio):not(canvas):not(iframe):not(.hljs):not(.hljs *) {
       background: transparent !important;
       max-inline-size: none !important;
       max-width: none !important;
@@ -436,6 +459,25 @@ export function getBookStyles(themeId = state.readerTheme) {
       display: block !important;
       margin-inline: auto !important;
     }
+    img[data-reader-zoomable="true"] {
+      inline-size: auto !important;
+      width: auto !important;
+      max-inline-size: 61.8% !important;
+      max-width: 61.8% !important;
+      border-radius: 0.5rem !important;
+      cursor: zoom-in !important;
+    }
+    figure img[data-reader-zoomable="true"] {
+      margin-block-end: 0.75em !important;
+    }
+    .medium-zoom-overlay {
+      backdrop-filter: blur(10px) saturate(115%);
+      -webkit-backdrop-filter: blur(10px) saturate(115%);
+    }
+    .medium-zoom-image--opened {
+      border-radius: 0.95rem !important;
+      box-shadow: 0 24px 60px color-mix(in srgb, var(--reader-fg-color) 18%, transparent) !important;
+    }
     :is(table, .table, [class*="table" i]) {
       max-inline-size: 100% !important;
       max-width: 100% !important;
@@ -467,10 +509,12 @@ export function getBookStyles(themeId = state.readerTheme) {
       background: var(--reader-panel-bg) !important;
       padding: 0.08em 0.28em !important;
     }
-    pre {
+    pre,
+    .hljs {
       white-space: pre-wrap !important;
-      font-size: 0.88em !important;
+      font-size: 0.78em !important;
       line-height: 1.55 !important;
+      font-family: var(--reader-font-mono) !important;
       margin-block: 1em !important;
       padding: 0.9em 1em !important;
       border: 1px solid var(--reader-border-color) !important;
@@ -478,10 +522,22 @@ export function getBookStyles(themeId = state.readerTheme) {
       background: var(--reader-panel-bg) !important;
       overflow: auto !important;
     }
-    pre code {
-      background: transparent !important;
-      padding: 0 !important;
-      border-radius: 0 !important;
+    ${highlightThemeCss}
+    .hljs {
+      display: block !important;
+      overflow-x: visible !important;
+      padding: 0.9em 1em !important;
+      white-space: pre-wrap !important;
+      font-family: var(--reader-font-mono) !important;
+      font-size: 0.78em !important;
+      line-height: 1.55 !important;
+      -webkit-text-fill-color: currentColor !important;
+    }
+    .hljs * {
+      font-family: inherit !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
+      -webkit-text-fill-color: currentColor !important;
     }
   `;
 }
