@@ -30,6 +30,7 @@ export type HighlightContextOpenDetail = {
 
 export type SearchCollectDetail = {
   query: string;
+  highlightedOnly?: boolean;
 };
 
 export type SearchUpdateDetail = {

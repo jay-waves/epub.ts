@@ -1,6 +1,7 @@
 import type { FoliateViewElement, SearchHit } from "./viewer-types";
 import { VIEWER_EVENTS } from "./viewer-events";
 import type { SearchUpdateDetail } from "./viewer-events";
+import { getSavedHighlights } from "./viewer-storage";
 
 const LONG_SEARCH_QUERY_THRESHOLD = 24;
 const MAX_SEARCH_QUERY_LENGTH = 120;
@@ -8,6 +9,7 @@ const MAX_SEARCH_RESULTS = 200;
 
 export function createSearchController(options: {
   openSearchButton: HTMLButtonElement;
+  getBookKey: () => string;
   getReaderView: () => FoliateViewElement | null;
 }) {
   let searchRunId = 0;
@@ -63,7 +65,49 @@ export function createSearchController(options: {
     clearHighlights();
   };
 
-  const collect = async (query: string) => {
+  const collectHighlights = async (query: string) => {
+    const bookKey = options.getBookKey();
+    if (!bookKey) return;
+
+    const searchOptions = getSearchOptions(query);
+    clearHighlights();
+    searchHits = [];
+    searchHitIndex = -1;
+    updateNav(true);
+
+    const normalizedQuery = normalizeForHighlightSearch(searchOptions.query);
+    const highlights = await getSavedHighlights(bookKey);
+
+    searchHits = highlights
+      .filter((highlight) => {
+        const text = getHighlightSearchText(highlight);
+        return !normalizedQuery || normalizeForHighlightSearch(text).includes(normalizedQuery);
+      })
+      .slice(0, MAX_SEARCH_RESULTS)
+      .map((highlight) => ({
+        cfi: highlight.value,
+        excerpt: highlight.text,
+      }));
+
+    updateNav();
+    if (searchHits.length) {
+      await showHit(0);
+    } else {
+      emitUpdate({
+        canNavigate: false,
+        countText: "0 / 0",
+        placeholder: searchOptions.query ? `No highlights for: ${searchOptions.query}` : "No highlights saved",
+        visible: true,
+      });
+    }
+  };
+
+  const collect = async (query: string, collectOptions: { highlightedOnly?: boolean } = {}) => {
+    if (collectOptions.highlightedOnly) {
+      await collectHighlights(query);
+      return;
+    }
+
     const readerView = options.getReaderView();
     if (!readerView?.search) return;
 
@@ -133,4 +177,12 @@ function getSearchOptions(query: string) {
     matchDiacritics: useFastExactSearch,
     query: queryPrefix,
   };
+}
+
+function getHighlightSearchText(highlight: { text?: string; value: string }) {
+  return highlight.text?.trim() || highlight.value;
+}
+
+function normalizeForHighlightSearch(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
 }

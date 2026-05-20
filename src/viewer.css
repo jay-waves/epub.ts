@@ -368,6 +368,11 @@
     background-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
   }
 
+  .search-nav button.search-mode-active,
+  .search-nav button.search-mode-active:hover {
+    @apply bg-sky-600 text-white shadow-md;
+  }
+
   .search-nav button:disabled {
     @apply cursor-not-allowed opacity-40;
   }
@@ -544,6 +549,11 @@ html[data-reader-mode="dark"] .search-nav button {
 html[data-reader-mode="dark"] .search-nav button:hover {
   @apply text-white;
   background-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 10%, transparent);
+}
+
+html[data-reader-mode="dark"] .search-nav button.search-mode-active,
+html[data-reader-mode="dark"] .search-nav button.search-mode-active:hover {
+  @apply bg-sky-600 text-white;
 }
 
 html[data-reader-mode="dark"] .search-count {

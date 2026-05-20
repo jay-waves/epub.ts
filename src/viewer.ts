@@ -6,6 +6,7 @@ import {
   BookOpen,
   createIcons,
   Download,
+  Highlighter,
   ListTree,
   Maximize2,
   Minimize2,
@@ -52,7 +53,7 @@ import {
   saveReadingPosition,
 } from "./viewer-storage";
 import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
-import type { HighlightContextActionDetail, TocNavigateDetail } from "./viewer-events";
+import type { HighlightContextActionDetail, SearchCollectDetail, TocNavigateDetail } from "./viewer-events";
 import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
@@ -132,6 +133,7 @@ function ensureTocController() {
 function ensureSearchController() {
   searchController ??= createSearchController({
     openSearchButton,
+    getBookKey: () => state.currentBookKey,
     getReaderView: () => readerView,
   });
   return searchController;
@@ -640,8 +642,8 @@ function setupExtraInteractions() {
     tocModal.close();
   });
   window.addEventListener(VIEWER_EVENTS.searchCollect, (event) => {
-    const { query } = (event as CustomEvent<{ query: string }>).detail;
-    void ensureSearchController().collect(query);
+    const { highlightedOnly, query } = (event as CustomEvent<SearchCollectDetail>).detail;
+    void ensureSearchController().collect(query, { highlightedOnly });
   });
   window.addEventListener(VIEWER_EVENTS.searchPrevious, () => {
     void ensureSearchController().showPrevious();
@@ -721,6 +723,7 @@ function setupExtraUi() {
       ChevronRight,
       BookOpen,
       Download,
+      Highlighter,
       ListTree,
       Maximize2,
       Minimize2,

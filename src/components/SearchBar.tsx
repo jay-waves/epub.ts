@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { VIEWER_EVENTS } from "../viewer-events";
-import type { SearchUpdateDetail } from "../viewer-events";
+import type { SearchCollectDetail, SearchUpdateDetail } from "../viewer-events";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip } from "./ui/tooltip";
@@ -8,6 +8,7 @@ import { Tooltip } from "./ui/tooltip";
 export function SearchBar() {
   const [canNavigate, setCanNavigate] = useState(false);
   const [countText, setCountText] = useState("0 / 0");
+  const [highlightedOnly, setHighlightedOnly] = useState(false);
   const [placeholder, setPlaceholder] = useState("Search text");
   const [query, setQuery] = useState("");
   const [visible, setVisible] = useState(false);
@@ -37,13 +38,26 @@ export function SearchBar() {
 
   const submitSearch = () => {
     window.dispatchEvent(
-      new CustomEvent(VIEWER_EVENTS.searchCollect, {
-        detail: { query },
+      new CustomEvent<SearchCollectDetail>(VIEWER_EVENTS.searchCollect, {
+        detail: { highlightedOnly, query },
+      }),
+    );
+  };
+
+  const toggleHighlightedOnly = () => {
+    const nextHighlightedOnly = !highlightedOnly;
+    setHighlightedOnly(nextHighlightedOnly);
+    if (!nextHighlightedOnly) return;
+
+    window.dispatchEvent(
+      new CustomEvent<SearchCollectDetail>(VIEWER_EVENTS.searchCollect, {
+        detail: { highlightedOnly: true, query },
       }),
     );
   };
 
   const clearSearch = () => {
+    setHighlightedOnly(false);
     setQuery("");
     window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchClear));
   };
@@ -96,6 +110,19 @@ export function SearchBar() {
           onChange={(event) => setQuery(event.currentTarget.value)}
         />
       </form>
+      <Tooltip label="Search highlights only" side="bottom">
+        <Button
+          id="search-highlights-button"
+          aria-label="Search highlights only"
+          aria-pressed={highlightedOnly}
+          className={highlightedOnly ? "search-mode-active" : undefined}
+          variant="ghost"
+          size="icon"
+          onClick={toggleHighlightedOnly}
+        >
+          <i data-lucide="highlighter" />
+        </Button>
+      </Tooltip>
       <Tooltip label="Close search" side="bottom">
         <Button
           id="search-close-button"
