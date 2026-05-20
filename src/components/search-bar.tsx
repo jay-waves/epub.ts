@@ -9,8 +9,9 @@ import { ChevronLeft, ChevronRight, X, Highlighter } from "lucide-react"
 export function SearchBar() {
   const [highlightedOnly, setHighlightedOnly] = useState(false);
   const [query, setQuery] = useState("");
-  const [searchState, setSearchState] = useState<SearchUpdateDetail>({ canNavigate: false, countText: "0 / 0", placeholder: "Search text", visible: false });
+  const [searchState, setSearchState] = useState<SearchUpdateDetail>({ hitCount: 0, hitIndex: -1, placeholder: "Search text", visible: false });
   const inputRef = useRef<HTMLInputElement>(null);
+  const canNavigate = searchState.hitCount > 0;
 
   useEffect(() => {
     const handleOpen = () => {
@@ -48,7 +49,7 @@ export function SearchBar() {
       <Tooltip label="Previous result" side="bottom">
         <Button
           aria-label="Previous result"
-          disabled={!searchState.canNavigate}
+          disabled={!canNavigate}
           variant="ghost"
           size="icon"
           onClick={() => emitViewerEvent(VIEWER_EVENTS.searchPrevious)}
@@ -57,12 +58,12 @@ export function SearchBar() {
         </Button>
       </Tooltip>
       <span className="search-count">
-        {searchState.countText}
+        {canNavigate ? `${searchState.hitIndex + 1} / ${searchState.hitCount}` : "0 / 0"}
       </span>
       <Tooltip label="Next result" side="bottom">
         <Button
           aria-label="Next result"
-          disabled={!searchState.canNavigate}
+          disabled={!canNavigate}
           variant="ghost"
           size="icon"
           onClick={() => emitViewerEvent(VIEWER_EVENTS.searchNext)}

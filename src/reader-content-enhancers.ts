@@ -16,27 +16,12 @@ export function enhanceReaderContent(doc: Document, options: {
   isCurrent: () => boolean;
   runWhenIdle: (callback: () => void, timeout?: number) => void;
 }) {
-  options.runWhenIdle(() => {
+  options.runWhenIdle(async () => {
     if (!options.isCurrent()) return;
-    void beautifyCodeBlocks(doc);
-  }, 250);
-
-  options.runWhenIdle(() => {
-    if (!options.isCurrent()) return;
-    void beautifyImages(doc);
-  }, 400);
-
-  options.runWhenIdle(() => {
-    if (!options.isCurrent()) return;
+    await beautifyCodeBlocks(doc);
+    await beautifyImages(doc);
     labelFootnotes(doc);
-  }, 1500);
-}
-
-function trimCodeBlockTrailingWhitespace(doc: Document) {
-  const codeBlocks = doc.querySelectorAll<HTMLElement>("pre");
-  for (const block of codeBlocks) {
-    trimTrailingWhitespaceFromCodeBlock(block);
-  }
+  }, 500);
 }
 
 function ensureHighlightJs() {
@@ -95,7 +80,6 @@ async function beautifyImages(doc: Document) {
   if (!images.length) return;
 
   for (const image of images) {
-    applyReaderImageSizing(image);
     image.dataset.readerZoomEnhanced = "true";
     image.dataset.readerZoomable = "true";
     image.addEventListener("click", handleReaderImageClick, { passive: false });
@@ -223,15 +207,6 @@ function isZoomableImage(image: HTMLImageElement) {
   return true;
 }
 
-function applyReaderImageSizing(image: HTMLImageElement) {
-  image.style.setProperty("width", "auto", "important");
-  image.style.setProperty("inline-size", "auto", "important");
-  image.style.setProperty("max-width", "66.6667%", "important");
-  image.style.setProperty("max-inline-size", "66.6667%", "important");
-  image.style.setProperty("height", "auto", "important");
-  image.style.setProperty("block-size", "auto", "important");
-}
-
 function handleReaderImageClick(event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
@@ -272,19 +247,22 @@ function createReaderImageZoomProxy(image: HTMLImageElement) {
   proxy.alt = image.alt;
   proxy.decoding = "async";
   proxy.className = "reader-image-zoom-proxy";
-  proxy.style.position = "fixed";
-  proxy.style.top = `${frameRect.top + imageRect.top}px`;
-  proxy.style.left = `${frameRect.left + imageRect.left}px`;
-  proxy.style.width = `${imageRect.width}px`;
-  proxy.style.height = `${imageRect.height}px`;
-  proxy.style.maxWidth = "none";
-  proxy.style.maxInlineSize = "none";
-  proxy.style.pointerEvents = "none";
-  proxy.style.margin = "0";
-  proxy.style.transform = "translateZ(0)";
-  proxy.style.zIndex = "2147483646";
-  proxy.style.borderRadius = getComputedStyle(image).borderRadius;
-  proxy.style.objectFit = getComputedStyle(image).objectFit || "contain";
+  const imageStyle = getComputedStyle(image);
+  Object.assign(proxy.style, {
+    position: "fixed",
+    top: `${frameRect.top + imageRect.top}px`,
+    left: `${frameRect.left + imageRect.left}px`,
+    width: `${imageRect.width}px`,
+    height: `${imageRect.height}px`,
+    maxWidth: "none",
+    maxInlineSize: "none",
+    pointerEvents: "none",
+    margin: "0",
+    transform: "translateZ(0)",
+    zIndex: "2147483646",
+    borderRadius: imageStyle.borderRadius,
+    objectFit: imageStyle.objectFit || "contain",
+  });
 
   return proxy;
 }

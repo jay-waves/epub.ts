@@ -94,7 +94,7 @@
     line-height: 1rem;
     opacity: 0;
     pointer-events: none;
-    transform: scale(0.96);
+    transform: var(--tooltip-offset, none) scale(0.96);
     transition:
       opacity 120ms ease,
       transform 120ms ease;
@@ -104,29 +104,19 @@
   .reader-tooltip:hover::before,
   .reader-tooltip:focus-visible::before {
     opacity: 1;
-    transform: scale(1);
+    transform: var(--tooltip-offset, none) scale(1);
   }
 
   .reader-tooltip-right::before {
+    --tooltip-offset: translateY(-50%);
     left: calc(100% + 0.5rem);
     top: 50%;
-    transform: translateY(-50%) scale(0.96);
-  }
-
-  .reader-tooltip-right:hover::before,
-  .reader-tooltip-right:focus-visible::before {
-    transform: translateY(-50%) scale(1);
   }
 
   .reader-tooltip-bottom::before {
+    --tooltip-offset: translateX(-50%);
     left: 50%;
     top: calc(100% + 0.5rem);
-    transform: translateX(-50%) scale(0.96);
-  }
-
-  .reader-tooltip-bottom:hover::before,
-  .reader-tooltip-bottom:focus-visible::before {
-    transform: translateX(-50%) scale(1);
   }
 
   .reader-modal {
@@ -177,7 +167,6 @@
 
   .reader-app {
     @apply min-h-screen;
-    background: var(--reader-chrome-bg, #fbfaf7);
     color: var(--reader-chrome-fg, #1f2933);
   }
 
@@ -187,7 +176,8 @@
 
   .reader-dock,
   .search-nav,
-  .toc-modal-box {
+  .toc-modal-box,
+  .reader-context-menu {
     border-color: var(--reader-glass-border);
     background-color: var(--reader-glass-bg) !important;
     box-shadow: var(--reader-glass-shadow);
@@ -223,11 +213,6 @@
     @apply size-5;
   }
 
-  .reader-dock button:hover {
-    background-color: var(--reader-control-hover-bg);
-    color: var(--reader-control-hover-fg);
-  }
-
   .reader-dock button.dock-active {
     @apply bg-sky-600 text-white shadow-md;
   }
@@ -238,19 +223,16 @@
 
   .reader-stage {
     @apply flex min-h-screen p-0;
-    background: var(--reader-chrome-bg, #fbfaf7);
   }
 
   .reader-frame {
     @apply min-h-screen flex-1 overflow-hidden;
-    background: var(--reader-chrome-bg, #fffefd);
   }
 
   .reader-frame > foliate-view {
     width: 100%;
     height: 100%;
     display: block;
-    background: var(--reader-chrome-bg, #fffefd);
   }
 
   .reader-frame > foliate-view::part(container),
@@ -309,16 +291,12 @@
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 22%, transparent);
   }
 
-  .reader-progress-shell:hover .reader-progress-float,
-  .reader-progress-shell:focus-within .reader-progress-float,
-  .reader-progress-shell:has(.reader-progress.is-dragging) .reader-progress-float {
+  .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress.is-dragging)) .reader-progress-float {
     opacity: 0.96;
     transform: translateY(-0.55rem);
   }
 
-  .reader-progress:hover .reader-progress-track,
-  .reader-progress:focus-visible .reader-progress-track,
-  .reader-progress.is-dragging .reader-progress-track {
+  .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-track {
     @apply h-2 rounded-lg;
     box-shadow: 0 6px 14px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 9%, transparent);
   }
@@ -354,11 +332,6 @@
   .reader-context-menu {
     @apply fixed z-50 grid min-w-32 gap-0.5 rounded-md border p-1;
     color: var(--reader-chrome-fg, #1f2933);
-    border-color: var(--reader-border-subtle);
-    background-color: var(--reader-glass-bg) !important;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
-    backdrop-filter: var(--reader-glass-filter);
-    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
   .reader-context-menu-item {
@@ -390,15 +363,11 @@
     @apply pointer-events-none opacity-40;
   }
 
-  .reader-progress:hover .reader-progress-fill,
-  .reader-progress:focus-visible .reader-progress-fill,
-  .reader-progress.is-dragging .reader-progress-fill {
+  .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-fill {
     @apply h-3 rounded-lg;
   }
 
-  .reader-progress-shell:hover .reader-progress-history-marker,
-  .reader-progress-shell:focus-within .reader-progress-history-marker,
-  .reader-progress-shell:has(.reader-progress.is-dragging) .reader-progress-history-marker {
+  .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress.is-dragging)) .reader-progress-history-marker {
     @apply h-2.5 w-2.5;
   }
 
@@ -415,11 +384,6 @@
     @apply grid h-9 min-h-9 w-9 place-items-center rounded-lg p-0 transition-colors duration-150;
     color: var(--reader-control-fg);
     line-height: 1;
-  }
-
-  .search-nav button:hover {
-    color: var(--reader-control-hover-fg);
-    background-color: var(--reader-control-hover-bg);
   }
 
   .search-nav button.search-mode-active,
@@ -518,20 +482,13 @@
   .toc-link[aria-current="page"] {
     @apply font-semibold;
     color: var(--reader-control-strong-fg);
-    background-color: transparent;
-    box-shadow: none;
+    text-decoration-line: underline;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.24em;
   }
 
   .toc-link-label {
     @apply flex-1 whitespace-nowrap rounded px-1 py-0.5 transition-all duration-150;
-  }
-
-  .toc-link[aria-current="page"] .toc-link-label {
-    background-color: transparent;
-    box-shadow: none;
-    text-decoration-line: underline;
-    text-decoration-thickness: 0.08em;
-    text-underline-offset: 0.24em;
   }
 
   .toc-link-primary {
@@ -549,16 +506,8 @@
     max-height: calc(100vh - 2rem);
   }
 
-  #toc-modal,
-  #toc-modal[open] {
-    background-color: var(--reader-glass-bg) !important;
-  }
-
   #toc-modal::backdrop {
-    background: transparent !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+    background: transparent;
   }
 }
 

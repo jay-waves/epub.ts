@@ -25,10 +25,9 @@ export function createSearchController(options: {
   };
 
   const updateNav = (visible = searchHits.length > 0) => {
-    const hasHits = searchHits.length > 0;
     emitUpdate({
-      canNavigate: hasHits,
-      countText: hasHits ? `${searchHitIndex + 1} / ${searchHits.length}` : "0 / 0",
+      hitCount: searchHits.length,
+      hitIndex: searchHitIndex,
       placeholder: "Search text",
       visible,
     });
@@ -88,8 +87,8 @@ export function createSearchController(options: {
       await showHit(0);
     } else {
       emitUpdate({
-        canNavigate: false,
-        countText: "0 / 0",
+        hitCount: 0,
+        hitIndex: -1,
         placeholder: searchOptions.query ? `No highlights for: ${searchOptions.query}` : "No highlights saved",
         visible: true,
       });
@@ -142,8 +141,8 @@ export function createSearchController(options: {
         await showHit(0);
       } else {
         emitUpdate({
-          canNavigate: false,
-          countText: "0 / 0",
+          hitCount: 0,
+          hitIndex: -1,
           placeholder: `No results for: ${searchOptions.query}`,
           visible: true,
         });

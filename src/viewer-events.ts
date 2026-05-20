@@ -57,8 +57,8 @@ export type SearchCollectDetail = {
 };
 
 export type SearchUpdateDetail = {
-  canNavigate: boolean;
-  countText: string;
+  hitCount: number;
+  hitIndex: number;
   placeholder: string;
   visible: boolean;
 };

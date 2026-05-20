@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import type { TocItem } from "../viewer-types";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { TocUpdateDetail } from "../viewer-events";
+import { normalizeTocHref } from "../toc-controller";
 import { Dialog } from "./ui/dialog";
 
 export function TocPage() {
@@ -143,14 +144,7 @@ function containsHref(items: TocItem[], href: string): boolean {
 
 function isMatchingHref(linkHref?: string, currentHref?: string) {
   if (!linkHref || !currentHref) return false;
-  if (linkHref === currentHref) return true;
-  try {
-    const linkUrl = new URL(linkHref, "https://reader.local/");
-    const currentUrl = new URL(currentHref, "https://reader.local/");
-    return linkUrl.pathname === currentUrl.pathname && linkUrl.hash === currentUrl.hash;
-  } catch {
-    return false;
-  }
+  return normalizeTocHref(linkHref) === normalizeTocHref(currentHref);
 }
 
 function scrollCurrentItemIntoView(root: HTMLElement | null) {
