@@ -26,11 +26,17 @@ EPUB 阅读器，Chrome 浏览器插件。
 * 目录以及快速跳转进度条
 * 搜索：全文搜索，仅搜索高亮文本
 
-##### 展示
+#### 展示
+
+目录功能：
 
 <img src="assets/toc.png" width=800>
 
+搜索功能：
+
 <img src="assets/search.png" width=800>
+
+Dock 工具栏：（自动隐藏）
 
 <img src="assets/dock.png" width=800>
 
