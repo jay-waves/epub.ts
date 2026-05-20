@@ -5,7 +5,6 @@ import {
   applyReaderFontSize,
   applyReaderLayoutLevel,
   applyReaderLayout,
-  applyReaderTheme,
   changeReaderFontSize,
   changeReaderFlow,
   changeReaderLayoutLevel,
@@ -16,46 +15,45 @@ import {
   READER_MONO_FONT_FAMILY,
   READER_MONO_FONT_URL,
   READER_LAYOUT_LEVEL_STEP,
-  READER_THEMES,
   resolveReaderLayoutLevel,
 } from "./reader-settings";
+import {
+  applyReaderTheme,
+  getNextReaderTheme,
+  getReaderTheme,
+  getReaderThemeIndex,
+} from "./reader-themes";
+import { deriveBookKey, formatLocalized } from "./book-key";
 import { createHighlightController } from "./highlight-controller";
+import { createReaderDocumentCache } from "./reader-document-cache";
+import { enhanceReaderContent } from "./reader-content-enhancers";
 import { createSearchController } from "./search-controller";
-import { normalizeTocItems } from "./toc-controller";
+import { createDebouncedTask, runWhenIdle } from "./scheduler";
+import { normalizeTocHref, normalizeTocItems } from "./toc-controller";
 import { App } from "./app";
 import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
-import { VIEWER_EVENTS } from "./viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
 import { runtime } from "./viewer-runtime";
 import { state } from "./viewer-state";
 import {
   getSavedPosition,
   getSavedReaderSettings,
+  reconcileBookStorage,
   saveReaderSettings,
   saveReadingPosition,
 } from "./viewer-storage";
 import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
-import type { DockActionDetail, DockUpdateDetail, HighlightContextActionDetail, PageTurnDetail, SearchCollectDetail, TocNavigateDetail } from "./viewer-events";
+import type { DockAction, DockUpdateDetail } from "./viewer-events";
 import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing required element: #app");
 
-type HighlightJs = import("./code-highlighter").HighlightJs;
-type MediumZoomFactory = typeof import("medium-zoom").default;
-type MediumZoomInstance = ReturnType<MediumZoomFactory>;
-
-let readingProgressElements: ReadingProgressElements | null = null;
-let highlightJsReady: Promise<HighlightJs> | null = null;
-let mediumZoomReady: Promise<MediumZoomFactory> | null = null;
-let readerImageZoom: MediumZoomInstance | null = null;
-let activeZoomProxy: HTMLImageElement | null = null;
-
 function mountReadingProgressController(elements: ReadingProgressElements | null) {
   runtime.readingProgressController?.destroy?.();
   runtime.readingProgressController = null;
-  readingProgressElements = elements;
   if (!elements) return;
 
   runtime.readingProgressController = createReadingProgressController({
@@ -92,6 +90,7 @@ const defaultReaderSettings: ReaderSettings = {
   layoutLevel: 2,
   theme: "light",
 };
+
 runtime.highlightController = createHighlightController({
   getBookKey: () => state.currentBookKey,
   getProgress: () => runtime.readingProgressController?.getProgress() ?? 0,
@@ -103,6 +102,7 @@ function ensureKeybindings() {
   runtime.keybindings ??= setupViewerKeybindings({
     getReaderView: () => runtime.readerView,
     getFlow: () => state.flow,
+    canTurnPage: () => !document.body.classList.contains("reader-image-zoom-open"),
     openSearch,
     closeSearch: clearSearchState,
   });
@@ -119,21 +119,10 @@ function ensureSearchController() {
 }
 
 function emitTocUpdate() {
-  window.dispatchEvent(
-    new CustomEvent(VIEWER_EVENTS.tocUpdate, {
-      detail: {
-        currentHref: state.currentHref,
-        items: runtime.tocItems,
-      },
-    }),
-  );
-}
-
-function formatLocalized(value?: string | Record<string, string>) {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  const [firstKey] = Object.keys(value);
-  return firstKey ? value[firstKey] : "";
+  emitViewerEvent(VIEWER_EVENTS.tocUpdate, {
+    currentHref: state.currentHref,
+    items: runtime.tocItems,
+  });
 }
 
 function preloadReaderFonts() {
@@ -157,15 +146,6 @@ function preloadReaderFonts() {
     });
 
   return runtime.readerFontsReady;
-}
-
-function runWhenIdle(callback: () => void, timeout = 500) {
-  const requestIdle = globalThis.requestIdleCallback;
-  if (requestIdle) {
-    requestIdle(callback, { timeout });
-    return;
-  }
-  globalThis.setTimeout(callback, 0);
 }
 
 function installFoliateScrollbarPatch() {
@@ -218,75 +198,74 @@ function resolveRelocateSectionIndex(detail: RelocateDetail) {
   if (typeof detail.index === "number") return detail.index;
 
   const href = detail.tocItem?.href;
-  if (!href || !runtime.tocItems.length) return undefined;
+  if (!href || !runtime.tocSectionHrefs.length) return undefined;
 
-  const sectionHrefs = collectSectionHrefs(runtime.tocItems);
-  const currentHref = normalizeSectionHref(href);
+  const currentHref = normalizeTocHref(href);
   if (!currentHref) return undefined;
 
-  const index = sectionHrefs.findIndex((item) => item === currentHref);
+  const index = runtime.tocSectionHrefs.findIndex((item) => item === currentHref);
   return index >= 0 ? index : undefined;
 }
 
-function collectSectionHrefs(items: typeof runtime.tocItems, sections: string[] = []) {
+function collectSectionHrefs(items: typeof runtime.tocItems, sections: string[] = [], seen = new Set<string>()) {
   for (const item of items) {
-    const href = normalizeSectionHref(item.href);
-    if (href && !sections.includes(href)) sections.push(href);
-    if (item.subitems?.length) collectSectionHrefs(item.subitems, sections);
+    const href = normalizeTocHref(item.href);
+    if (href && !seen.has(href)) {
+      seen.add(href);
+      sections.push(href);
+    }
+    if (item.subitems?.length) collectSectionHrefs(item.subitems, sections, seen);
   }
   return sections;
 }
 
-function normalizeSectionHref(href?: string) {
-  if (!href) return "";
-
-  try {
-    const url = new URL(href, "https://reader.local/");
-    return `${url.pathname}${url.hash}`;
-  } catch {
-    return href.trim();
+const savePositionTask = createDebouncedTask((detail: RelocateDetail) => {
+  if (state.currentBookKey) {
+    void saveReadingPosition(state.currentBookKey, detail);
   }
-}
+}, 350);
 
 function queuePositionSave(detail: RelocateDetail) {
   if (!state.currentBookKey || state.isRestoring) return;
+  savePositionTask.schedule(detail);
+}
 
-  window.clearTimeout(runtime.savePositionTimer);
-  runtime.savePositionTimer = window.setTimeout(() => {
-    void saveReadingPosition(state.currentBookKey, detail);
-  }, 350);
+const highlightContextBindTask = createDebouncedTask((view: FoliateViewElement) => {
+  runWhenIdle(() => {
+    if (runtime.readerView === view) runtime.highlightController?.bindContextTargets();
+  }, 250);
+}, 120);
+
+function queueHighlightContextBind(view: FoliateViewElement) {
+  highlightContextBindTask.schedule(view);
 }
 
 function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", (event) => {
-    const { doc } = (event as CustomEvent<{ doc?: Document }>).detail;
+    const { doc, index } = (event as CustomEvent<{ doc?: Document; index?: number }>).detail;
     if (!doc) return;
 
-    trimCodeBlockTrailingWhitespace(doc);
+    enhanceReaderContent(doc, {
+      isCurrent: () => runtime.readerView === view,
+      runWhenIdle,
+    });
     runWhenIdle(() => {
       if (runtime.readerView !== view) return;
-      void beautifyCodeBlocks(doc);
-    }, 250);
-
-    runWhenIdle(() => {
-      if (runtime.readerView !== view) return;
-      void beautifyImages(doc);
-    }, 400);
-
-    runWhenIdle(() => {
-      if (runtime.readerView !== view) return;
-      labelFootnotes(doc);
-    }, 1500);
+      runtime.readerDocumentCache?.prepareAround(index);
+    }, 700);
   });
 
   view.addEventListener("relocate", (event) => {
     const detail = (event as CustomEvent<RelocateDetail>).detail;
 
-    state.currentHref = detail.tocItem?.href ?? "";
-    emitTocUpdate();
+    const currentHref = detail.tocItem?.href ?? "";
+    if (currentHref !== state.currentHref) {
+      state.currentHref = currentHref;
+      emitTocUpdate();
+    }
     updatePageStatus(detail);
     queuePositionSave(detail);
-    runtime.highlightController?.bindContextTargets();
+    queueHighlightContextBind(view);
   });
 
   view.addEventListener("create-overlay", (event) => {
@@ -303,351 +282,6 @@ function wireReaderEvents(view: FoliateViewElement) {
   });
 }
 
-function trimCodeBlockTrailingWhitespace(doc: Document) {
-  const codeBlocks = doc.querySelectorAll<HTMLElement>("pre");
-  for (const block of codeBlocks) {
-    trimTrailingWhitespaceFromCodeBlock(block);
-  }
-}
-
-function ensureHighlightJs() {
-  highlightJsReady ??= import("./code-highlighter").then((module) => module.ensureHighlightJs());
-  return highlightJsReady;
-}
-
-function ensureMediumZoom() {
-  mediumZoomReady ??= import("medium-zoom").then((module) => module.default);
-  return mediumZoomReady;
-}
-
-async function ensureReaderImageZoom() {
-  if (readerImageZoom) return readerImageZoom;
-
-  const mediumZoom = await ensureMediumZoom();
-  readerImageZoom = mediumZoom({
-    background: "color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, rgb(15 23 42) 28%)",
-    margin: 28,
-    scrollOffset: 24,
-  });
-  readerImageZoom.on("open", () => {
-    runtime.isImageZoomOpen = true;
-    document.body.classList.add("reader-image-zoom-open");
-  });
-  readerImageZoom.on("closed", () => {
-    runtime.isImageZoomOpen = false;
-    document.body.classList.remove("reader-image-zoom-open");
-    activeZoomProxy?.remove();
-    activeZoomProxy = null;
-  });
-
-  return readerImageZoom;
-}
-
-async function beautifyCodeBlocks(doc: Document) {
-  const codeBlocks = Array.from(doc.querySelectorAll<HTMLElement>("pre"));
-  if (!codeBlocks.length) return;
-
-  const hljs = await ensureHighlightJs();
-  for (const block of codeBlocks) {
-    beautifyCodeBlock(block, hljs);
-  }
-}
-
-async function beautifyImages(doc: Document) {
-  const images = Array.from(doc.querySelectorAll<HTMLImageElement>("img")).filter(isZoomableImage);
-  if (!images.length) return;
-
-  for (const image of images) {
-    applyReaderImageSizing(image);
-    image.dataset.readerZoomEnhanced = "true";
-    image.dataset.readerZoomable = "true";
-    image.addEventListener("click", handleReaderImageClick, { passive: false });
-  }
-}
-
-function beautifyCodeBlock(block: HTMLElement, hljs: HighlightJs) {
-  if (block.dataset.readerCodeEnhanced === "true") return;
-
-  const source = extractCodeBlockText(block);
-  if (!source.trim()) {
-    block.dataset.readerCodeEnhanced = "true";
-    return;
-  }
-
-  const target = resolveCodeBlockTrimTarget(block);
-  const language = resolveHighlightLanguage(block, target, hljs);
-  const result = language
-    ? hljs.highlight(source, { ignoreIllegals: true, language })
-    : hljs.highlightAuto(source);
-
-  block.innerHTML = result.value;
-  block.classList.add("hljs");
-  if (result.language) block.dataset.highlightLanguage = result.language;
-  block.dataset.readerCodeEnhanced = "true";
-}
-
-function extractCodeBlockText(block: HTMLElement) {
-  const target = resolveCodeBlockTrimTarget(block);
-  const structuralText = collectCodeText(target);
-  const renderedText = target.innerText || "";
-
-  return countLineBreaks(renderedText) > countLineBreaks(structuralText)
-    ? renderedText
-    : structuralText;
-}
-
-function collectCodeText(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-  if (node.nodeType !== Node.ELEMENT_NODE) return "";
-
-  const element = node as HTMLElement;
-  if (element.tagName === "BR") return "\n";
-
-  let output = "";
-  for (const child of element.childNodes) output += collectCodeText(child);
-  return output;
-}
-
-function countLineBreaks(value: string) {
-  return value.match(/\n/gu)?.length ?? 0;
-}
-
-function trimTrailingWhitespaceFromCodeBlock(block: HTMLElement) {
-  const target = resolveCodeBlockTrimTarget(block);
-  if (!target) return;
-
-  while (target.lastChild?.nodeType === Node.TEXT_NODE) {
-    const lastTextNode = target.lastChild as Text;
-    const trimmedValue = lastTextNode.data.replace(/(?:\r?\n[^\S\r\n]*)+$/u, "");
-    if (trimmedValue === lastTextNode.data) break;
-    if (trimmedValue) {
-      lastTextNode.data = trimmedValue;
-      break;
-    }
-    target.removeChild(lastTextNode);
-  }
-
-  while (target.lastChild?.nodeType === Node.TEXT_NODE && !(target.lastChild as Text).data.trim()) {
-    target.removeChild(target.lastChild);
-  }
-}
-
-function resolveCodeBlockTrimTarget(block: HTMLElement) {
-  if (block.childElementCount !== 1) return block;
-
-  const onlyChild = block.firstElementChild;
-  if (onlyChild?.tagName !== "CODE") return block;
-
-  return onlyChild as HTMLElement;
-}
-
-function resolveHighlightLanguage(block: HTMLElement, codeElement: HTMLElement, hljs: HighlightJs) {
-  const candidates = [
-    codeElement.getAttribute("data-language"),
-    block.getAttribute("data-language"),
-    codeElement.className,
-    block.className,
-  ].filter(Boolean) as string[];
-
-  for (const value of candidates) {
-    const language = extractLanguageCandidate(value, hljs);
-    if (language) return language;
-  }
-
-  return undefined;
-}
-
-function extractLanguageCandidate(value: string, hljs: HighlightJs) {
-  const normalized = value.toLowerCase();
-  const matcher = /(?:language-|lang-)([a-z0-9_+#-]+)/giu;
-  for (const match of normalized.matchAll(matcher)) {
-    const candidate = match[1];
-    if (candidate && hljs.getLanguage(candidate)) return candidate;
-  }
-
-  for (const token of normalized.split(/\s+/u)) {
-    const candidate = token.replace(/^[^a-z0-9]+|[^a-z0-9+#-]+$/giu, "");
-    if (candidate && hljs.getLanguage(candidate)) return candidate;
-  }
-
-  return undefined;
-}
-
-function isZoomableImage(image: HTMLImageElement) {
-  if (image.dataset.readerZoomEnhanced === "true") return false;
-  if (image.closest("[data-reader-footnote-target='true']")) return false;
-  if (image.closest("a[role~='doc-noteref'], a[epub\\:type~='noteref']")) return false;
-  if (image.closest("button, input, label, summary")) return false;
-
-  const renderedWidth = image.getBoundingClientRect().width || image.width;
-  const renderedHeight = image.getBoundingClientRect().height || image.height;
-  if (renderedWidth && renderedHeight && renderedWidth < 48 && renderedHeight < 48) return false;
-
-  return true;
-}
-
-function applyReaderImageSizing(image: HTMLImageElement) {
-  image.style.setProperty("width", "auto", "important");
-  image.style.setProperty("inline-size", "auto", "important");
-  image.style.setProperty("max-width", "61.8%", "important");
-  image.style.setProperty("max-inline-size", "61.8%", "important");
-  image.style.setProperty("height", "auto", "important");
-  image.style.setProperty("block-size", "auto", "important");
-}
-
-function handleReaderImageClick(event: MouseEvent) {
-  event.preventDefault();
-  event.stopPropagation();
-  void openReaderImageZoom(event.currentTarget as HTMLImageElement);
-}
-
-async function openReaderImageZoom(image: HTMLImageElement) {
-  const zoom = await ensureReaderImageZoom();
-  const proxy = createReaderImageZoomProxy(image);
-  if (!proxy) return;
-
-  if (activeZoomProxy) {
-    try {
-      readerImageZoom?.detach(activeZoomProxy);
-    } catch {
-      // noop
-    }
-    activeZoomProxy.remove();
-  }
-
-  activeZoomProxy = proxy;
-  document.body.appendChild(proxy);
-  zoom.attach(proxy);
-  await ensureImageReady(proxy);
-  await zoom.open({ target: proxy });
-}
-
-function createReaderImageZoomProxy(image: HTMLImageElement) {
-  const frameElement = image.ownerDocument.defaultView?.frameElement;
-  if (!(frameElement instanceof Element)) return null;
-
-  const imageRect = image.getBoundingClientRect();
-  const frameRect = frameElement.getBoundingClientRect();
-  const proxy = document.createElement("img");
-  const source = image.currentSrc || image.src;
-
-  proxy.src = source;
-  proxy.alt = image.alt;
-  proxy.decoding = "async";
-  proxy.className = "reader-image-zoom-proxy";
-  proxy.style.position = "fixed";
-  proxy.style.top = `${frameRect.top + imageRect.top}px`;
-  proxy.style.left = `${frameRect.left + imageRect.left}px`;
-  proxy.style.width = `${imageRect.width}px`;
-  proxy.style.height = `${imageRect.height}px`;
-  proxy.style.maxWidth = "none";
-  proxy.style.maxInlineSize = "none";
-  proxy.style.pointerEvents = "none";
-  proxy.style.margin = "0";
-  proxy.style.transform = "translateZ(0)";
-  proxy.style.zIndex = "2147483646";
-  proxy.style.borderRadius = getComputedStyle(image).borderRadius;
-  proxy.style.objectFit = getComputedStyle(image).objectFit || "contain";
-
-  return proxy;
-}
-
-async function ensureImageReady(image: HTMLImageElement) {
-  if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) return;
-
-  try {
-    await image.decode();
-    return;
-  } catch {
-    // Fall through to load/error events for browsers or image types decode() cannot resolve.
-  }
-
-  await new Promise<void>((resolve) => {
-    const cleanup = () => {
-      image.removeEventListener("load", handleDone);
-      image.removeEventListener("error", handleDone);
-    };
-    const handleDone = () => {
-      cleanup();
-      resolve();
-    };
-
-    image.addEventListener("load", handleDone, { once: true });
-    image.addEventListener("error", handleDone, { once: true });
-  });
-}
-
-function getFootnoteTargets(doc: Document) {
-  return Array.from(
-    doc.querySelectorAll<HTMLElement>(
-      [
-        `aside[epub\\:type~="footnote"]`,
-        `aside[epub\\:type~="endnote"]`,
-        `aside[epub\\:type~="rearnote"]`,
-        `aside[role~="doc-footnote"]`,
-        `aside[role~="doc-endnote"]`,
-        `li[epub\\:type~="footnote"]`,
-        `li[epub\\:type~="endnote"]`,
-        `li[epub\\:type~="rearnote"]`,
-        `li[role~="doc-footnote"]`,
-        `li[role~="doc-endnote"]`,
-      ].join(","),
-    ),
-  );
-}
-
-function getEpubType(element: Element) {
-  return element.getAttributeNS("http://www.idpf.org/2007/ops", "type")
-    || element.getAttribute("epub:type")
-    || "";
-}
-
-function isNoteref(anchor: HTMLAnchorElement) {
-  return getEpubType(anchor).split(/\s+/).includes("noteref")
-    || anchor.getAttribute("role")?.split(/\s+/).includes("doc-noteref")
-    || false;
-}
-
-function getFootnoteReferenceAnchors(doc: Document) {
-  return Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]")).filter(isNoteref);
-}
-
-function normalizeFootnoteLabel(value: string | undefined, fallbackIndex: number) {
-  const marker = value?.replace(/\s+/g, " ").trim().match(/^\[?(\d+)\]?/)?.[1];
-  const label = marker || String(fallbackIndex);
-  return /^\[.*\]$/.test(label) ? label : `[${label}]`;
-}
-
-function labelFootnotes(doc: Document) {
-  if (runtime.footnotesLabeledDocs.has(doc)) return;
-
-  const labelsByTargetId = new Map<string, string>();
-  getFootnoteReferenceAnchors(doc).forEach((anchor, index) => {
-    const href = anchor.getAttribute("href")?.trim();
-    if (!href?.startsWith("#")) return;
-
-    const targetId = decodeURIComponent(href.slice(1));
-    const label = normalizeFootnoteLabel(anchor.textContent || anchor.querySelector("img")?.getAttribute("alt") || undefined, index + 1);
-    labelsByTargetId.set(targetId, label);
-    anchor.dataset.footnoteLabel = label;
-  });
-
-  for (const [targetId, label] of labelsByTargetId) {
-    const target = doc.getElementById(targetId);
-    if (!target) continue;
-    target.dataset.readerFootnoteTarget = "true";
-    target.dataset.footnoteLabel = label;
-  }
-
-  getFootnoteTargets(doc).forEach((element, index) => {
-    element.dataset.readerFootnoteTarget = "true";
-    element.dataset.footnoteLabel = labelsByTargetId.get(element.id)
-      || normalizeFootnoteLabel(element.textContent || undefined, index + 1);
-  });
-
-  runtime.footnotesLabeledDocs.add(doc);
-}
-
 async function ensureFileSchemeAccess(fileUrl?: string) {
   if (!fileUrl?.startsWith("file://")) return true;
 
@@ -661,8 +295,8 @@ async function ensureFileSchemeAccess(fileUrl?: string) {
 }
 
 function getDockUpdateDetail(): DockUpdateDetail {
-  const theme = READER_THEMES.find((item) => item.id === state.readerTheme) ?? READER_THEMES[0]!;
-  const themeIndex = READER_THEMES.findIndex((item) => item.id === theme.id);
+  const theme = getReaderTheme();
+  const themeIndex = getReaderThemeIndex();
   const isPaginated = state.flow === "paginated";
 
   return {
@@ -673,12 +307,11 @@ function getDockUpdateDetail(): DockUpdateDetail {
     searchActive: runtime.isSearchOpen,
     themeActive: theme.mode === "dark",
     themeCount: String(themeIndex + 1),
-    themeLabel: `Change theme`,
   };
 }
 
 function emitDockUpdate() {
-  window.dispatchEvent(new CustomEvent<DockUpdateDetail>(VIEWER_EVENTS.dockUpdate, { detail: getDockUpdateDetail() }));
+  emitViewerEvent(VIEWER_EVENTS.dockUpdate, getDockUpdateDetail());
 }
 
 function deriveDownloadFilename(sourceUrl: string) {
@@ -723,7 +356,7 @@ function saveCurrentReaderSettings() {
 function openSearch() {
   ensureSearchController();
   runtime.isSearchOpen = true;
-  window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchOpen));
+  emitViewerEvent(VIEWER_EVENTS.searchOpen);
   emitDockUpdate();
 }
 
@@ -737,9 +370,12 @@ function toggleSearch() {
 }
 
 function resetTransientBookState() {
-  window.clearTimeout(runtime.savePositionTimer);
+  savePositionTask.cancel();
+  highlightContextBindTask.cancel();
   clearSearchState();
+  runtime.readerDocumentCache?.reset();
   runtime.tocItems = [];
+  runtime.tocSectionHrefs = [];
   emitTocUpdate();
   runtime.highlightController?.reset();
   runtime.readingProgressController?.setHistoryProgress(null);
@@ -768,22 +404,7 @@ function createView() {
 async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: ReadingPosition) {
   state.isRestoring = true;
   try {
-    if (!savedPosition) {
-      await view.init({ showTextStart: true });
-      return;
-    }
-
-    if (savedPosition.cfi) {
-      await view.init({ lastLocation: savedPosition.cfi });
-      return;
-    }
-
-    if (typeof savedPosition.fraction === "number") {
-      await view.init({ lastLocation: { fraction: savedPosition.fraction } });
-      return;
-    }
-
-    await view.init({ showTextStart: true });
+    await view.init(getSavedPositionInitOptions(savedPosition));
   } catch (error) {
     console.warn("Failed to restore saved reading position.", error);
     await view.init({ showTextStart: true });
@@ -792,8 +413,15 @@ async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: Re
   }
 }
 
+function getSavedPositionInitOptions(savedPosition?: ReadingPosition): Parameters<FoliateViewElement["init"]>[0] {
+  if (savedPosition?.cfi) return { lastLocation: savedPosition.cfi };
+  if (typeof savedPosition?.fraction === "number") return { lastLocation: { fraction: savedPosition.fraction } };
+  return { showTextStart: true };
+}
+
 async function openBook(input: File | string, sourceLabel: string) {
   const fileUrl = typeof input === "string" ? input : undefined;
+  const legacyBookKey = fileUrl ?? "";
   const canRead = await ensureFileSchemeAccess(fileUrl);
   if (!canRead) return;
 
@@ -804,13 +432,17 @@ async function openBook(input: File | string, sourceLabel: string) {
   }
 
   try {
-    state.currentBookKey = fileUrl ?? "";
+    state.currentBookKey = legacyBookKey;
     state.currentSourceUrl = fileUrl ?? "";
     emitDockUpdate();
     resetTransientBookState();
     if (runtime.readerView.book) runtime.readerView.close();
     void preloadReaderFonts();
     await runtime.readerView.open(input);
+    runtime.readerDocumentCache = createReaderDocumentCache();
+    runtime.readerDocumentCache.setBook(runtime.readerView.book ?? null);
+    state.currentBookKey = await deriveBookKey(runtime.readerView.book, legacyBookKey);
+    await reconcileBookStorage(state.currentBookKey, [legacyBookKey]);
     applyReaderSettings(
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
     );
@@ -835,11 +467,6 @@ function readSourceFromQuery() {
 }
 
 function setupCriticalInteractions() {
-  window.addEventListener(VIEWER_EVENTS.pageTurn, (event) => {
-    if (runtime.isImageZoomOpen) return;
-    turnPage((event as CustomEvent<PageTurnDetail>).detail.direction);
-  });
-
   window.addEventListener("resize", () => {
     if (runtime.readerView) applyReaderLayout(runtime.readerView, readerRoot);
     runtime.highlightController?.close();
@@ -852,51 +479,35 @@ function setupCriticalInteractions() {
   });
 }
 
-function turnPage(direction: PageTurnDetail["direction"]) {
-  if (state.flow === "paginated") {
-    void (direction === "left" ? runtime.readerView?.goLeft?.() : runtime.readerView?.goRight?.());
-    return;
-  }
-
-  const isRtl = runtime.readerView?.book?.dir === "rtl";
-  const shouldGoNext = direction === "left" ? isRtl : !isRtl;
-  void (shouldGoNext ? runtime.readerView?.renderer?.nextSection?.() : runtime.readerView?.renderer?.prevSection?.());
-}
-
 function setupExtraInteractions() {
-  window.addEventListener(VIEWER_EVENTS.tocNavigate, (event) => {
-    const { href } = (event as CustomEvent<TocNavigateDetail>).detail;
+  listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
     if (!href) return;
     void runtime.readerView?.goTo(href);
   });
-  window.addEventListener(VIEWER_EVENTS.searchCollect, (event) => {
-    const { highlightedOnly, query } = (event as CustomEvent<SearchCollectDetail>).detail;
+  listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
     void ensureSearchController().collect(query, { highlightedOnly });
   });
-  window.addEventListener(VIEWER_EVENTS.searchPrevious, () => {
+  listenViewerEvent(VIEWER_EVENTS.searchPrevious, () => {
     void ensureSearchController().showPrevious();
   });
-  window.addEventListener(VIEWER_EVENTS.searchNext, () => {
+  listenViewerEvent(VIEWER_EVENTS.searchNext, () => {
     void ensureSearchController().showNext();
   });
-  window.addEventListener(VIEWER_EVENTS.searchClear, () => {
+  listenViewerEvent(VIEWER_EVENTS.searchClear, () => {
     clearSearchState();
   });
-  window.addEventListener(VIEWER_EVENTS.highlightContextAction, (event) => {
-    const { action } = (event as CustomEvent<HighlightContextActionDetail>).detail;
+  listenViewerEvent(VIEWER_EVENTS.highlightContextAction, (action) => {
     runtime.highlightController?.handleContextAction(action);
   });
 
-  window.addEventListener(VIEWER_EVENTS.dockAction, (event) => {
-    handleDockAction((event as CustomEvent<DockActionDetail>).detail.action);
-  });
+  listenViewerEvent(VIEWER_EVENTS.dockAction, handleDockAction);
 
 }
 
-function handleDockAction(action: DockActionDetail["action"]) {
+function handleDockAction(action: DockAction) {
   if (action === "open-toc") {
     emitTocUpdate();
-    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.tocOpen));
+    emitViewerEvent(VIEWER_EVENTS.tocOpen);
     return;
   }
 
@@ -913,8 +524,7 @@ function handleDockAction(action: DockActionDetail["action"]) {
   }
 
   if (action === "toggle-theme") {
-    const currentIndex = READER_THEMES.findIndex((theme) => theme.id === state.readerTheme);
-    const nextTheme = READER_THEMES[(currentIndex + 1) % READER_THEMES.length]!;
+    const nextTheme = getNextReaderTheme();
     applyReaderTheme(nextTheme.id);
     runtime.readerView?.renderer?.setStyles?.(getBookStyles());
     saveCurrentReaderSettings();
@@ -961,17 +571,13 @@ function setupExtraUi() {
   setupExtraInteractions();
 }
 
-function scheduleExtraUiSetup() {
-  runWhenIdle(setupExtraUi, 1000);
-}
-
 function schedulePostLoadTasks(view: FoliateViewElement, bookKey: string) {
   const taskToken = ++runtime.postLoadTaskToken;
 
   requestAnimationFrame(() => {
     if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
 
-    scheduleExtraUiSetup();
+    runWhenIdle(setupExtraUi, 1000);
 
     runWhenIdle(() => {
       if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
@@ -982,6 +588,7 @@ function schedulePostLoadTasks(view: FoliateViewElement, bookKey: string) {
     runWhenIdle(() => {
       if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
       runtime.tocItems = normalizeTocItems(view.book?.toc);
+      runtime.tocSectionHrefs = collectSectionHrefs(runtime.tocItems);
       emitTocUpdate();
     }, 2000);
   });
@@ -999,7 +606,7 @@ async function bootstrap() {
     void openBook(src, src.split("/").pop() || src);
   } else {
     void preloadReaderFonts();
-    scheduleExtraUiSetup();
+    runWhenIdle(setupExtraUi, 1000);
   }
 }
 

@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { cn } from "../../classnames";
 
 type ButtonVariant = "ghost";
 type ButtonSize = "icon";
@@ -17,14 +18,7 @@ export function Button({
   type = "button",
   ...props
 }: ButtonProps) {
-  const classes = [
-    "ui-button",
-    `ui-button-${variant}`,
-    `ui-button-${size}`,
-    className,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const classes = cn("ui-button", `ui-button-${variant}`, `ui-button-${size}`, className);
 
   return (
     <button className={classes} type={type} {...props}>

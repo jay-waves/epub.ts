@@ -1,6 +1,7 @@
 import type { FoliateViewElement, SearchHit } from "./viewer-types";
-import { VIEWER_EVENTS } from "./viewer-events";
+import { emitViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import type { SearchUpdateDetail } from "./viewer-events";
+import { normalizeInlineText } from "./text-utils";
 import { getSavedHighlights } from "./viewer-storage";
 
 const LONG_SEARCH_QUERY_THRESHOLD = 24;
@@ -16,7 +17,7 @@ export function createSearchController(options: {
   let searchHitIndex = -1;
 
   const emitUpdate = (detail: SearchUpdateDetail) => {
-    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchUpdate, { detail }));
+    emitViewerEvent(VIEWER_EVENTS.searchUpdate, detail);
   };
 
   const clearHighlights = () => {
@@ -161,7 +162,7 @@ export function createSearchController(options: {
 }
 
 function getSearchOptions(query: string) {
-  const normalizedQuery = query.replace(/\s+/g, " ").trim();
+  const normalizedQuery = normalizeInlineText(query);
   const queryPrefix = normalizedQuery.slice(0, MAX_SEARCH_QUERY_LENGTH).trim();
   const useFastExactSearch = queryPrefix.length >= LONG_SEARCH_QUERY_THRESHOLD;
 
@@ -177,5 +178,5 @@ function getHighlightSearchText(highlight: { text?: string; value: string }) {
 }
 
 function normalizeForHighlightSearch(value: string) {
-  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  return normalizeInlineText(value).toLocaleLowerCase();
 }

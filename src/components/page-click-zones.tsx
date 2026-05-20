@@ -1,44 +1,22 @@
-import { VIEWER_EVENTS } from "../viewer-events";
-import type { PageTurnDetail, PageTurnDirection } from "../viewer-events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+
+const pageClickZones = [
+  { className: "page-click-zone page-click-zone--left", direction: "left", label: "Previous page" },
+  { className: "page-click-zone page-click-zone--right", direction: "right", label: "Next page" },
+] as const;
 
 export function PageClickZones() {
   return (
     <>
-      <PageClickZone
-        className="page-click-zone page-click-zone--left"
-        direction="left"
-        label="Previous page"
-      />
-      <PageClickZone
-        className="page-click-zone page-click-zone--right"
-        direction="right"
-        label="Next page"
-      />
+      {pageClickZones.map(({ className, direction, label }) => (
+        <button
+          aria-label={label}
+          className={className}
+          key={direction}
+          type="button"
+          onClick={() => emitViewerEvent(VIEWER_EVENTS.pageTurn, direction)}
+        />
+      ))}
     </>
-  );
-}
-
-function PageClickZone({
-  className,
-  direction,
-  label,
-}: {
-  className: string;
-  direction: PageTurnDirection;
-  label: string;
-}) {
-  return (
-    <button
-      className={className}
-      type="button"
-      aria-label={label}
-      onClick={() => {
-        window.dispatchEvent(
-          new CustomEvent<PageTurnDetail>(VIEWER_EVENTS.pageTurn, {
-            detail: { direction },
-          }),
-        );
-      }}
-    />
   );
 }

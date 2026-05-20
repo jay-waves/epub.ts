@@ -1,48 +1,32 @@
 import { useEffect, useRef, useState } from "react";
-import { VIEWER_EVENTS } from "../viewer-events";
-import type { SearchCollectDetail, SearchUpdateDetail } from "../viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import type { SearchUpdateDetail } from "../viewer-events";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip } from "./ui/tooltip";
 import { ChevronLeft, ChevronRight, X, Highlighter } from "lucide-react"
 
 export function SearchBar() {
-  const [canNavigate, setCanNavigate] = useState(false);
-  const [countText, setCountText] = useState("0 / 0");
   const [highlightedOnly, setHighlightedOnly] = useState(false);
-  const [placeholder, setPlaceholder] = useState("Search text");
   const [query, setQuery] = useState("");
-  const [visible, setVisible] = useState(false);
+  const [searchState, setSearchState] = useState<SearchUpdateDetail>({ canNavigate: false, countText: "0 / 0", placeholder: "Search text", visible: false });
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleOpen = () => {
-      setPlaceholder("Search text");
-      setVisible(true);
+      setSearchState((current) => ({ ...current, placeholder: "Search text", visible: true }));
       window.setTimeout(() => inputRef.current?.focus(), 0);
     };
-    const handleUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<SearchUpdateDetail>).detail;
-      setCanNavigate(detail.canNavigate);
-      setCountText(detail.countText);
-      setPlaceholder(detail.placeholder);
-      setVisible(detail.visible);
-    };
-
-    window.addEventListener(VIEWER_EVENTS.searchOpen, handleOpen);
-    window.addEventListener(VIEWER_EVENTS.searchUpdate, handleUpdate);
+    const stopOpen = listenViewerEvent(VIEWER_EVENTS.searchOpen, handleOpen);
+    const stopUpdate = listenViewerEvent(VIEWER_EVENTS.searchUpdate, setSearchState);
     return () => {
-      window.removeEventListener(VIEWER_EVENTS.searchOpen, handleOpen);
-      window.removeEventListener(VIEWER_EVENTS.searchUpdate, handleUpdate);
+      stopOpen();
+      stopUpdate();
     };
   }, []);
 
   const submitSearch = () => {
-    window.dispatchEvent(
-      new CustomEvent<SearchCollectDetail>(VIEWER_EVENTS.searchCollect, {
-        detail: { highlightedOnly, query },
-      }),
-    );
+    emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly, query });
   };
 
   const toggleHighlightedOnly = () => {
@@ -50,42 +34,38 @@ export function SearchBar() {
     setHighlightedOnly(nextHighlightedOnly);
     if (!nextHighlightedOnly) return;
 
-    window.dispatchEvent(
-      new CustomEvent<SearchCollectDetail>(VIEWER_EVENTS.searchCollect, {
-        detail: { highlightedOnly: true, query },
-      }),
-    );
+    emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly: true, query });
   };
 
   const clearSearch = () => {
     setHighlightedOnly(false);
     setQuery("");
-    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchClear));
+    emitViewerEvent(VIEWER_EVENTS.searchClear);
   };
 
   return (
-    <div className="search-nav" hidden={!visible}>
+    <div className="search-nav" hidden={!searchState.visible}>
       <Tooltip label="Previous result" side="bottom">
         <Button
           aria-label="Previous result"
-          disabled={!canNavigate}
+          disabled={!searchState.canNavigate}
           variant="ghost"
           size="icon"
-          onClick={() => window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchPrevious))}
+          onClick={() => emitViewerEvent(VIEWER_EVENTS.searchPrevious)}
         >
           <ChevronLeft size={20} aria-hidden="true" />
         </Button>
       </Tooltip>
       <span className="search-count">
-        {countText}
+        {searchState.countText}
       </span>
       <Tooltip label="Next result" side="bottom">
         <Button
           aria-label="Next result"
-          disabled={!canNavigate}
+          disabled={!searchState.canNavigate}
           variant="ghost"
           size="icon"
-          onClick={() => window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchNext))}
+          onClick={() => emitViewerEvent(VIEWER_EVENTS.searchNext)}
         >
           <ChevronRight size={20} aria-hidden="true"/>
         </Button>
@@ -100,7 +80,7 @@ export function SearchBar() {
         <Input
           className="search-input"
           type="search"
-          placeholder={placeholder}
+          placeholder={searchState.placeholder}
           autoComplete="off"
           ref={inputRef}
           value={query}

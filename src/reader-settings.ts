@@ -1,9 +1,10 @@
 import { state } from "./viewer-state";
-import type { FoliateViewElement, ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./viewer-types";
-import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
-import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
-import atomOneLightHighlightTheme from "highlight.js/styles/atom-one-light.css?raw";
-import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
+import {
+  getReaderCodeHighlightTheme,
+  getReaderMediaFilter,
+  getReaderTheme,
+} from "./reader-themes";
+import type { FoliateViewElement, ReaderFlow, ReaderSettings } from "./viewer-types";
 
 export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
@@ -27,13 +28,24 @@ const READER_SANS_STACK =
   `"${READER_FONT_FAMILY}", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`;
 const READER_MONO_STACK =
   `"${READER_MONO_FONT_FAMILY}", "Sarasa Mono SC", "Maple Mono SC NF", "Cascadia Code", "SFMono-Regular", Consolas, monospace`;
-
-export const READER_THEMES: ReaderTheme[] = [
-  { id: "light", label: "Light", bodyTheme: "lofi", mode: "light", background: "#fffefd", foreground: "#1f2933", link: "#1f5f8f" },
-  { id: "grey", label: "Grey", bodyTheme: "corporate", mode: "light", background: "#f1f1ee", foreground: "#2f3438", link: "#4c6a7f" },
-  { id: "dark", label: "Dark", bodyTheme: "nord", mode: "dark", background: "#212830", foreground: "#e5e9f0", link: "#88c0d0" },
-  { id: "one-dark", label: "One Dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
-];
+const READER_MONO_SELECTOR =
+  ':is(code, pre, kbd, samp, textarea, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i])';
+const READER_PARAGRAPH_SELECTOR =
+  ':is(p, li, blockquote, dd, dt, td, th, [epub|type~="bodymatter"] p, [epub|type~="bodymatter"] div, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i])';
+const READER_PARAGRAPH_BLOCK_SELECTOR =
+  ':is(p, [epub|type~="bodymatter"] p, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i])';
+const READER_HEADING_SELECTOR =
+  ':is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i])';
+const READER_CAPTION_SELECTOR =
+  ':is(figcaption, caption, [epub|type~="caption"], [epub|type~="subtitle"], [epub|type~="credit"], [class*="caption" i], [class*="figcaption" i], [class*="legend" i], [class*="credit" i])';
+const READER_FIGURE_CAPTION_SELECTOR =
+  ':is(figcaption, caption, [epub|type~="caption"], [class*="caption" i], [class*="figcaption" i], [class*="legend" i])';
+const READER_REFERENCE_SELECTOR =
+  ':is(a[epub|type~="noteref"], a[role~="doc-noteref"], a[epub|type~="biblioref"], a[role~="doc-biblioref"], a[epub|type~="glossref"], a[role~="doc-glossref"], sup a, a sup, small a[href^="#"])';
+const READER_NOTE_SELECTOR =
+  ':is(aside, details, [epub|type~="note"], [epub|type~="footnote"], [epub|type~="endnote"], [epub|type~="rearnote"], [epub|type~="sidebar"], [epub|type~="annotation"], [epub|type~="z3998:annotation"], [class*="note" i], [class*="annotation" i], [class*="comment" i], [class*="remark" i], [class*="sidebar" i])';
+const READER_FOOTNOTE_SELECTOR =
+  ':is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-footnote-target="true"])';
 
 const READER_LAYOUT_PRESETS = [
   {
@@ -85,39 +97,16 @@ const READER_LAYOUT_PRESETS = [
 
 const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[2];
 
-function normalizeHighlightThemeCss(themeCss: string) {
-  return themeCss
-    .replaceAll("pre code.hljs", "pre.hljs")
-    .replaceAll("code.hljs", "pre.hljs")
-    .replaceAll("code .", "pre.hljs .")
-    .replace(
-      /\b(color|background|background-color|font-style|font-weight):\s*([^;!}{]+)(?:\s*!important)?/gu,
-      "$1: $2 !important",
-    );
-}
-
-const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
-  light: normalizeHighlightThemeCss(githubLightHighlightTheme),
-  grey: normalizeHighlightThemeCss(atomOneLightHighlightTheme),
-  dark: normalizeHighlightThemeCss(nordHighlightTheme),
-  "one-dark": normalizeHighlightThemeCss(githubDarkHighlightTheme),
-};
-
-function getTheme(themeId = state.readerTheme) {
-  return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
-}
-
 function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {
   return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
 }
 
 export function getBookStyles(themeId = state.readerTheme) {
-  const theme = getTheme(themeId);
+  const theme = getReaderTheme(themeId);
   const layout = getLayoutPreset();
   const { background, foreground, link } = theme;
-  const mediaFilter =
-    theme.mode === "dark" ? "brightness(0.72) contrast(0.92) saturate(0.88)" : "none";
-  const highlightThemeCss = READER_CODE_HIGHLIGHT_THEMES[theme.id];
+  const mediaFilter = getReaderMediaFilter(theme.id);
+  const highlightThemeCss = getReaderCodeHighlightTheme(theme.id);
 
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
@@ -191,10 +180,10 @@ export function getBookStyles(themeId = state.readerTheme) {
     body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *) {
       font-family: var(--reader-font-serif) !important;
     }
-    :is(code, pre, kbd, samp, textarea, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]) {
+    ${READER_MONO_SELECTOR} {
       font-family: var(--reader-font-mono) !important;
     }
-    :is(code, pre, kbd, samp, [class*="code" i], [class*="source" i], [class*="program" i], [class*="verbatim" i], [class*="mono" i]):not(.hljs),
+    ${READER_MONO_SELECTOR}:not(textarea):not(.hljs),
     :is(code, pre, kbd, samp):not(.hljs) *:not(.hljs *) {
       color: var(--reader-fg-color) !important;
       -webkit-text-fill-color: var(--reader-fg-color) !important;
@@ -211,14 +200,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       width: auto !important;
       box-sizing: border-box !important;
     }
-    :is(p, li, blockquote, dd, dt, td, th),
-    [epub|type~="bodymatter"] p,
-    [epub|type~="bodymatter"] div,
-    [class~="para"],
-    [class*="para-" i],
-    [class*="paragraph" i],
-    [class*="bodytext" i],
-    [class*="body-text" i] {
+    ${READER_PARAGRAPH_SELECTOR} {
       font-size: var(--reader-font-size) !important;
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
@@ -227,19 +209,18 @@ export function getBookStyles(themeId = state.readerTheme) {
       hanging-punctuation: allow-end last;
       word-spacing: var(--reader-word-spacing) !important;
     }
-    :is(p, [epub|type~="bodymatter"] p, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i]) {
+    ${READER_PARAGRAPH_BLOCK_SELECTOR} {
       margin-block-start: 0 !important;
       margin-block-end: var(--reader-paragraph-spacing) !important;
     }
-    :is(p, li, blockquote, dd, dt, td, th, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i])
-      :where(span, a, em, strong, b, i) {
+    ${READER_PARAGRAPH_SELECTOR} :where(span, a, em, strong, b, i) {
       font-size: inherit !important;
       line-height: inherit !important;
       letter-spacing: inherit !important;
       word-spacing: inherit !important;
     }
-    :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i]),
-    :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i]) * {
+    ${READER_HEADING_SELECTOR},
+    ${READER_HEADING_SELECTOR} * {
       font-family: var(--reader-font-serif) !important;
       font-weight: 700 !important;
       font-style: normal !important;
@@ -260,20 +241,12 @@ export function getBookStyles(themeId = state.readerTheme) {
       font-size: calc(var(--reader-font-size) * 1.1) !important;
       line-height: 1.45 !important;
     }
-    :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i])
-      :where(span, a, em, strong, b, i) {
+    ${READER_HEADING_SELECTOR} :where(span, a, em, strong, b, i) {
       font-size: inherit !important;
       line-height: inherit !important;
       font-weight: inherit !important;
     }
-    :is(figcaption, caption,
-    [epub|type~="caption"],
-    [epub|type~="subtitle"],
-    [epub|type~="credit"],
-    [class*="caption" i],
-    [class*="figcaption" i],
-    [class*="legend" i],
-    [class*="credit" i]) {
+    ${READER_CAPTION_SELECTOR} {
       color: var(--reader-muted-color) !important;
       -webkit-text-fill-color: var(--reader-muted-color) !important;
       font-size: 0.82em !important;
@@ -282,15 +255,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       word-spacing: 0 !important;
       opacity: 1 !important;
     }
-    :is(a[epub|type~="noteref"],
-    a[role~="doc-noteref"],
-    a[epub|type~="biblioref"],
-    a[role~="doc-biblioref"],
-    a[epub|type~="glossref"],
-    a[role~="doc-glossref"],
-    sup a,
-    a sup,
-    small a[href^="#"]) {
+    ${READER_REFERENCE_SELECTOR} {
       display: inline !important;
       margin: 0 !important;
       padding: 0 0.08em !important;
@@ -318,15 +283,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       line-height: 1 !important;
       vertical-align: baseline !important;
     }
-    :is(a[epub|type~="noteref"],
-    a[role~="doc-noteref"],
-    a[epub|type~="biblioref"],
-    a[role~="doc-biblioref"],
-    a[epub|type~="glossref"],
-    a[role~="doc-glossref"],
-    sup a,
-    a sup,
-    small a[href^="#"]) * {
+    ${READER_REFERENCE_SELECTOR} * {
       display: inline !important;
       font-size: inherit !important;
       line-height: inherit !important;
@@ -346,20 +303,8 @@ export function getBookStyles(themeId = state.readerTheme) {
       padding-inline-start: 1em !important;
       border-inline-start: 0.18em solid var(--reader-border-color) !important;
     }
-    :is(aside, details,
-    [epub|type~="note"],
-    [epub|type~="footnote"],
-    [epub|type~="endnote"],
-    [epub|type~="rearnote"],
-    [epub|type~="sidebar"],
-    [epub|type~="annotation"],
-    [epub|type~="z3998:annotation"],
-    [class*="note" i],
-    [class*="annotation" i],
-    [class*="comment" i],
-    [class*="remark" i],
-    [class*="sidebar" i]),
-    :is(aside, details, [epub|type~="note"], [epub|type~="footnote"], [epub|type~="endnote"], [epub|type~="rearnote"], [epub|type~="sidebar"], [epub|type~="annotation"], [epub|type~="z3998:annotation"], [class*="note" i], [class*="annotation" i], [class*="comment" i], [class*="remark" i], [class*="sidebar" i]) * {
+    ${READER_NOTE_SELECTOR},
+    ${READER_NOTE_SELECTOR} * {
       font-size: 0.86em !important;
       line-height: 1.52 !important;
       word-spacing: 0 !important;
@@ -372,17 +317,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       border-radius: 0.35em !important;
       background: var(--reader-panel-bg) !important;
     }
-    :is(aside[epub|type~="footnote"],
-    aside[epub|type~="endnote"],
-    aside[epub|type~="rearnote"],
-    aside[role~="doc-footnote"],
-    aside[role~="doc-endnote"],
-    li[epub|type~="footnote"],
-    li[epub|type~="endnote"],
-    li[epub|type~="rearnote"],
-    li[role~="doc-footnote"],
-    li[role~="doc-endnote"],
-    [data-reader-footnote-target="true"]) {
+    ${READER_FOOTNOTE_SELECTOR} {
       display: block !important;
       position: relative !important;
       margin-block: 0.55em !important;
@@ -397,17 +332,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       line-height: 1.42 !important;
       text-align: start !important;
     }
-    :is(aside[epub|type~="footnote"],
-    aside[epub|type~="endnote"],
-    aside[epub|type~="rearnote"],
-    aside[role~="doc-footnote"],
-    aside[role~="doc-endnote"],
-    li[epub|type~="footnote"],
-    li[epub|type~="endnote"],
-    li[epub|type~="rearnote"],
-    li[role~="doc-footnote"],
-    li[role~="doc-endnote"],
-    [data-reader-footnote-target="true"])::before {
+    ${READER_FOOTNOTE_SELECTOR}::before {
       content: attr(data-footnote-label) !important;
       position: absolute !important;
       inset-inline-start: 0 !important;
@@ -421,17 +346,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       line-height: inherit !important;
       text-align: end !important;
     }
-    :is(aside[epub|type~="footnote"],
-    aside[epub|type~="endnote"],
-    aside[epub|type~="rearnote"],
-    aside[role~="doc-footnote"],
-    aside[role~="doc-endnote"],
-    li[epub|type~="footnote"],
-    li[epub|type~="endnote"],
-    li[epub|type~="rearnote"],
-    li[role~="doc-footnote"],
-    li[role~="doc-endnote"],
-    [data-reader-footnote-target="true"]) :is(p, div, span, a, small) {
+    ${READER_FOOTNOTE_SELECTOR} :is(p, div, span, a, small) {
       color: var(--reader-muted-color) !important;
       -webkit-text-fill-color: var(--reader-muted-color) !important;
       font-size: inherit !important;
@@ -462,8 +377,8 @@ export function getBookStyles(themeId = state.readerTheme) {
     img[data-reader-zoomable="true"] {
       inline-size: auto !important;
       width: auto !important;
-      max-inline-size: 61.8% !important;
-      max-width: 61.8% !important;
+      max-inline-size: 66.6667% !important;
+      max-width: 66.6667% !important;
       border-radius: 0.5rem !important;
       cursor: zoom-in !important;
     }
@@ -492,16 +407,11 @@ export function getBookStyles(themeId = state.readerTheme) {
       max-width: 100% !important;
     }
     :is(figure, table) :is(figcaption, caption),
-    :is(figcaption, caption,
-    [epub|type~="caption"],
-    [class*="caption" i],
-    [class*="figcaption" i],
-    [class*="legend" i]) {
+    ${READER_FIGURE_CAPTION_SELECTOR} {
       display: block !important;
       margin-inline: auto !important;
       text-align: center !important;
     }
-    a { color: var(--reader-link-color) !important; }
     code, kbd, samp {
       font-size: 0.9em !important;
       line-height: 1.5 !important;
@@ -527,10 +437,6 @@ export function getBookStyles(themeId = state.readerTheme) {
       display: block !important;
       overflow-x: visible !important;
       padding: 0.9em 1em !important;
-      white-space: pre-wrap !important;
-      font-family: var(--reader-font-mono) !important;
-      font-size: 0.78em !important;
-      line-height: 1.55 !important;
       -webkit-text-fill-color: currentColor !important;
     }
     .hljs * {
@@ -540,24 +446,6 @@ export function getBookStyles(themeId = state.readerTheme) {
       -webkit-text-fill-color: currentColor !important;
     }
   `;
-}
-
-export function applyReaderTheme(themeId: ReaderThemeId) {
-  const theme = getTheme(themeId);
-  const scrollbarThumb =
-    theme.mode === "dark" ? "rgba(191, 205, 219, 0.28)" : "rgba(82, 94, 110, 0.35)";
-  const scrollbarTrack =
-    theme.mode === "dark" ? "rgba(22, 29, 37, 0.45)" : "rgba(255, 255, 255, 0.18)";
-
-  state.readerTheme = theme.id;
-  document.body.dataset.theme = theme.bodyTheme;
-  document.documentElement.dataset.readerTheme = theme.id;
-  document.documentElement.dataset.readerMode = theme.mode;
-  document.documentElement.style.setProperty("--reader-chrome-bg", theme.background);
-  document.documentElement.style.setProperty("--reader-chrome-fg", theme.foreground);
-  document.documentElement.style.setProperty("--reader-color-scheme", theme.mode);
-  document.documentElement.style.setProperty("--reader-scrollbar-thumb", scrollbarThumb);
-  document.documentElement.style.setProperty("--reader-scrollbar-track", scrollbarTrack);
 }
 
 export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElement) {

@@ -78,3 +78,40 @@ export async function setSavedHighlights(bookKey: string, bookHighlights: Reader
   highlights[bookKey] = bookHighlights;
   await setStorage(HIGHLIGHTS_STORAGE_KEY, highlights);
 }
+
+export async function reconcileBookStorage(primaryKey: string, aliasKeys: string[]) {
+  if (!primaryKey) return;
+
+  const fallbackKeys = aliasKeys.filter((key) => key && key !== primaryKey);
+  if (!fallbackKeys.length) return;
+
+  const [history, highlights] = await Promise.all([
+    getReadingHistory(),
+    getStorage<ReaderHighlights>(HIGHLIGHTS_STORAGE_KEY, {}),
+  ]);
+
+  const matchedHistory = [primaryKey, ...fallbackKeys]
+    .map((key) => history[key])
+    .filter((entry): entry is ReadingPosition => Boolean(entry))
+    .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))[0];
+
+  if (matchedHistory) {
+    history[primaryKey] = matchedHistory;
+  }
+
+  const mergedHighlights = new Map<string, ReaderHighlight>();
+  for (const key of [primaryKey, ...fallbackKeys]) {
+    for (const highlight of highlights[key] ?? []) {
+      if (!mergedHighlights.has(highlight.value)) mergedHighlights.set(highlight.value, highlight);
+    }
+  }
+
+  if (mergedHighlights.size > 0) {
+    highlights[primaryKey] = Array.from(mergedHighlights.values()).sort((left, right) => left.createdAt - right.createdAt);
+  }
+
+  await Promise.all([
+    setStorage(HISTORY_STORAGE_KEY, history),
+    setStorage(HIGHLIGHTS_STORAGE_KEY, highlights),
+  ]);
+}

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import type { TocItem } from "../viewer-types";
-import { VIEWER_EVENTS } from "../viewer-events";
-import type { TocNavigateDetail, TocUpdateDetail } from "../viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import type { TocUpdateDetail } from "../viewer-events";
 import { Dialog } from "./ui/dialog";
 
 export function TocPage() {
-  const [items, setItems] = useState<TocItem[]>([]);
-  const [currentHref, setCurrentHref] = useState("");
+  const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -18,31 +17,21 @@ export function TocPage() {
       scrollCurrentItemIntoView(rootRef.current);
     };
 
-    const handleUpdate = (event: Event) => {
-      const { currentHref: nextCurrentHref, items: nextItems } = (event as CustomEvent<TocUpdateDetail>).detail;
-      setCurrentHref(nextCurrentHref);
-      setItems(nextItems);
-    };
-
-    window.addEventListener(VIEWER_EVENTS.tocOpen, open);
-    window.addEventListener(VIEWER_EVENTS.tocUpdate, handleUpdate);
+    const stopOpen = listenViewerEvent(VIEWER_EVENTS.tocOpen, open);
+    const stopUpdate = listenViewerEvent(VIEWER_EVENTS.tocUpdate, setTocState);
     return () => {
-      window.removeEventListener(VIEWER_EVENTS.tocOpen, open);
-      window.removeEventListener(VIEWER_EVENTS.tocUpdate, handleUpdate);
+      stopOpen();
+      stopUpdate();
     };
   }, []);
 
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
-  }, [currentHref, items]);
+  }, [tocState]);
 
   const navigate = (href?: string) => {
     if (!href) return;
-    window.dispatchEvent(
-      new CustomEvent<TocNavigateDetail>(VIEWER_EVENTS.tocNavigate, {
-        detail: { href },
-      }),
-    );
+    emitViewerEvent(VIEWER_EVENTS.tocNavigate, href);
     dialogRef.current?.close();
   };
 
@@ -53,17 +42,17 @@ export function TocPage() {
       ref={dialogRef}
       onClick={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
-        const isOutside =
-          event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
-        if (isOutside) event.currentTarget.close();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+          event.currentTarget.close();
+        }
       }}
     >
       <div id="toc-root" className="toc-root" ref={rootRef}>
-        {items.length ? (
-          <ul className="toc-menu" key={currentHref}>
-            {items.map((item, index) => (
+        {tocState.items.length ? (
+          <ul className="toc-menu" key={tocState.currentHref}>
+            {tocState.items.map((item, index) => (
               <TocTreeItem
-                currentHref={currentHref}
+                currentHref={tocState.currentHref}
                 item={item}
                 key={`${item.href ?? "section"}-${index}`}
                 depth={0}

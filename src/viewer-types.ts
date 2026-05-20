@@ -7,13 +7,26 @@ export type TocItem = {
 };
 
 export type BookMetadata = {
+  altIdentifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>;
   title?: string | Record<string, string>;
   author?: string | { name?: string | Record<string, string> } | Array<string | { name?: string | Record<string, string> }>;
+  identifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>;
+};
+
+export type BookSection = {
+  cfi?: string;
+  createDocument?: () => Promise<Document>;
+  id?: number | string;
+  linear?: string;
+  load?: () => Promise<string | null>;
+  size?: number;
+  unload?: () => void;
 };
 
 export type FoliateBook = {
   dir?: string;
   metadata?: BookMetadata;
+  sections?: BookSection[];
   toc?: TocItem[];
 };
 

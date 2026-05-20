@@ -16,6 +16,35 @@
     --reader-glass-border: rgb(255 255 255 / 45%);
     --reader-glass-shadow: 0 14px 34px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
     --reader-glass-filter: blur(14px) saturate(135%);
+    --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    --reader-control-fg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 64%, transparent);
+    --reader-control-strong-fg: var(--reader-chrome-fg, #1f2933);
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    --reader-control-hover-fg: var(--reader-chrome-fg, #1f2933);
+    --reader-danger-fg: #dc2626;
+    --reader-danger-hover-bg: #fef2f2;
+    --reader-danger-hover-fg: #b91c1c;
+    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
+    --reader-field-placeholder: #94a3b8;
+    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
+  }
+
+  html[data-reader-mode="dark"] {
+    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
+    --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
+    --reader-glass-shadow: 0 14px 34px rgb(0 0 0 / 25%);
+    --reader-glass-filter: blur(14px) saturate(130%);
+    --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
+    --reader-control-fg: #d8dee9;
+    --reader-control-strong-fg: #e5ebf3;
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 10%, transparent);
+    --reader-control-hover-fg: white;
+    --reader-danger-fg: #fca5a5;
+    --reader-danger-hover-bg: rgb(239 68 68 / 14%);
+    --reader-danger-hover-fg: #fecaca;
+    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, var(--reader-chrome-fg, #e5ebf3) 6%);
+    --reader-field-placeholder: #8ea0b3;
+    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 10%);
   }
 
   html,
@@ -38,23 +67,6 @@
     overflow: hidden;
   }
 
-  /* html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* html::-webkit-scrollbar-track,
-  body::-webkit-scrollbar-track {
-    background: var(--reader-scrollbar-track, rgba(255, 255, 255, 0.15));
-  }
-
-  html::-webkit-scrollbar-thumb,
-  body::-webkit-scrollbar-thumb {
-    background: var(--reader-scrollbar-thumb, rgba(82, 94, 110, 0.35));
-    border-radius: 999px;
-    border: 3px solid transparent;
-    background-clip: padding-box;
-  } */
 }
 
 @layer components {
@@ -125,17 +137,8 @@
     @apply hidden;
   }
 
-  .reader-modal::backdrop,
-  .reader-modal-backdrop {
+  .reader-modal::backdrop {
     background: transparent;
-  }
-
-  .reader-modal-backdrop {
-    @apply fixed inset-0 z-0 cursor-default border-0 bg-transparent p-0 text-transparent shadow-none outline-none;
-  }
-
-  .reader-modal-backdrop button {
-    @apply h-full w-full cursor-default appearance-none border-0 bg-transparent p-0 text-transparent shadow-none outline-none;
   }
 
   .ui-button {
@@ -156,7 +159,8 @@
   }
 
   .ui-button-ghost:hover {
-    @apply bg-slate-100 text-slate-950;
+    background-color: var(--reader-control-hover-bg);
+    color: var(--reader-control-hover-fg);
   }
 
   .ui-button-icon {
@@ -181,18 +185,23 @@
     @apply fixed inset-y-0 left-0 z-20 flex w-16 items-center justify-start;
   }
 
-  .reader-dock {
-    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
+  .reader-dock,
+  .search-nav,
+  .toc-modal-box {
     border-color: var(--reader-glass-border);
     background-color: var(--reader-glass-bg) !important;
     box-shadow: var(--reader-glass-shadow);
+    backdrop-filter: var(--reader-glass-filter);
+    -webkit-backdrop-filter: var(--reader-glass-filter);
+  }
+
+  .reader-dock {
+    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
     opacity: 0;
     transform: translateX(calc(-100% + 0.5rem));
     transition:
       opacity 200ms ease,
       transform 200ms ease;
-    backdrop-filter: var(--reader-glass-filter);
-    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
   .reader-dock-shell:hover .reader-dock,
@@ -202,7 +211,8 @@
   }
 
   .reader-dock button {
-    @apply relative grid h-10 w-10 place-items-center rounded-lg text-slate-500 transition-all duration-200;
+    @apply relative grid h-10 w-10 place-items-center rounded-lg transition-all duration-200;
+    color: var(--reader-control-fg);
   }
 
   .dock-button-content {
@@ -214,7 +224,8 @@
   }
 
   .reader-dock button:hover {
-    @apply bg-slate-100 text-slate-950;
+    background-color: var(--reader-control-hover-bg);
+    color: var(--reader-control-hover-fg);
   }
 
   .reader-dock button.dock-active {
@@ -272,7 +283,11 @@
   }
 
   .reader-progress-float {
-    @apply flex w-full items-center gap-2 opacity-60 transition-[opacity,transform] duration-200 ease-out;
+    @apply flex w-full items-center gap-2 opacity-60;
+    transform: translateY(0);
+    transition:
+      opacity 420ms ease,
+      transform 420ms cubic-bezier(0.2, 0, 0.2, 1);
   }
 
   .reader-progress {
@@ -297,14 +312,15 @@
   .reader-progress-shell:hover .reader-progress-float,
   .reader-progress-shell:focus-within .reader-progress-float,
   .reader-progress-shell:has(.reader-progress.is-dragging) .reader-progress-float {
-    @apply -translate-y-3 opacity-100;
+    opacity: 0.96;
+    transform: translateY(-0.55rem);
   }
 
   .reader-progress:hover .reader-progress-track,
   .reader-progress:focus-visible .reader-progress-track,
   .reader-progress.is-dragging .reader-progress-track {
-    @apply h-2.5 rounded-lg shadow-lg;
-    box-shadow: 0 14px 30px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent);
+    @apply h-2 rounded-lg;
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 9%, transparent);
   }
 
   .reader-progress-fill {
@@ -316,9 +332,6 @@
   .reader-progress-thumb {
     @apply absolute top-1/2 z-[4] h-1 w-1 -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent p-0 opacity-0 outline-none;
     transform: translate(-50%, -50%) !important;
-  }
-
-  .reader-progress-thumb {
     pointer-events: none;
   }
 
@@ -341,7 +354,7 @@
   .reader-context-menu {
     @apply fixed z-50 grid min-w-32 gap-0.5 rounded-md border p-1;
     color: var(--reader-chrome-fg, #1f2933);
-    border-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    border-color: var(--reader-border-subtle);
     background-color: var(--reader-glass-bg) !important;
     box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
     backdrop-filter: var(--reader-glass-filter);
@@ -349,7 +362,8 @@
   }
 
   .reader-context-menu-item {
-    @apply flex h-7 w-full items-center gap-2 rounded px-2.5 text-left text-xs font-medium text-slate-700 outline-none transition-colors duration-100;
+    @apply flex h-7 w-full items-center gap-2 rounded px-2.5 text-left text-xs font-medium outline-none transition-colors duration-100;
+    color: var(--reader-control-fg);
   }
 
   .reader-context-menu-item svg {
@@ -358,16 +372,18 @@
 
   .reader-context-menu-item:hover,
   .reader-context-menu-item:focus-visible {
-    @apply bg-slate-950/8 text-slate-950;
+    background-color: var(--reader-control-hover-bg);
+    color: var(--reader-control-hover-fg);
   }
 
   .reader-context-menu-item.is-destructive {
-    @apply text-red-600;
+    color: var(--reader-danger-fg);
   }
 
   .reader-context-menu-item.is-destructive:hover,
   .reader-context-menu-item.is-destructive:focus-visible {
-    @apply bg-red-50 text-red-700;
+    background-color: var(--reader-danger-hover-bg);
+    color: var(--reader-danger-hover-fg);
   }
 
   .reader-context-menu-item:disabled {
@@ -387,13 +403,8 @@
   }
 
   .search-nav {
-    @apply fixed top-3 left-1/2 z-20 flex w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 items-center gap-1 rounded-xl border p-1.5 text-slate-700;
-    border-color: var(--reader-glass-border);
-    background-color: var(--reader-glass-bg) !important;
-    box-shadow: var(--reader-glass-shadow);
+    @apply fixed top-3 left-1/2 z-20 flex w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 items-center gap-1 rounded-xl border p-1.5;
     color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
-    backdrop-filter: var(--reader-glass-filter);
-    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
   .search-nav[hidden] {
@@ -402,13 +413,13 @@
 
   .search-nav button {
     @apply grid h-9 min-h-9 w-9 place-items-center rounded-lg p-0 transition-colors duration-150;
-    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 58%, transparent);
+    color: var(--reader-control-fg);
     line-height: 1;
   }
 
   .search-nav button:hover {
-    color: var(--reader-chrome-fg, #1f2933);
-    background-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    color: var(--reader-control-hover-fg);
+    background-color: var(--reader-control-hover-bg);
   }
 
   .search-nav button.search-mode-active,
@@ -426,7 +437,7 @@
 
   .search-count {
     @apply min-w-14 px-1 text-center text-[13px] font-medium tabular-nums;
-    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 62%, transparent);
+    color: var(--reader-control-fg);
   }
 
   .search-form {
@@ -435,16 +446,18 @@
 
   .search-input {
     @apply h-9 min-w-0 flex-1 rounded-lg border-0 px-3 text-[13px] outline-none transition-colors duration-150;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
+    background-color: var(--reader-field-bg);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
     color: var(--reader-chrome-fg, #1f2933);
   }
 
   .search-input::placeholder {
-    @apply text-slate-400;
+    color: var(--reader-field-placeholder);
   }
 
   .search-input:focus {
+    background-color: var(--reader-field-bg);
+    color: var(--reader-chrome-fg, #1f2933);
     box-shadow:
       inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent),
       0 0 0 2px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
@@ -461,7 +474,8 @@
   }
 
   .toc-menu {
-    @apply w-max min-w-full gap-0.5 p-0 text-slate-700;
+    @apply w-max min-w-full gap-0.5 p-0;
+    color: var(--reader-control-fg);
   }
 
   .toc-list-item,
@@ -490,18 +504,20 @@
   }
 
   .toc-link {
-    @apply flex h-auto min-h-0 w-full items-center gap-3 rounded-md border border-transparent bg-transparent py-2 pe-3 ps-3 text-left text-[13px] font-medium leading-snug normal-case text-slate-700 no-underline transition-all duration-150;
+    @apply flex h-auto min-h-0 w-full items-center gap-3 rounded-md border border-transparent bg-transparent py-2 pe-3 ps-3 text-left text-[13px] font-medium leading-snug normal-case no-underline transition-all duration-150;
+    color: var(--reader-control-fg);
   }
 
   .toc-link:hover {
-    @apply text-slate-950;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 86%, transparent);
-    box-shadow: 0 6px 16px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
-    transform: translateY(-1px);
+    color: var(--reader-control-hover-fg);
+    background-color: var(--reader-toc-hover-bg);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 5%, transparent);
+    transform: translateY(-0.5px);
   }
 
   .toc-link[aria-current="page"] {
-    @apply font-semibold text-slate-900;
+    @apply font-semibold;
+    color: var(--reader-control-strong-fg);
     background-color: transparent;
     box-shadow: none;
   }
@@ -511,10 +527,11 @@
   }
 
   .toc-link[aria-current="page"] .toc-link-label {
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, var(--reader-chrome-fg, #1f2933) 7%);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 36%) inset,
-      0 5px 12px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 7%, transparent);
+    background-color: transparent;
+    box-shadow: none;
+    text-decoration-line: underline;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.24em;
   }
 
   .toc-link-primary {
@@ -522,12 +539,8 @@
   }
 
   .toc-modal-box {
-    @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5 text-slate-700;
-    border-color: var(--reader-glass-border);
-    background-color: var(--reader-glass-bg) !important;
-    box-shadow: var(--reader-glass-shadow);
-    backdrop-filter: var(--reader-glass-filter);
-    -webkit-backdrop-filter: var(--reader-glass-filter);
+    @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5;
+    color: var(--reader-control-strong-fg);
   }
 
   #toc-modal.reader-modal {
@@ -547,146 +560,6 @@
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-}
-
-html[data-reader-mode="light"] .toc-link:hover {
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
-}
-
-html[data-reader-mode="light"] .toc-link[aria-current="page"] {
-  background-color: transparent;
-  box-shadow: none;
-}
-
-html[data-reader-mode="light"] .toc-link[aria-current="page"] .toc-link-label {
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 70%, var(--reader-chrome-fg, #1f2933) 6%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 52%) inset,
-    0 5px 12px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 7%, transparent);
-}
-
-html[data-reader-mode="dark"] {
-  --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
-  --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
-  --reader-glass-shadow: 0 14px 34px rgb(0 0 0 / 25%);
-  --reader-glass-filter: blur(14px) saturate(130%);
-}
-
-html[data-reader-mode="dark"] .reader-dock {
-  @apply border-white/10 bg-[#2a3441]/48 shadow-black/25;
-  border-color: var(--reader-glass-border);
-  background-color: var(--reader-glass-bg) !important;
-  box-shadow: var(--reader-glass-shadow);
-  backdrop-filter: var(--reader-glass-filter);
-  -webkit-backdrop-filter: var(--reader-glass-filter);
-}
-
-html[data-reader-mode="dark"] .reader-dock button {
-  @apply text-[#d8dee9];
-}
-
-html[data-reader-mode="dark"] .reader-dock button:hover {
-  @apply bg-white/10 text-white;
-}
-
-html[data-reader-mode="dark"] .reader-context-menu {
-  @apply border-white/8 shadow-black/25;
-  border-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
-  background-color: var(--reader-glass-bg) !important;
-  box-shadow: 0 10px 24px rgb(0 0 0 / 25%);
-}
-
-html[data-reader-mode="dark"] .reader-context-menu-item {
-  @apply text-[#d8dee9];
-}
-
-html[data-reader-mode="dark"] .reader-context-menu-item:hover,
-html[data-reader-mode="dark"] .reader-context-menu-item:focus-visible {
-  @apply bg-white/10 text-white;
-}
-
-html[data-reader-mode="dark"] .reader-context-menu-item.is-destructive {
-  @apply text-red-300;
-}
-
-html[data-reader-mode="dark"] .reader-context-menu-item.is-destructive:hover,
-html[data-reader-mode="dark"] .reader-context-menu-item.is-destructive:focus-visible {
-  @apply bg-red-500/14 text-red-200;
-}
-
-html[data-reader-mode="dark"] .reader-frame {
-  background: var(--reader-chrome-bg, #212830);
-}
-
-html[data-reader-mode="dark"] .search-nav {
-  @apply shadow-black/25;
-  border-color: var(--reader-glass-border);
-  background-color: var(--reader-glass-bg) !important;
-  box-shadow: var(--reader-glass-shadow);
-}
-
-html[data-reader-mode="dark"] .search-nav button {
-  @apply text-[#d8dee9];
-}
-
-html[data-reader-mode="dark"] .search-nav button:hover {
-  @apply text-white;
-  background-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 10%, transparent);
-}
-
-html[data-reader-mode="dark"] .search-nav button.search-mode-active,
-html[data-reader-mode="dark"] .search-nav button.search-mode-active:hover {
-  @apply bg-sky-600 text-white;
-}
-
-html[data-reader-mode="dark"] .search-count {
-  @apply text-[#d8dee9];
-}
-
-html[data-reader-mode="dark"] .toc-modal-box {
-  @apply text-[#e5ebf3];
-  border-color: var(--reader-glass-border);
-  background-color: var(--reader-glass-bg) !important;
-  box-shadow: var(--reader-glass-shadow);
-}
-
-html[data-reader-mode="dark"] .search-input {
-  @apply border-0 text-white;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, var(--reader-chrome-fg, #e5ebf3) 6%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 9%, transparent);
-}
-
-html[data-reader-mode="dark"] .search-input::placeholder {
-  @apply text-[#8ea0b3];
-}
-
-html[data-reader-mode="dark"] .search-input:focus {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 16%, transparent),
-    0 0 0 2px color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
-}
-
-html[data-reader-mode="dark"] .toc-link {
-  @apply text-[#d8dee9];
-}
-
-html[data-reader-mode="dark"] .toc-link:hover {
-  @apply text-white;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 10%);
-  box-shadow: 0 8px 18px rgb(0 0 0 / 18%);
-}
-
-html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
-  @apply font-semibold text-white;
-  background-color: transparent;
-  box-shadow: none;
-}
-
-html[data-reader-mode="dark"] .toc-link[aria-current="page"] .toc-link-label {
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 72%, white 8%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 7%) inset,
-    0 6px 14px rgb(0 0 0 / 18%);
 }
 
 @media (max-width: 960px) {

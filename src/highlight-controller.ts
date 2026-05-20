@@ -1,11 +1,11 @@
 import { Overlayer } from "foliate-js/overlayer.js";
-import { VIEWER_EVENTS } from "./viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import {
   getSavedHighlights,
   saveHighlight,
   setSavedHighlights,
 } from "./viewer-storage";
-import type { HighlightContextActionDetail } from "./viewer-events";
+import type { HighlightContextAction } from "./viewer-events";
 import type { FoliateViewElement, ReaderHighlight } from "./viewer-types";
 
 type ReaderContent = {
@@ -37,7 +37,7 @@ export function createHighlightController(options: {
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
 
-  window.addEventListener(VIEWER_EVENTS.highlightContextClose, () => {
+  listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
     activeContext = null;
   });
 
@@ -52,7 +52,7 @@ export function createHighlightController(options: {
 
   const close = () => {
     activeContext = null;
-    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
+    emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
   };
 
   const getSelectedReaderRange = () => {
@@ -117,17 +117,13 @@ export function createHighlightController(options: {
       return;
     }
 
-    window.dispatchEvent(
-      new CustomEvent(VIEWER_EVENTS.highlightContextOpen, {
-        detail: {
-          canCopy: hasSelection || hasHighlight,
-          canDelete: hasHighlight,
-          canHighlight: hasSelection,
-          x: pageX,
-          y: pageY,
-        },
-      }),
-    );
+    emitViewerEvent(VIEWER_EVENTS.highlightContextOpen, {
+      canCopy: hasSelection || hasHighlight,
+      canDelete: hasHighlight,
+      canHighlight: hasSelection,
+      x: pageX,
+      y: pageY,
+    });
   };
 
   const openFromPointer = (event: MouseEvent, content: ReaderContent, convertFromFrame = false) => {
@@ -312,7 +308,7 @@ export function createHighlightController(options: {
     return annotation;
   };
 
-  const handleContextAction = (action: HighlightContextActionDetail["action"]) => {
+  const handleContextAction = (action: HighlightContextAction) => {
     if (action === "copy") {
       if (activeContext?.highlight) {
         void copyHighlight(activeContext.highlight);

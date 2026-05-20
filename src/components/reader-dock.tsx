@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { VIEWER_EVENTS } from "../viewer-events";
-import type { DockAction, DockActionDetail, DockUpdateDetail } from "../viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button } from "./ui/button";
 import { Tooltip } from "./ui/tooltip";
 
@@ -29,36 +29,14 @@ const dockItems = [
   { action: "export", id: "export-button", label: "Export original EPUB", icon: Download },
 ] as const;
 
-const initialDockState: DockUpdateDetail = {
-  canExport: false,
-  canSearch: false,
-  flowActive: false,
-  flowLabel: "Switch to scrolling mode",
-  searchActive: false,
-  themeActive: false,
-  themeCount: "1",
-  themeLabel: "Change theme",
-};
-
 export function ReaderDock() {
-  const [dockState, setDockState] = useState(initialDockState);
+  const [dockState, setDockState] = useState<DockUpdateDetail>({
+    canExport: false, canSearch: false, flowActive: false, flowLabel: "Switch to scrolling mode", searchActive: false, themeActive: false, themeCount: "1",
+  });
 
   useEffect(() => {
-    const handleUpdate = (event: Event) => {
-      setDockState((event as CustomEvent<DockUpdateDetail>).detail);
-    };
-
-    window.addEventListener(VIEWER_EVENTS.dockUpdate, handleUpdate);
-    return () => window.removeEventListener(VIEWER_EVENTS.dockUpdate, handleUpdate);
+    return listenViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);
   }, []);
-
-  const runAction = (action: DockAction) => {
-    window.dispatchEvent(
-      new CustomEvent<DockActionDetail>(VIEWER_EVENTS.dockAction, {
-        detail: { action },
-      }),
-    );
-  };
 
   return (
     <aside className="reader-dock-shell">
@@ -79,7 +57,7 @@ export function ReaderDock() {
                 disabled={disabled}
                 variant="ghost"
                 size="icon"
-                onClick={() => runAction(item.action)}
+                onClick={() => emitViewerEvent(VIEWER_EVENTS.dockAction, item.action)}
               >
                 <span className="dock-button-content">
                   <Icon size={20} aria-hidden="true" />
@@ -100,7 +78,6 @@ export function ReaderDock() {
 
 function getDockItemLabel(action: DockAction, fallback: string, dockState: DockUpdateDetail) {
   if (action === "toggle-flow") return dockState.flowLabel;
-  if (action === "toggle-theme") return dockState.themeLabel;
   return fallback;
 }
 

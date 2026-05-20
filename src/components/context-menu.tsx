@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { LucideIcon, Copy, Highlighter, Languages, Trash2 } from "lucide-react"
-import { VIEWER_EVENTS } from "../viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type {
   HighlightContextAction,
-  HighlightContextActionDetail,
   HighlightContextOpenDetail,
 } from "../viewer-events";
 
@@ -20,12 +19,18 @@ const closedState: MenuState = {
   y: 0,
 };
 
+const menuItems = [
+  { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
+  { action: "translate", enabledBy: "canCopy", icon: Languages, label: "Translate" },
+  { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
+  { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
+] as const;
+
 export function HighlightContextMenu() {
   const [state, setState] = useState<MenuState>(closedState);
 
   useEffect(() => {
-    const open = (event: Event) => {
-      const detail = (event as CustomEvent<HighlightContextOpenDetail>).detail;
+    const open = (detail: HighlightContextOpenDetail) => {
       setState({ ...detail, open: true });
     };
     const close = () => setState((current) => ({ ...current, open: false }));
@@ -33,17 +38,17 @@ export function HighlightContextMenu() {
       const target = event.target;
       if (target instanceof Element && target.closest(".reader-context-menu")) return;
       close();
-      window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
+      emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
     };
 
-    window.addEventListener(VIEWER_EVENTS.highlightContextOpen, open);
-    window.addEventListener(VIEWER_EVENTS.highlightContextClose, close);
+    const stopOpen = listenViewerEvent(VIEWER_EVENTS.highlightContextOpen, open);
+    const stopClose = listenViewerEvent(VIEWER_EVENTS.highlightContextClose, close);
     window.addEventListener("pointerdown", requestClose);
     window.addEventListener("contextmenu", requestClose);
     window.addEventListener("keydown", requestClose);
     return () => {
-      window.removeEventListener(VIEWER_EVENTS.highlightContextOpen, open);
-      window.removeEventListener(VIEWER_EVENTS.highlightContextClose, close);
+      stopOpen();
+      stopClose();
       window.removeEventListener("pointerdown", requestClose);
       window.removeEventListener("contextmenu", requestClose);
       window.removeEventListener("keydown", requestClose);
@@ -63,18 +68,14 @@ export function HighlightContextMenu() {
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <ContextMenuItem action="copy" disabled={!state.canCopy} icon={Copy} onClose={closeMenu}>
-        Copy
-      </ContextMenuItem>
-      <ContextMenuItem action="translate" disabled={!state.canCopy} icon={Languages} onClose={closeMenu}>
-        Translate
-      </ContextMenuItem>
-      <ContextMenuItem action="highlight" disabled={!state.canHighlight} icon={Highlighter} onClose={closeMenu}>
-        Highlight
-      </ContextMenuItem>
-      <ContextMenuItem action="delete" disabled={!state.canDelete} destructive icon={Trash2} onClose={closeMenu}>
-        Delete
-      </ContextMenuItem>
+      {menuItems.map((item) => (
+        <ContextMenuItem
+          {...item}
+          disabled={!state[item.enabledBy]}
+          key={item.action}
+          onClose={closeMenu}
+        />
+      ))}
     </div>
   );
 
@@ -85,17 +86,17 @@ export function HighlightContextMenu() {
 
 function ContextMenuItem({
   action,
-  children,
   destructive = false,
   disabled,
   icon: Icon,
+  label,
   onClose,
 }: {
   action: HighlightContextAction;
-  children: string;
   destructive?: boolean;
   disabled: boolean;
   icon: LucideIcon;
+  label: string;
   onClose: () => void;
 }) {
   return (
@@ -105,17 +106,13 @@ function ContextMenuItem({
       role="menuitem"
       type="button"
       onClick={() => {
-        window.dispatchEvent(
-          new CustomEvent<HighlightContextActionDetail>(VIEWER_EVENTS.highlightContextAction, {
-            detail: { action },
-          }),
-        );
+        emitViewerEvent(VIEWER_EVENTS.highlightContextAction, action);
         onClose();
-        window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
+        emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
       }}
     >
       <Icon size={20} aria-hidden="true" />
-      {children}
+      {label}
     </button>
   );
 }

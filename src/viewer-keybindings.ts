@@ -1,3 +1,5 @@
+import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
+import type { PageTurnDirection } from "./viewer-events";
 import type { FoliateViewElement } from "./viewer-types";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
@@ -21,12 +23,13 @@ function isScrollUpKey(key: string) {
 }
 
 function isScrollDownKey(key: string) {
-  return key === "ArrowDown" || key === "j";
+  return key === "ArrowDown" || key === "j" || key === " " || key === "Spacebar";
 }
 
 export function setupViewerKeybindings(options: {
   getReaderView: () => FoliateViewElement | null;
   getFlow: () => "paginated" | "scrolled";
+  canTurnPage?: () => boolean;
   openSearch: () => void;
   closeSearch: () => void;
 }) {
@@ -76,26 +79,18 @@ export function setupViewerKeybindings(options: {
     void (direction < 0 ? metrics.renderer.prev?.(Math.min(distance, remaining)) : metrics.renderer.next?.(Math.min(distance, remaining)));
   };
 
-  const goLeft = () => {
+  const turnPage = (direction: PageTurnDirection) => {
+    if (options.canTurnPage && !options.canTurnPage()) return;
+
     const readerView = options.getReaderView();
     if (options.getFlow() === "paginated") {
-      void readerView?.goLeft?.();
+      void (direction === "left" ? readerView?.goLeft?.() : readerView?.goRight?.());
       return;
     }
 
     const isRtl = readerView?.book?.dir === "rtl";
-    void (isRtl ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
-  };
-
-  const goRight = () => {
-    const readerView = options.getReaderView();
-    if (options.getFlow() === "paginated") {
-      void readerView?.goRight?.();
-      return;
-    }
-
-    const isRtl = readerView?.book?.dir === "rtl";
-    void (isRtl ? readerView?.renderer?.prevSection?.() : readerView?.renderer?.nextSection?.());
+    const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+    void (shouldGoNext ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
   };
 
   const refreshHoldScrollBounds = async () => {
@@ -189,10 +184,10 @@ export function setupViewerKeybindings(options: {
 
     if (event.key === "ArrowLeft" || event.key === "h") {
       event.preventDefault();
-      goLeft();
+      turnPage("left");
     } else if (event.key === "ArrowRight" || event.key === "l") {
       event.preventDefault();
-      goRight();
+      turnPage("right");
     } else if (options.getFlow() === "scrolled" && isScrollUpKey(event.key)) {
       handleScrollKeyDown(event, -1);
     } else if (options.getFlow() === "scrolled" && isScrollDownKey(event.key)) {
@@ -236,6 +231,7 @@ export function setupViewerKeybindings(options: {
   };
 
   bindKeyTarget(document);
+  listenViewerEvent(VIEWER_EVENTS.pageTurn, turnPage);
 
   return { bindReaderView };
 }

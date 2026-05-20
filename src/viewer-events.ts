@@ -20,10 +20,6 @@ export const VIEWER_EVENTS = {
 
 export type HighlightContextAction = "copy" | "delete" | "highlight" | "translate";
 
-export type HighlightContextActionDetail = {
-  action: HighlightContextAction;
-};
-
 export type HighlightContextOpenDetail = {
   canCopy: boolean;
   canDelete: boolean;
@@ -43,10 +39,6 @@ export type DockAction =
   | "open-toc"
   | "export";
 
-export type DockActionDetail = {
-  action: DockAction;
-};
-
 export type DockUpdateDetail = {
   canExport: boolean;
   canSearch: boolean;
@@ -55,14 +47,9 @@ export type DockUpdateDetail = {
   searchActive: boolean;
   themeActive: boolean;
   themeCount: string;
-  themeLabel: string;
 };
 
 export type PageTurnDirection = "left" | "right";
-
-export type PageTurnDetail = {
-  direction: PageTurnDirection;
-};
 
 export type SearchCollectDetail = {
   query: string;
@@ -81,6 +68,38 @@ export type TocUpdateDetail = {
   items: TocItem[];
 };
 
-export type TocNavigateDetail = {
-  href: string;
+export type ViewerEventDetailMap = {
+  [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
+  [VIEWER_EVENTS.highlightContextClose]: void;
+  [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;
+  [VIEWER_EVENTS.dockAction]: DockAction;
+  [VIEWER_EVENTS.dockUpdate]: DockUpdateDetail;
+  [VIEWER_EVENTS.pageTurn]: PageTurnDirection;
+  [VIEWER_EVENTS.searchClear]: void;
+  [VIEWER_EVENTS.searchCollect]: SearchCollectDetail;
+  [VIEWER_EVENTS.searchNext]: void;
+  [VIEWER_EVENTS.searchOpen]: void;
+  [VIEWER_EVENTS.searchPrevious]: void;
+  [VIEWER_EVENTS.searchUpdate]: SearchUpdateDetail;
+  [VIEWER_EVENTS.tocOpen]: void;
+  [VIEWER_EVENTS.tocNavigate]: string;
+  [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
 };
+
+export function emitViewerEvent<EventName extends keyof ViewerEventDetailMap>(
+  eventName: EventName,
+  ...detail: ViewerEventDetailMap[EventName] extends void ? [] : [ViewerEventDetailMap[EventName]]
+) {
+  window.dispatchEvent(new CustomEvent(eventName, { detail: detail[0] }));
+}
+
+export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(
+  eventName: EventName,
+  handler: (detail: ViewerEventDetailMap[EventName]) => void,
+) {
+  const listener = (event: Event) => {
+    handler((event as CustomEvent<ViewerEventDetailMap[EventName]>).detail);
+  };
+  window.addEventListener(eventName, listener);
+  return () => window.removeEventListener(eventName, listener);
+}
