@@ -8,19 +8,12 @@ const MAX_SEARCH_QUERY_LENGTH = 120;
 const MAX_SEARCH_RESULTS = 200;
 
 export function createSearchController(options: {
-  openSearchButton: HTMLButtonElement;
   getBookKey: () => string;
   getReaderView: () => FoliateViewElement | null;
 }) {
   let searchRunId = 0;
   let searchHits: SearchHit[] = [];
   let searchHitIndex = -1;
-
-  const updateButton = () => {
-    const canSearch = Boolean(options.getReaderView()?.search);
-    options.openSearchButton.disabled = !canSearch;
-    options.openSearchButton.setAttribute("aria-disabled", canSearch ? "false" : "true");
-  };
 
   const emitUpdate = (detail: SearchUpdateDetail) => {
     window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchUpdate, { detail }));
@@ -164,7 +157,7 @@ export function createSearchController(options: {
   const showPrevious = () => showHit(searchHitIndex - 1);
   const showNext = () => showHit(searchHitIndex + 1);
 
-  return { clear, collect, showHit, showNext, showPrevious, updateButton };
+  return { clear, collect, showNext, showPrevious };
 }
 
 function getSearchOptions(query: string) {

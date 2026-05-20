@@ -36,15 +36,15 @@ import {
   READER_MONO_FONT_URL,
   READER_SPACING_STEP,
   READER_THEMES,
-  updateFlowButton,
 } from "./reader-settings";
 import { createHighlightController } from "./highlight-controller";
 import { createSearchController } from "./search-controller";
-import { createTocController } from "./toc-controller";
-import { App } from "./App";
-import { getViewerElements } from "./viewer-elements";
+import { normalizeTocItems } from "./toc-controller";
+import { App } from "./app";
+import { createReadingProgressController } from "./components/reading-progress";
 import { VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
+import { runtime } from "./viewer-runtime";
 import { state } from "./viewer-state";
 import {
   getSavedPosition,
@@ -53,7 +53,7 @@ import {
   saveReadingPosition,
 } from "./viewer-storage";
 import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
-import type { HighlightContextActionDetail, SearchCollectDetail, TocNavigateDetail } from "./viewer-events";
+import type { DockActionDetail, DockUpdateDetail, HighlightContextActionDetail, PageTurnDetail, SearchCollectDetail, TocNavigateDetail } from "./viewer-events";
 import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
@@ -62,38 +62,17 @@ flushSync(() => {
   createRoot(appRoot).render(App());
 });
 
-let readerFontsReady: Promise<void> | null = null;
+const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
+const readingProgress = queryRequired<HTMLElement>("#reading-progress");
+const readingProgressTrack = queryRequired<HTMLElement>(".reader-progress-track");
+const readingProgressFill = queryRequired<HTMLElement>("#reading-progress-fill");
 
-const {
-  readerRoot,
-  toggleFlowButton,
-  toggleThemeButton,
-  themeCount,
-  decreaseFontButton,
-  increaseFontButton,
-  decreaseWidthButton,
-  increaseWidthButton,
-  openSearchButton,
-  openTocButton,
-  exportButton,
-  pageLeftZone,
-  pageRightZone,
-  readingProgress,
-  readingProgressTrack,
-  readingProgressFill,
-  readingProgressLabel,
-  tocRoot,
-  tocModal,
-} = getViewerElements();
+function queryRequired<T extends Element>(selector: string) {
+  const node = document.querySelector<T>(selector);
+  if (!node) throw new Error(`Missing required element: ${selector}`);
+  return node;
+}
 
-let readerView: FoliateViewElement | null = null;
-let foliateViewReady: Promise<unknown> | null = null;
-let foliateScrollbarPatchReady = false;
-let savePositionTimer: number | undefined;
-let extraUiReady = false;
-let currentProgress = 0;
-let isSearchOpen = false;
-const showReadingProgressLabel = false;
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
   fontSize: 19,
@@ -101,42 +80,52 @@ const defaultReaderSettings: ReaderSettings = {
   spacing: 0,
   theme: "light",
 };
-let keybindings: ReturnType<typeof setupViewerKeybindings> | null = null;
-let tocController: ReturnType<typeof createTocController> | null = null;
-let searchController: ReturnType<typeof createSearchController> | null = null;
-const highlightController = createHighlightController({
+runtime.readingProgressController = createReadingProgressController({
+  root: readingProgress,
+  track: readingProgressTrack,
+  fill: readingProgressFill,
+  canSeek: () => Boolean(runtime.readerView?.book),
+  onSeek: (progress) => {
+    void runtime.readerView?.goTo({ fraction: progress }).catch((error) => {
+      console.warn("Failed to seek reading progress.", error);
+    });
+  },
+});
+runtime.highlightController = createHighlightController({
   getBookKey: () => state.currentBookKey,
-  getProgress: () => currentProgress,
-  getReaderView: () => readerView,
+  getProgress: () => runtime.readingProgressController?.getProgress() ?? 0,
+  getReaderView: () => runtime.readerView,
   runWhenIdle,
 });
 
 function ensureKeybindings() {
-  keybindings ??= setupViewerKeybindings({
-    getReaderView: () => readerView,
+  runtime.keybindings ??= setupViewerKeybindings({
+    getReaderView: () => runtime.readerView,
     getFlow: () => state.flow,
     openSearch,
     closeSearch: clearSearchState,
   });
-  if (readerView) keybindings.bindReaderView(readerView);
-  return keybindings;
-}
-
-function ensureTocController() {
-  tocController ??= createTocController({
-    tocRoot,
-    getCurrentHref: () => state.currentHref,
-  });
-  return tocController;
+  if (runtime.readerView) runtime.keybindings.bindReaderView(runtime.readerView);
+  return runtime.keybindings;
 }
 
 function ensureSearchController() {
-  searchController ??= createSearchController({
-    openSearchButton,
+  runtime.searchController ??= createSearchController({
     getBookKey: () => state.currentBookKey,
-    getReaderView: () => readerView,
+    getReaderView: () => runtime.readerView,
   });
-  return searchController;
+  return runtime.searchController;
+}
+
+function emitTocUpdate() {
+  window.dispatchEvent(
+    new CustomEvent(VIEWER_EVENTS.tocUpdate, {
+      detail: {
+        currentHref: state.currentHref,
+        items: runtime.tocItems,
+      },
+    }),
+  );
 }
 
 function formatLocalized(value?: string | Record<string, string>) {
@@ -147,9 +136,9 @@ function formatLocalized(value?: string | Record<string, string>) {
 }
 
 function preloadReaderFonts() {
-  if (readerFontsReady) return readerFontsReady;
+  if (runtime.readerFontsReady) return runtime.readerFontsReady;
 
-  readerFontsReady = Promise.all([
+  runtime.readerFontsReady = Promise.all([
     new FontFace(READER_FONT_FAMILY, `url("${READER_FONT_URL}") format("truetype")`, {
       style: "normal",
       weight: "400",
@@ -166,7 +155,7 @@ function preloadReaderFonts() {
       console.warn("Failed to preload reader fonts.", error);
     });
 
-  return readerFontsReady;
+  return runtime.readerFontsReady;
 }
 
 function runWhenIdle(callback: () => void, timeout = 500) {
@@ -179,8 +168,8 @@ function runWhenIdle(callback: () => void, timeout = 500) {
 }
 
 function installFoliateScrollbarPatch() {
-  if (foliateScrollbarPatchReady) return;
-  foliateScrollbarPatchReady = true;
+  if (runtime.foliateScrollbarPatchReady) return;
+  runtime.foliateScrollbarPatchReady = true;
 
   const descriptor = Object.getOwnPropertyDescriptor(ShadowRoot.prototype, "innerHTML");
   if (!descriptor?.set || !descriptor.get) return;
@@ -213,29 +202,20 @@ function installFoliateScrollbarPatch() {
 
 function ensureFoliateView() {
   installFoliateScrollbarPatch();
-  foliateViewReady ??= import("foliate-js/view.js");
-  return foliateViewReady;
+  runtime.foliateViewReady ??= import("foliate-js/view.js");
+  return runtime.foliateViewReady;
 }
 
 function updatePageStatus(detail: RelocateDetail) {
   const progress = typeof detail.fraction === "number" ? detail.fraction : 0;
-  setReadingProgress(progress);
-  updateReadingProgressLabel(showReadingProgressLabel ? detail.tocItem?.label : undefined);
-}
-
-function updateTocCurrent() {
-  tocController?.updateCurrent();
-}
-
-function resetToc() {
-  tocController?.reset();
+  runtime.readingProgressController?.setProgress(progress);
 }
 
 function queuePositionSave(detail: RelocateDetail) {
   if (!state.currentBookKey || state.isRestoring) return;
 
-  window.clearTimeout(savePositionTimer);
-  savePositionTimer = window.setTimeout(() => {
+  window.clearTimeout(runtime.savePositionTimer);
+  runtime.savePositionTimer = window.setTimeout(() => {
     void saveReadingPosition(state.currentBookKey, detail);
   }, 350);
 }
@@ -250,24 +230,24 @@ function wireReaderEvents(view: FoliateViewElement) {
     const detail = (event as CustomEvent<RelocateDetail>).detail;
 
     state.currentHref = detail.tocItem?.href ?? "";
-    updateTocCurrent();
+    emitTocUpdate();
     updatePageStatus(detail);
     queuePositionSave(detail);
-    highlightController.bindContextTargets();
+    runtime.highlightController?.bindContextTargets();
     labelFootnoteTargets();
   });
 
   view.addEventListener("create-overlay", (event) => {
     const { index } = (event as CustomEvent<{ index: number }>).detail;
-    highlightController.addCurrentHighlightsToOverlay(view, index);
+    runtime.highlightController?.addCurrentHighlightsToOverlay(view, index);
   });
 
   view.addEventListener("draw-annotation", (event) => {
-    highlightController.drawAnnotation((event as CustomEvent<Parameters<typeof highlightController.drawAnnotation>[0]>).detail);
+    runtime.highlightController?.drawAnnotation((event as CustomEvent<Parameters<NonNullable<typeof runtime.highlightController>["drawAnnotation"]>[0]>).detail);
   });
 
   view.addEventListener("show-annotation", (event) => {
-    highlightController.openFromAnnotation((event as CustomEvent<Parameters<typeof highlightController.openFromAnnotation>[0]>).detail);
+    runtime.highlightController?.openFromAnnotation((event as CustomEvent<Parameters<NonNullable<typeof runtime.highlightController>["openFromAnnotation"]>[0]>).detail);
   });
 }
 
@@ -339,7 +319,7 @@ function labelFootnotes(doc: Document) {
 }
 
 function labelFootnoteTargets() {
-  for (const { doc } of readerView?.renderer?.getContents?.() ?? []) {
+  for (const { doc } of runtime.readerView?.renderer?.getContents?.() ?? []) {
     if (doc) labelFootnotes(doc);
   }
 }
@@ -356,14 +336,25 @@ async function ensureFileSchemeAccess(fileUrl?: string) {
   return allowed;
 }
 
-function updateExportButton() {
-  const hasSource = Boolean(state.currentSourceUrl);
-  exportButton.disabled = !hasSource;
-  exportButton.setAttribute("aria-disabled", hasSource ? "false" : "true");
+function getDockUpdateDetail(): DockUpdateDetail {
+  const theme = READER_THEMES.find((item) => item.id === state.readerTheme) ?? READER_THEMES[0]!;
+  const themeIndex = READER_THEMES.findIndex((item) => item.id === theme.id);
+  const isPaginated = state.flow === "paginated";
+
+  return {
+    canExport: Boolean(state.currentSourceUrl),
+    canSearch: Boolean(runtime.readerView?.search),
+    flowActive: !isPaginated,
+    flowLabel: isPaginated ? "Switch to scrolling mode" : "Switch to paginated mode",
+    searchActive: runtime.isSearchOpen,
+    themeActive: theme.mode === "dark",
+    themeCount: String(themeIndex + 1),
+    themeLabel: `Change theme, current theme ${theme.label}`,
+  };
 }
 
-function updateSearchButton() {
-  searchController?.updateButton();
+function emitDockUpdate() {
+  window.dispatchEvent(new CustomEvent<DockUpdateDetail>(VIEWER_EVENTS.dockUpdate, { detail: getDockUpdateDetail() }));
 }
 
 function deriveDownloadFilename(sourceUrl: string) {
@@ -386,9 +377,9 @@ async function exportCurrentBook() {
 }
 
 function clearSearchState() {
-  isSearchOpen = false;
-  openSearchButton.classList.remove("dock-active");
-  searchController?.clear();
+  runtime.isSearchOpen = false;
+  runtime.searchController?.clear();
+  emitDockUpdate();
 }
 
 function getCurrentReaderSettings(): ReaderSettings {
@@ -408,13 +399,13 @@ function saveCurrentReaderSettings() {
 
 function openSearch() {
   ensureSearchController();
-  isSearchOpen = true;
-  openSearchButton.classList.add("dock-active");
+  runtime.isSearchOpen = true;
   window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchOpen));
+  emitDockUpdate();
 }
 
 function toggleSearch() {
-  if (isSearchOpen) {
+  if (runtime.isSearchOpen) {
     clearSearchState();
     return;
   }
@@ -423,32 +414,30 @@ function toggleSearch() {
 }
 
 function resetTransientBookState() {
-  window.clearTimeout(savePositionTimer);
+  window.clearTimeout(runtime.savePositionTimer);
   clearSearchState();
-  resetToc();
-  highlightController.reset();
+  runtime.tocItems = [];
+  emitTocUpdate();
+  runtime.highlightController?.reset();
 }
 
 function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
   const nextSettings = { ...defaultReaderSettings, ...settings };
 
-  applyReaderFlow(nextSettings.flow, readerView, readerRoot);
-  applyReaderSpacing(nextSettings.spacing, readerView);
-  applyReaderMargin(nextSettings.margin, readerView, readerRoot);
-  applyReaderFontSize(nextSettings.fontSize, readerView);
-  applyReaderTheme(nextSettings.theme, {
-    toggleThemeButton,
-    themeCount,
-    setBookStyles: () => readerView?.renderer?.setStyles?.(getBookStyles()),
-  });
-  updateFlowButton(toggleFlowButton);
+  applyReaderFlow(nextSettings.flow, runtime.readerView, readerRoot);
+  applyReaderSpacing(nextSettings.spacing, runtime.readerView);
+  applyReaderMargin(nextSettings.margin, runtime.readerView, readerRoot);
+  applyReaderFontSize(nextSettings.fontSize, runtime.readerView);
+  applyReaderTheme(nextSettings.theme);
+  runtime.readerView?.renderer?.setStyles?.(getBookStyles());
+  emitDockUpdate();
 }
 
 function createView() {
   const view = document.createElement("foliate-view") as FoliateViewElement;
   readerRoot.replaceChildren(view);
   wireReaderEvents(view);
-  keybindings?.bindReaderView(view);
+  runtime.keybindings?.bindReaderView(view);
   return view;
 }
 
@@ -486,34 +475,37 @@ async function openBook(input: File | string, sourceLabel: string) {
 
   await ensureFoliateView();
 
-  if (!readerView) {
-    readerView = createView();
+  if (!runtime.readerView) {
+    runtime.readerView = createView();
   }
 
   try {
     state.currentBookKey = fileUrl ?? "";
     state.currentSourceUrl = fileUrl ?? "";
-    updateExportButton();
+    emitDockUpdate();
     resetTransientBookState();
-    if (readerView.book) readerView.close();
+    if (runtime.readerView.book) runtime.readerView.close();
     void preloadReaderFonts();
-    await readerView.open(input);
+    await runtime.readerView.open(input);
     applyReaderSettings(
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
     );
 
-    const metadata = readerView.book?.metadata;
+    const metadata = runtime.readerView.book?.metadata;
     const title = formatLocalized(metadata?.title) || "Untitled Book";
 
     document.title = `${title} · EPUB Viewer`;
     await restoreSavedPosition(
-      readerView,
+      runtime.readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
     );
-    if (state.currentBookKey) highlightController.scheduleRestore(readerView, state.currentBookKey);
-    highlightController.bindContextTargets();
+    if (state.currentBookKey) runtime.highlightController?.scheduleRestore(runtime.readerView, state.currentBookKey);
+    runtime.highlightController?.bindContextTargets();
     scheduleExtraUiSetup();
-    runWhenIdle(() => ensureTocController().render(readerView?.book?.toc), 1200);
+    runWhenIdle(() => {
+      runtime.tocItems = normalizeTocItems(runtime.readerView?.book?.toc);
+      emitTocUpdate();
+    }, 1200);
   } catch (error) {
     console.error(`Failed to open ${sourceLabel}`, error);
   }
@@ -525,29 +517,13 @@ function readSourceFromQuery() {
 }
 
 function setupCriticalInteractions() {
-  pageLeftZone.addEventListener("click", () => {
-    if (state.flow === "paginated") {
-      void readerView?.goLeft?.();
-      return;
-    }
-
-    const isRtl = readerView?.book?.dir === "rtl";
-    void (isRtl ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
-  });
-
-  pageRightZone.addEventListener("click", () => {
-    if (state.flow === "paginated") {
-      void readerView?.goRight?.();
-      return;
-    }
-
-    const isRtl = readerView?.book?.dir === "rtl";
-    void (isRtl ? readerView?.renderer?.prevSection?.() : readerView?.renderer?.nextSection?.());
+  window.addEventListener(VIEWER_EVENTS.pageTurn, (event) => {
+    turnPage((event as CustomEvent<PageTurnDetail>).detail.direction);
   });
 
   window.addEventListener("resize", () => {
-    if (readerView) applyReaderLayout(readerView, readerRoot);
-    highlightController.close();
+    if (runtime.readerView) applyReaderLayout(runtime.readerView, readerRoot);
+    runtime.highlightController?.close();
   });
 
   window.addEventListener("contextmenu", (event) => {
@@ -557,89 +533,22 @@ function setupCriticalInteractions() {
   });
 }
 
-function getProgressFromPointer(event: PointerEvent) {
-  const bounds = readingProgressTrack.getBoundingClientRect();
-  if (bounds.width <= 0) return currentProgress;
+function turnPage(direction: PageTurnDetail["direction"]) {
+  if (state.flow === "paginated") {
+    void (direction === "left" ? runtime.readerView?.goLeft?.() : runtime.readerView?.goRight?.());
+    return;
+  }
 
-  return Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-}
-
-function setReadingProgress(progress: number) {
-  currentProgress = Math.min(1, Math.max(0, progress));
-  readingProgressFill.style.setProperty("--reader-progress", `${currentProgress * 100}%`);
-  readingProgress.setAttribute("aria-valuenow", String(Math.round(currentProgress * 100)));
-}
-
-function updateReadingProgressLabel(label?: string) {
-  const chapterLabel = label?.trim() ?? "";
-  readingProgressLabel.textContent = chapterLabel;
-  readingProgressLabel.hidden = !chapterLabel;
-}
-
-function previewReadingProgress(progress: number) {
-  setReadingProgress(progress);
-}
-
-function seekReadingProgress(progress: number) {
-  if (!readerView?.book) return;
-  previewReadingProgress(progress);
-  void readerView.goTo({ fraction: currentProgress }).catch((error) => {
-    console.warn("Failed to seek reading progress.", error);
-  });
-}
-
-function setupProgressInteractions() {
-  readingProgress.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
-
-    event.preventDefault();
-    readingProgress.classList.add("is-dragging");
-    readingProgressFill.style.transitionDuration = "0ms";
-    readingProgress.setPointerCapture(event.pointerId);
-    previewReadingProgress(getProgressFromPointer(event));
-  });
-
-  readingProgress.addEventListener("pointermove", (event) => {
-    if (!readingProgress.hasPointerCapture(event.pointerId)) return;
-    previewReadingProgress(getProgressFromPointer(event));
-  });
-
-  const finishDrag = (event: PointerEvent) => {
-    if (!readingProgress.hasPointerCapture(event.pointerId)) return;
-
-    const progress = getProgressFromPointer(event);
-    readingProgress.releasePointerCapture(event.pointerId);
-    readingProgress.classList.remove("is-dragging");
-    readingProgressFill.style.transitionDuration = "";
-    seekReadingProgress(progress);
-  };
-
-  readingProgress.addEventListener("pointerup", finishDrag);
-  readingProgress.addEventListener("pointercancel", finishDrag);
-
-  readingProgress.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
-      event.preventDefault();
-      seekReadingProgress(currentProgress - 0.01);
-    } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
-      event.preventDefault();
-      seekReadingProgress(currentProgress + 0.01);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      seekReadingProgress(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      seekReadingProgress(1);
-    }
-  });
+  const isRtl = runtime.readerView?.book?.dir === "rtl";
+  const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+  void (shouldGoNext ? runtime.readerView?.renderer?.nextSection?.() : runtime.readerView?.renderer?.prevSection?.());
 }
 
 function setupExtraInteractions() {
   window.addEventListener(VIEWER_EVENTS.tocNavigate, (event) => {
     const { href } = (event as CustomEvent<TocNavigateDetail>).detail;
     if (!href) return;
-    void readerView?.goTo(href);
-    tocModal.close();
+    void runtime.readerView?.goTo(href);
   });
   window.addEventListener(VIEWER_EVENTS.searchCollect, (event) => {
     const { highlightedOnly, query } = (event as CustomEvent<SearchCollectDetail>).detail;
@@ -656,66 +565,78 @@ function setupExtraInteractions() {
   });
   window.addEventListener(VIEWER_EVENTS.highlightContextAction, (event) => {
     const { action } = (event as CustomEvent<HighlightContextActionDetail>).detail;
-    highlightController.handleContextAction(action);
+    runtime.highlightController?.handleContextAction(action);
   });
 
-  openTocButton.addEventListener("click", () => {
-    tocModal.showModal();
-    ensureTocController().resetViewState();
-  });
-
-  openSearchButton.addEventListener("click", () => {
-    toggleSearch();
-  });
-
-  toggleFlowButton.addEventListener("click", () => {
-    changeReaderFlow(readerView, readerRoot);
-    updateFlowButton(toggleFlowButton);
-    saveCurrentReaderSettings();
-  });
-
-  toggleThemeButton.addEventListener("click", () => {
-    const currentIndex = READER_THEMES.findIndex((theme) => theme.id === state.readerTheme);
-    const nextTheme = READER_THEMES[(currentIndex + 1) % READER_THEMES.length]!;
-    applyReaderTheme(nextTheme.id, {
-      toggleThemeButton,
-      themeCount,
-      setBookStyles: () => readerView?.renderer?.setStyles?.(getBookStyles()),
-    });
-    saveCurrentReaderSettings();
-  });
-
-  decreaseFontButton.addEventListener("click", () => {
-    changeReaderFontSize(-READER_FONT_SIZE_STEP, readerView);
-    saveCurrentReaderSettings();
-  });
-
-  increaseFontButton.addEventListener("click", () => {
-    changeReaderFontSize(READER_FONT_SIZE_STEP, readerView);
-    saveCurrentReaderSettings();
-  });
-
-  decreaseWidthButton.addEventListener("click", () => {
-    changeReaderWidth(-READER_MARGIN_STEP, readerView, readerRoot);
-    changeReaderDensity(-READER_SPACING_STEP, readerView);
-    saveCurrentReaderSettings();
-  });
-
-  increaseWidthButton.addEventListener("click", () => {
-    changeReaderWidth(READER_MARGIN_STEP, readerView, readerRoot);
-    changeReaderDensity(READER_SPACING_STEP, readerView);
-    saveCurrentReaderSettings();
-  });
-
-  exportButton.addEventListener("click", () => {
-    void exportCurrentBook();
+  window.addEventListener(VIEWER_EVENTS.dockAction, (event) => {
+    handleDockAction((event as CustomEvent<DockActionDetail>).detail.action);
   });
 
 }
 
+function handleDockAction(action: DockActionDetail["action"]) {
+  if (action === "open-toc") {
+    emitTocUpdate();
+    window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.tocOpen));
+    return;
+  }
+
+  if (action === "toggle-search") {
+    toggleSearch();
+    return;
+  }
+
+  if (action === "toggle-flow") {
+    changeReaderFlow(runtime.readerView, readerRoot);
+    saveCurrentReaderSettings();
+    emitDockUpdate();
+    return;
+  }
+
+  if (action === "toggle-theme") {
+    const currentIndex = READER_THEMES.findIndex((theme) => theme.id === state.readerTheme);
+    const nextTheme = READER_THEMES[(currentIndex + 1) % READER_THEMES.length]!;
+    applyReaderTheme(nextTheme.id);
+    runtime.readerView?.renderer?.setStyles?.(getBookStyles());
+    saveCurrentReaderSettings();
+    emitDockUpdate();
+    return;
+  }
+
+  if (action === "decrease-font") {
+    changeReaderFontSize(-READER_FONT_SIZE_STEP, runtime.readerView);
+    saveCurrentReaderSettings();
+    return;
+  }
+
+  if (action === "increase-font") {
+    changeReaderFontSize(READER_FONT_SIZE_STEP, runtime.readerView);
+    saveCurrentReaderSettings();
+    return;
+  }
+
+  if (action === "decrease-width") {
+    changeReaderWidth(-READER_MARGIN_STEP, runtime.readerView, readerRoot);
+    changeReaderDensity(-READER_SPACING_STEP, runtime.readerView);
+    saveCurrentReaderSettings();
+    return;
+  }
+
+  if (action === "increase-width") {
+    changeReaderWidth(READER_MARGIN_STEP, runtime.readerView, readerRoot);
+    changeReaderDensity(READER_SPACING_STEP, runtime.readerView);
+    saveCurrentReaderSettings();
+    return;
+  }
+
+  if (action === "export") {
+    void exportCurrentBook();
+  }
+}
+
 function setupExtraUi() {
-  if (extraUiReady) return;
-  extraUiReady = true;
+  if (runtime.extraUiReady) return;
+  runtime.extraUiReady = true;
 
   createIcons({
     icons: {
@@ -735,8 +656,8 @@ function setupExtraUi() {
     },
   });
   ensureKeybindings();
-  ensureSearchController().updateButton();
-  highlightController.bindContextTargets();
+  emitDockUpdate();
+  runtime.highlightController?.bindContextTargets();
   setupExtraInteractions();
 }
 
@@ -746,9 +667,10 @@ function scheduleExtraUiSetup() {
 
 async function bootstrap() {
   applyReaderSettings(undefined);
-  updateExportButton();
+  emitDockUpdate();
   setupCriticalInteractions();
-  setupProgressInteractions();
+  runtime.readingProgressController?.bind();
+  emitDockUpdate();
 
   const src = readSourceFromQuery();
   if (src) {

@@ -63,10 +63,9 @@ export function SearchBar() {
   };
 
   return (
-    <div id="search-nav" className="search-nav" hidden={!visible}>
+    <div className="search-nav" hidden={!visible}>
       <Tooltip label="Previous result" side="bottom">
         <Button
-          id="search-prev-button"
           aria-label="Previous result"
           disabled={!canNavigate}
           variant="ghost"
@@ -76,12 +75,11 @@ export function SearchBar() {
           <i data-lucide="chevron-left" />
         </Button>
       </Tooltip>
-      <span id="search-count" className="search-count">
+      <span className="search-count">
         {countText}
       </span>
       <Tooltip label="Next result" side="bottom">
         <Button
-          id="search-next-button"
           aria-label="Next result"
           disabled={!canNavigate}
           variant="ghost"
@@ -92,7 +90,6 @@ export function SearchBar() {
         </Button>
       </Tooltip>
       <form
-        id="search-form"
         className="search-form"
         onSubmit={(event) => {
           event.preventDefault();
@@ -100,7 +97,6 @@ export function SearchBar() {
         }}
       >
         <Input
-          id="search-input"
           className="search-input"
           type="search"
           placeholder={placeholder}
@@ -112,7 +108,6 @@ export function SearchBar() {
       </form>
       <Tooltip label="Search highlights only" side="bottom">
         <Button
-          id="search-highlights-button"
           aria-label="Search highlights only"
           aria-pressed={highlightedOnly}
           className={highlightedOnly ? "search-mode-active" : undefined}
@@ -125,7 +120,6 @@ export function SearchBar() {
       </Tooltip>
       <Tooltip label="Close search" side="bottom">
         <Button
-          id="search-close-button"
           aria-label="Close search"
           variant="ghost"
           size="icon"

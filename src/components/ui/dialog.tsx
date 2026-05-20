@@ -1,16 +1,20 @@
+import { forwardRef } from "react";
 import type { DialogHTMLAttributes, ReactNode } from "react";
 
 type DialogProps = DialogHTMLAttributes<HTMLDialogElement> & {
   children: ReactNode;
 };
 
-export function Dialog({ children, className, ...props }: DialogProps) {
+export const Dialog = forwardRef<HTMLDialogElement, DialogProps>(function Dialog(
+  { children, className, ...props },
+  ref,
+) {
   return (
-    <dialog className={["reader-modal", className].filter(Boolean).join(" ")} {...props}>
+    <dialog className={["reader-modal", className].filter(Boolean).join(" ")} ref={ref} {...props}>
       {children}
     </dialog>
   );
-}
+});
 
 export function DialogContent({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={className}>{children}</div>;

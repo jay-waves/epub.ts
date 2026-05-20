@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type ButtonVariant = "ghost" | "secondary";
-type ButtonSize = "icon" | "icon-sm";
+type ButtonVariant = "ghost";
+type ButtonSize = "icon";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;

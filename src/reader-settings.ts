@@ -6,14 +6,14 @@ export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
 export const READER_FONT_URL = chrome.runtime.getURL("LXGWWenKai-Regular.ttf");
 export const READER_MONO_FONT_URL = chrome.runtime.getURL("Monaspace Argon Var.ttf");
 
-export const MIN_READER_FONT_SIZE = 14;
-export const MAX_READER_FONT_SIZE = 32;
+const MIN_READER_FONT_SIZE = 14;
+const MAX_READER_FONT_SIZE = 32;
 export const READER_FONT_SIZE_STEP = 1;
-export const MIN_READER_MARGIN = 0;
-export const MAX_READER_MARGIN = 72;
+const MIN_READER_MARGIN = 0;
+const MAX_READER_MARGIN = 72;
 export const READER_MARGIN_STEP = 8;
-export const MIN_READER_SPACING = -4;
-export const MAX_READER_SPACING = 6;
+const MIN_READER_SPACING = -4;
+const MAX_READER_SPACING = 6;
 export const READER_SPACING_STEP = 1;
 
 const PAGINATED_GAP = "2.5%";
@@ -36,7 +36,7 @@ export const READER_THEMES: ReaderTheme[] = [
   { id: "one-dark", label: "One Dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
 ];
 
-export function getTheme(themeId = state.readerTheme) {
+function getTheme(themeId = state.readerTheme) {
   return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
 }
 
@@ -430,12 +430,8 @@ export function getBookStyles(themeId = state.readerTheme) {
   `;
 }
 
-export function applyReaderTheme(
-  themeId: ReaderThemeId,
-  controls: { toggleThemeButton: HTMLButtonElement; themeCount: HTMLElement; setBookStyles: () => void },
-) {
+export function applyReaderTheme(themeId: ReaderThemeId) {
   const theme = getTheme(themeId);
-  const themeIndex = READER_THEMES.findIndex((item) => item.id === theme.id);
   const scrollbarThumb =
     theme.mode === "dark" ? "rgba(191, 205, 219, 0.28)" : "rgba(82, 94, 110, 0.35)";
   const scrollbarTrack =
@@ -450,11 +446,6 @@ export function applyReaderTheme(
   document.documentElement.style.setProperty("--reader-color-scheme", theme.mode);
   document.documentElement.style.setProperty("--reader-scrollbar-thumb", scrollbarThumb);
   document.documentElement.style.setProperty("--reader-scrollbar-track", scrollbarTrack);
-  controls.toggleThemeButton.classList.toggle("dock-active", theme.mode === "dark");
-  controls.toggleThemeButton.dataset.tip = `Theme: ${theme.label}`;
-  controls.toggleThemeButton.setAttribute("aria-label", `Change theme, current theme ${theme.label}`);
-  controls.themeCount.textContent = String(themeIndex + 1);
-  controls.setBookStyles();
 }
 
 export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElement) {
@@ -482,20 +473,15 @@ export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElem
 
 }
 
-export function applyBookRenderingPreferences(view: FoliateViewElement, readerRoot: HTMLElement) {
-  applyReaderLayout(view, readerRoot);
-  view.renderer?.setStyles?.(getBookStyles());
-}
-
-export function clampReaderFontSize(fontSize: number) {
+function clampReaderFontSize(fontSize: number) {
   return clamp(fontSize, MIN_READER_FONT_SIZE, MAX_READER_FONT_SIZE);
 }
 
-export function clampReaderMargin(margin: number) {
+function clampReaderMargin(margin: number) {
   return clamp(margin, MIN_READER_MARGIN, MAX_READER_MARGIN);
 }
 
-export function clampReaderSpacing(spacing: number) {
+function clampReaderSpacing(spacing: number) {
   return clamp(spacing, MIN_READER_SPACING, MAX_READER_SPACING);
 }
 
@@ -540,15 +526,6 @@ export function applyReaderFlow(flow: ReaderFlow, view: FoliateViewElement | nul
 export function changeReaderFlow(view: FoliateViewElement | null, readerRoot: HTMLElement) {
   const nextFlow = state.flow === "paginated" ? "scrolled" : "paginated";
   applyReaderFlow(nextFlow, view, readerRoot);
-}
-
-export function updateFlowButton(toggleFlowButton: HTMLButtonElement) {
-  const isPaginated = state.flow === "paginated";
-  const label = isPaginated ? "Switch to scrolling mode" : "Switch to paginated mode";
-
-  toggleFlowButton.classList.toggle("dock-active", !isPaginated);
-  toggleFlowButton.dataset.tip = label;
-  toggleFlowButton.setAttribute("aria-label", label);
 }
 
 function clamp(value: number, min: number, max: number) {

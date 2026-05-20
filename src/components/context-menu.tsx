@@ -32,6 +32,7 @@ export function HighlightContextMenu() {
     const requestClose = (event: Event) => {
       const target = event.target;
       if (target instanceof Element && target.closest(".reader-context-menu")) return;
+      close();
       window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
     };
 
@@ -75,20 +76,24 @@ export function HighlightContextMenu() {
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <ContextMenuItem action="copy" disabled={!state.canCopy} icon="copy">
+      <ContextMenuItem action="copy" disabled={!state.canCopy} icon="copy" onClose={closeMenu}>
         Copy
       </ContextMenuItem>
-      <ContextMenuItem action="translate" disabled={!state.canCopy} icon="languages">
+      <ContextMenuItem action="translate" disabled={!state.canCopy} icon="languages" onClose={closeMenu}>
         Translate
       </ContextMenuItem>
-      <ContextMenuItem action="highlight" disabled={!state.canHighlight} icon="highlighter">
+      <ContextMenuItem action="highlight" disabled={!state.canHighlight} icon="highlighter" onClose={closeMenu}>
         Highlight
       </ContextMenuItem>
-      <ContextMenuItem action="delete" disabled={!state.canDelete} destructive icon="trash-2">
+      <ContextMenuItem action="delete" disabled={!state.canDelete} destructive icon="trash-2" onClose={closeMenu}>
         Delete
       </ContextMenuItem>
     </div>
   );
+
+  function closeMenu() {
+    setState((current) => ({ ...current, open: false }));
+  }
 }
 
 function ContextMenuItem({
@@ -97,12 +102,14 @@ function ContextMenuItem({
   destructive = false,
   disabled,
   icon,
+  onClose,
 }: {
   action: HighlightContextAction;
   children: string;
   destructive?: boolean;
   disabled: boolean;
   icon: string;
+  onClose: () => void;
 }) {
   return (
     <button
@@ -116,6 +123,8 @@ function ContextMenuItem({
             detail: { action },
           }),
         );
+        onClose();
+        window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
       }}
     >
       <i aria-hidden="true" data-lucide={icon} />

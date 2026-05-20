@@ -12,6 +12,10 @@
     --border: 214 32% 91%;
     --ring: 198 93% 48%;
     --radius: 0.5rem;
+    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, transparent);
+    --reader-glass-border: rgb(255 255 255 / 45%);
+    --reader-glass-shadow: 0 14px 34px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
+    --reader-glass-filter: blur(14px) saturate(135%);
   }
 
   html,
@@ -127,11 +131,11 @@
   }
 
   .reader-modal-backdrop {
-    @apply fixed inset-0 cursor-default border-0 p-0 text-transparent;
+    @apply fixed inset-0 z-0 cursor-default border-0 bg-transparent p-0 text-transparent shadow-none outline-none;
   }
 
   .reader-modal-backdrop button {
-    @apply h-full w-full cursor-default border-0 bg-transparent p-0 text-transparent;
+    @apply h-full w-full cursor-default appearance-none border-0 bg-transparent p-0 text-transparent shadow-none outline-none;
   }
 
   .ui-button {
@@ -178,15 +182,17 @@
   }
 
   .reader-dock {
-    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-1.5 rounded-xl border border-white/45 bg-white/55 p-1.5 shadow-xl shadow-slate-950/10 backdrop-blur-2xl;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 56%, transparent) !important;
+    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
+    border-color: var(--reader-glass-border);
+    background-color: var(--reader-glass-bg) !important;
+    box-shadow: var(--reader-glass-shadow);
     opacity: 0;
     transform: translateX(calc(-100% + 0.5rem));
     transition:
       opacity 200ms ease,
       transform 200ms ease;
-    backdrop-filter: blur(22px) saturate(165%);
-    -webkit-backdrop-filter: blur(22px) saturate(165%);
+    backdrop-filter: var(--reader-glass-filter);
+    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
   .reader-dock-shell:hover .reader-dock,
@@ -272,25 +278,6 @@
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 22%, transparent);
   }
 
-  .reader-progress-label {
-    @apply pointer-events-none absolute bottom-full left-1/2 mb-2 max-w-[min(22rem,78vw)] -translate-x-1/2 translate-y-1 truncate rounded-md px-2 py-1 text-xs font-medium opacity-0 transition-all duration-200;
-    background: color-mix(in srgb, var(--reader-chrome-bg, #fbfaf7) 82%, transparent);
-    color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
-  }
-
-  .reader-progress-label[hidden] {
-    @apply hidden;
-  }
-
-  .reader-progress:hover .reader-progress-label,
-  .reader-progress:focus-visible .reader-progress-label,
-  .reader-progress.is-dragging .reader-progress-label {
-    @apply translate-y-0 opacity-100;
-  }
-
   .reader-progress:hover .reader-progress-track,
   .reader-progress:focus-visible .reader-progress-track,
   .reader-progress.is-dragging .reader-progress-track {
@@ -305,11 +292,13 @@
   }
 
   .reader-context-menu {
-    @apply fixed z-50 grid min-w-32 gap-0.5 rounded-md border border-slate-950/8 bg-white/92 p-1 shadow-md shadow-slate-950/10 backdrop-blur-xl;
+    @apply fixed z-50 grid min-w-32 gap-0.5 rounded-md border p-1;
     color: var(--reader-chrome-fg, #1f2933);
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, transparent) !important;
-    backdrop-filter: blur(14px) saturate(145%);
-    -webkit-backdrop-filter: blur(14px) saturate(145%);
+    border-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    background-color: var(--reader-glass-bg) !important;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
+    backdrop-filter: var(--reader-glass-filter);
+    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
   .reader-context-menu-item {
@@ -345,12 +334,13 @@
   }
 
   .search-nav {
-    @apply fixed top-3 left-1/2 z-20 flex w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 items-center gap-1 rounded-xl border border-white/45 p-1.5 text-slate-700 shadow-xl backdrop-blur-2xl;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 64%, transparent) !important;
-    box-shadow: 0 14px 34px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
+    @apply fixed top-3 left-1/2 z-20 flex w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 items-center gap-1 rounded-xl border p-1.5 text-slate-700;
+    border-color: var(--reader-glass-border);
+    background-color: var(--reader-glass-bg) !important;
+    box-shadow: var(--reader-glass-shadow);
     color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
-    backdrop-filter: blur(22px) saturate(165%);
-    -webkit-backdrop-filter: blur(22px) saturate(165%);
+    backdrop-filter: var(--reader-glass-filter);
+    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
   .search-nav[hidden] {
@@ -458,16 +448,20 @@
   }
 
   .toc-link[aria-current="page"] {
-    @apply border-white/45 font-semibold text-slate-900;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, white 12%);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 36%) inset,
-      0 8px 18px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent),
-      0 2px 6px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 6%, transparent);
+    @apply font-semibold text-slate-900;
+    background-color: transparent;
+    box-shadow: none;
   }
 
   .toc-link-label {
-    @apply flex-1 whitespace-nowrap;
+    @apply flex-1 whitespace-nowrap rounded px-1 py-0.5 transition-all duration-150;
+  }
+
+  .toc-link[aria-current="page"] .toc-link-label {
+    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, var(--reader-chrome-fg, #1f2933) 7%);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 36%) inset,
+      0 5px 12px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 7%, transparent);
   }
 
   .toc-link-primary {
@@ -475,30 +469,63 @@
   }
 
   .toc-modal-box {
-    @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-3xl border border-white/45 p-3 text-slate-700 shadow-2xl shadow-slate-950/15 backdrop-blur-2xl;
-    background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 62%, transparent) !important;
-    backdrop-filter: blur(22px) saturate(165%);
-    -webkit-backdrop-filter: blur(22px) saturate(165%);
+    @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5 text-slate-700;
+    border-color: var(--reader-glass-border);
+    background-color: var(--reader-glass-bg) !important;
+    box-shadow: var(--reader-glass-shadow);
+    backdrop-filter: var(--reader-glass-filter);
+    -webkit-backdrop-filter: var(--reader-glass-filter);
+  }
+
+  #toc-modal.reader-modal {
+    width: fit-content;
+    height: fit-content;
+    max-height: calc(100vh - 2rem);
   }
 
   #toc-modal,
   #toc-modal[open] {
-    background-color: transparent !important;
+    background-color: var(--reader-glass-bg) !important;
   }
 
-  #toc-modal::backdrop,
-  #toc-modal .reader-modal-backdrop {
+  #toc-modal::backdrop {
     background: transparent !important;
+    box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 }
 
+html[data-reader-mode="light"] .toc-link:hover {
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
+}
+
+html[data-reader-mode="light"] .toc-link[aria-current="page"] {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+html[data-reader-mode="light"] .toc-link[aria-current="page"] .toc-link-label {
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 70%, var(--reader-chrome-fg, #1f2933) 6%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 52%) inset,
+    0 5px 12px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 7%, transparent);
+}
+
+html[data-reader-mode="dark"] {
+  --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
+  --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
+  --reader-glass-shadow: 0 14px 34px rgb(0 0 0 / 25%);
+  --reader-glass-filter: blur(14px) saturate(130%);
+}
+
 html[data-reader-mode="dark"] .reader-dock {
   @apply border-white/10 bg-[#2a3441]/48 shadow-black/25;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 58%, transparent) !important;
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border-color: var(--reader-glass-border);
+  background-color: var(--reader-glass-bg) !important;
+  box-shadow: var(--reader-glass-shadow);
+  backdrop-filter: var(--reader-glass-filter);
+  -webkit-backdrop-filter: var(--reader-glass-filter);
 }
 
 html[data-reader-mode="dark"] .reader-dock button {
@@ -511,7 +538,9 @@ html[data-reader-mode="dark"] .reader-dock button:hover {
 
 html[data-reader-mode="dark"] .reader-context-menu {
   @apply border-white/8 shadow-black/25;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 88%, transparent) !important;
+  border-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
+  background-color: var(--reader-glass-bg) !important;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 25%);
 }
 
 html[data-reader-mode="dark"] .reader-context-menu-item {
@@ -538,8 +567,9 @@ html[data-reader-mode="dark"] .reader-frame {
 
 html[data-reader-mode="dark"] .search-nav {
   @apply shadow-black/25;
-  border-color: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 74%, transparent) !important;
+  border-color: var(--reader-glass-border);
+  background-color: var(--reader-glass-bg) !important;
+  box-shadow: var(--reader-glass-shadow);
 }
 
 html[data-reader-mode="dark"] .search-nav button {
@@ -561,10 +591,10 @@ html[data-reader-mode="dark"] .search-count {
 }
 
 html[data-reader-mode="dark"] .toc-modal-box {
-  @apply border-white/10 text-[#e5ebf3] shadow-black/30;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 56%, transparent) !important;
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  @apply text-[#e5ebf3];
+  border-color: var(--reader-glass-border);
+  background-color: var(--reader-glass-bg) !important;
+  box-shadow: var(--reader-glass-shadow);
 }
 
 html[data-reader-mode="dark"] .search-input {
@@ -594,12 +624,16 @@ html[data-reader-mode="dark"] .toc-link:hover {
 }
 
 html[data-reader-mode="dark"] .toc-link[aria-current="page"] {
-  @apply border-white/12 font-semibold text-white;
-  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 8%);
+  @apply font-semibold text-white;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+html[data-reader-mode="dark"] .toc-link[aria-current="page"] .toc-link-label {
+  background-color: color-mix(in srgb, var(--reader-chrome-bg, #212830) 72%, white 8%);
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 8%) inset,
-    0 10px 22px rgb(0 0 0 / 22%),
-    0 2px 7px rgb(0 0 0 / 14%);
+    0 1px 0 rgb(255 255 255 / 7%) inset,
+    0 6px 14px rgb(0 0 0 / 18%);
 }
 
 @media (max-width: 960px) {
