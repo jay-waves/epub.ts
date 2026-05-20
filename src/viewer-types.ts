@@ -77,8 +77,9 @@ export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark";
 export type ReaderSettings = {
   flow: ReaderFlow;
   fontSize: number;
-  margin: number;
-  spacing: number;
+  layoutLevel: number;
+  margin?: number;
+  spacing?: number;
   theme: ReaderThemeId;
 };
 

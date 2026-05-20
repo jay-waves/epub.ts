@@ -3,23 +3,21 @@ import { createRoot } from "react-dom/client";
 import {
   applyReaderFlow,
   applyReaderFontSize,
+  applyReaderLayoutLevel,
   applyReaderLayout,
-  applyReaderMargin,
-  applyReaderSpacing,
   applyReaderTheme,
-  changeReaderDensity,
   changeReaderFontSize,
   changeReaderFlow,
-  changeReaderWidth,
+  changeReaderLayoutLevel,
   getBookStyles,
   READER_FONT_FAMILY,
   READER_FONT_SIZE_STEP,
   READER_FONT_URL,
-  READER_MARGIN_STEP,
   READER_MONO_FONT_FAMILY,
   READER_MONO_FONT_URL,
-  READER_SPACING_STEP,
+  READER_LAYOUT_LEVEL_STEP,
   READER_THEMES,
+  resolveReaderLayoutLevel,
 } from "./reader-settings";
 import { createHighlightController } from "./highlight-controller";
 import { createSearchController } from "./search-controller";
@@ -83,8 +81,7 @@ function queryRequired<T extends Element>(selector: string) {
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
   fontSize: 19,
-  margin: 8,
-  spacing: 0,
+  layoutLevel: 2,
   theme: "light",
 };
 runtime.highlightController = createHighlightController({
@@ -257,6 +254,8 @@ function wireReaderEvents(view: FoliateViewElement) {
     const { doc } = (event as CustomEvent<{ doc?: Document }>).detail;
     if (!doc) return;
 
+    trimCodeBlockTrailingWhitespace(doc);
+
     runWhenIdle(() => {
       if (runtime.readerView !== view) return;
       labelFootnotes(doc);
@@ -285,6 +284,42 @@ function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("show-annotation", (event) => {
     runtime.highlightController?.openFromAnnotation((event as CustomEvent<Parameters<NonNullable<typeof runtime.highlightController>["openFromAnnotation"]>[0]>).detail);
   });
+}
+
+function trimCodeBlockTrailingWhitespace(doc: Document) {
+  const codeBlocks = doc.querySelectorAll<HTMLElement>("pre");
+  for (const block of codeBlocks) {
+    trimTrailingWhitespaceFromCodeBlock(block);
+  }
+}
+
+function trimTrailingWhitespaceFromCodeBlock(block: HTMLElement) {
+  const target = resolveCodeBlockTrimTarget(block);
+  if (!target) return;
+
+  while (target.lastChild?.nodeType === Node.TEXT_NODE) {
+    const lastTextNode = target.lastChild as Text;
+    const trimmedValue = lastTextNode.data.replace(/(?:\r?\n[^\S\r\n]*)+$/u, "");
+    if (trimmedValue === lastTextNode.data) break;
+    if (trimmedValue) {
+      lastTextNode.data = trimmedValue;
+      break;
+    }
+    target.removeChild(lastTextNode);
+  }
+
+  while (target.lastChild?.nodeType === Node.TEXT_NODE && !(target.lastChild as Text).data.trim()) {
+    target.removeChild(target.lastChild);
+  }
+}
+
+function resolveCodeBlockTrimTarget(block: HTMLElement) {
+  if (block.childElementCount !== 1) return block;
+
+  const onlyChild = block.firstElementChild;
+  if (onlyChild?.tagName !== "CODE") return block;
+
+  return onlyChild as HTMLElement;
 }
 
 function getFootnoteTargets(doc: Document) {
@@ -420,8 +455,7 @@ function getCurrentReaderSettings(): ReaderSettings {
   return {
     flow: state.flow,
     fontSize: state.readerFontSize,
-    margin: state.readerMargin,
-    spacing: state.readerSpacing,
+    layoutLevel: state.readerLayoutLevel,
     theme: state.readerTheme,
   };
 }
@@ -458,10 +492,10 @@ function resetTransientBookState() {
 
 function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
   const nextSettings = { ...defaultReaderSettings, ...settings };
+  const layoutLevel = resolveReaderLayoutLevel(settings);
 
   applyReaderFlow(nextSettings.flow, runtime.readerView, readerRoot);
-  applyReaderSpacing(nextSettings.spacing, runtime.readerView);
-  applyReaderMargin(nextSettings.margin, runtime.readerView, readerRoot);
+  applyReaderLayoutLevel(layoutLevel, runtime.readerView, readerRoot);
   applyReaderFontSize(nextSettings.fontSize, runtime.readerView);
   applyReaderTheme(nextSettings.theme);
   runtime.readerView?.renderer?.setStyles?.(getBookStyles());
@@ -645,15 +679,13 @@ function handleDockAction(action: DockActionDetail["action"]) {
   }
 
   if (action === "decrease-width") {
-    changeReaderWidth(-READER_MARGIN_STEP, runtime.readerView, readerRoot);
-    changeReaderDensity(-READER_SPACING_STEP, runtime.readerView);
+    changeReaderLayoutLevel(-READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
     saveCurrentReaderSettings();
     return;
   }
 
   if (action === "increase-width") {
-    changeReaderWidth(READER_MARGIN_STEP, runtime.readerView, readerRoot);
-    changeReaderDensity(READER_SPACING_STEP, runtime.readerView);
+    changeReaderLayoutLevel(READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
     saveCurrentReaderSettings();
     return;
   }

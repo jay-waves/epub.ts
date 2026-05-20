@@ -1,5 +1,5 @@
 import { state } from "./viewer-state";
-import type { FoliateViewElement, ReaderFlow, ReaderTheme, ReaderThemeId } from "./viewer-types";
+import type { FoliateViewElement, ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./viewer-types";
 
 export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
@@ -9,16 +9,11 @@ export const READER_MONO_FONT_URL = chrome.runtime.getURL("Monaspace Argon Var.t
 const MIN_READER_FONT_SIZE = 14;
 const MAX_READER_FONT_SIZE = 32;
 export const READER_FONT_SIZE_STEP = 1;
-const MIN_READER_MARGIN = 0;
-const MAX_READER_MARGIN = 72;
-export const READER_MARGIN_STEP = 8;
-const MIN_READER_SPACING = -4;
-const MAX_READER_SPACING = 6;
-export const READER_SPACING_STEP = 1;
+const MIN_READER_LAYOUT_LEVEL = 0;
+const MAX_READER_LAYOUT_LEVEL = 4;
+export const READER_LAYOUT_LEVEL_STEP = 1;
 
 const PAGINATED_GAP = "2.5%";
-const PAGINATED_SINGLE_COLUMN_MAX_INLINE_SIZE = 1280;
-const PAGINATED_MULTI_COLUMN_MAX_INLINE_SIZE = 960;
 const PAGINATED_TWO_COLUMN_MIN_WIDTH = 1500;
 const PAGINATED_THREE_COLUMN_MIN_WIDTH = 2000;
 
@@ -36,15 +31,68 @@ export const READER_THEMES: ReaderTheme[] = [
   { id: "one-dark", label: "One Dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
 ];
 
+const READER_LAYOUT_PRESETS = [
+  {
+    margin: 20,
+    singleColumnMaxInlineSize: 880,
+    multiColumnMaxInlineSize: 720,
+    lineHeight: 1.58,
+    letterSpacing: "-0.01em",
+    wordSpacing: "-0.01em",
+    paragraphSpacing: "0.55em",
+  },
+  {
+    margin: 14,
+    singleColumnMaxInlineSize: 960,
+    multiColumnMaxInlineSize: 780,
+    lineHeight: 1.64,
+    letterSpacing: "-0.005em",
+    wordSpacing: "0em",
+    paragraphSpacing: "0.72em",
+  },
+  {
+    margin: 8,
+    singleColumnMaxInlineSize: 1040,
+    multiColumnMaxInlineSize: 840,
+    lineHeight: 1.7,
+    letterSpacing: "0em",
+    wordSpacing: "0.01em",
+    paragraphSpacing: "0.92em",
+  },
+  {
+    margin: 4,
+    singleColumnMaxInlineSize: 1120,
+    multiColumnMaxInlineSize: 900,
+    lineHeight: 1.77,
+    letterSpacing: "0.008em",
+    wordSpacing: "0.02em",
+    paragraphSpacing: "1.12em",
+  },
+  {
+    margin: 0,
+    singleColumnMaxInlineSize: 1200,
+    multiColumnMaxInlineSize: 960,
+    lineHeight: 1.84,
+    letterSpacing: "0.015em",
+    wordSpacing: "0.03em",
+    paragraphSpacing: "1.34em",
+  },
+] as const;
+
+const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[2];
+
 function getTheme(themeId = state.readerTheme) {
   return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
 }
 
+function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {
+  return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
+}
+
 export function getBookStyles(themeId = state.readerTheme) {
   const theme = getTheme(themeId);
+  const layout = getLayoutPreset();
   const { background, foreground, link } = theme;
-  const lineHeight = (1.72 + state.readerSpacing * 0.08).toFixed(2);
-  const wordSpacing = `${(state.readerSpacing * 0.04).toFixed(2)}em`;
   const mediaFilter =
     theme.mode === "dark" ? "brightness(0.72) contrast(0.92) saturate(0.88)" : "none";
 
@@ -73,8 +121,10 @@ export function getBookStyles(themeId = state.readerTheme) {
       --reader-border-color: color-mix(in srgb, ${foreground} 18%, transparent);
       --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, transparent);
       --reader-font-size: ${state.readerFontSize}px;
-      --reader-line-height: ${lineHeight};
-      --reader-word-spacing: ${wordSpacing};
+      --reader-line-height: ${layout.lineHeight};
+      --reader-letter-spacing: ${layout.letterSpacing};
+      --reader-word-spacing: ${layout.wordSpacing};
+      --reader-paragraph-spacing: ${layout.paragraphSpacing};
       --reader-font-serif: ${READER_SERIF_STACK};
       --reader-font-sans: ${READER_SANS_STACK};
       --reader-font-mono: ${READER_MONO_STACK};
@@ -94,7 +144,7 @@ export function getBookStyles(themeId = state.readerTheme) {
     body {
       font-family: var(--reader-font-serif) !important;
       line-height: var(--reader-line-height) !important;
-      letter-spacing: 0 !important;
+      letter-spacing: var(--reader-letter-spacing) !important;
     }
     html::-webkit-scrollbar,
     body::-webkit-scrollbar,
@@ -148,15 +198,21 @@ export function getBookStyles(themeId = state.readerTheme) {
     [class*="body-text" i] {
       font-size: var(--reader-font-size) !important;
       line-height: var(--reader-line-height) !important;
+      letter-spacing: var(--reader-letter-spacing) !important;
       text-align: justify;
       hyphens: auto !important;
       hanging-punctuation: allow-end last;
       word-spacing: var(--reader-word-spacing) !important;
     }
+    :is(p, [epub|type~="bodymatter"] p, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i]) {
+      margin-block-start: 0 !important;
+      margin-block-end: var(--reader-paragraph-spacing) !important;
+    }
     :is(p, li, blockquote, dd, dt, td, th, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i])
       :where(span, a, em, strong, b, i) {
       font-size: inherit !important;
       line-height: inherit !important;
+      letter-spacing: inherit !important;
       word-spacing: inherit !important;
     }
     :is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i]),
@@ -449,26 +505,28 @@ export function applyReaderTheme(themeId: ReaderThemeId) {
 }
 
 export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElement) {
+  const layout = getLayoutPreset();
   const readerWidth = readerRoot.getBoundingClientRect().width;
   const allowMultipleColumns =
     state.flow === "paginated" && readerWidth >= PAGINATED_TWO_COLUMN_MIN_WIDTH;
   const allowThreeColumns =
     state.flow === "paginated" && readerWidth >= PAGINATED_THREE_COLUMN_MIN_WIDTH;
   const maxInlineSize = allowMultipleColumns
-    ? PAGINATED_MULTI_COLUMN_MAX_INLINE_SIZE
-    : PAGINATED_SINGLE_COLUMN_MAX_INLINE_SIZE;
+    ? layout.multiColumnMaxInlineSize
+    : layout.singleColumnMaxInlineSize;
 
   view.renderer?.setAttribute("flow", state.flow);
   view.renderer?.setAttribute("gap", state.flow === "paginated" ? PAGINATED_GAP : "1.5%");
-  view.renderer?.setAttribute("margin", `${state.readerMargin}px`);
   view.renderer?.setAttribute("animated", "");
   if (state.flow === "paginated") {
+    view.renderer?.setAttribute("margin", `${layout.margin}px`);
     view.renderer?.setAttribute("max-inline-size", `${maxInlineSize}px`);
     view.renderer?.setAttribute("max-column-count", allowThreeColumns ? "3" : "2");
     return;
   }
 
-  view.renderer?.setAttribute("max-inline-size", `${PAGINATED_SINGLE_COLUMN_MAX_INLINE_SIZE}px`);
+  view.renderer?.setAttribute("margin", `${SCROLLED_LAYOUT_WIDTH_BASELINE.margin}px`);
+  view.renderer?.setAttribute("max-inline-size", `${SCROLLED_LAYOUT_WIDTH_BASELINE.singleColumnMaxInlineSize}px`);
   view.renderer?.removeAttribute("max-column-count");
 
 }
@@ -477,12 +535,27 @@ function clampReaderFontSize(fontSize: number) {
   return clamp(fontSize, MIN_READER_FONT_SIZE, MAX_READER_FONT_SIZE);
 }
 
-function clampReaderMargin(margin: number) {
-  return clamp(margin, MIN_READER_MARGIN, MAX_READER_MARGIN);
+function clampLayoutLevel(layoutLevel: number) {
+  return clamp(layoutLevel, MIN_READER_LAYOUT_LEVEL, MAX_READER_LAYOUT_LEVEL);
 }
 
-function clampReaderSpacing(spacing: number) {
-  return clamp(spacing, MIN_READER_SPACING, MAX_READER_SPACING);
+function getLegacyLayoutLevel(settings: Partial<ReaderSettings>) {
+  const spacingScore = typeof settings.spacing === "number" ? settings.spacing : 0;
+  const marginScore = typeof settings.margin === "number" ? (8 - settings.margin) / 8 : 0;
+  const legacyScore = spacingScore + marginScore;
+  return clampLayoutLevel(Math.round(legacyScore / 2) + 2);
+}
+
+export function resolveReaderLayoutLevel(settings?: Partial<ReaderSettings>) {
+  if (typeof settings?.layoutLevel === "number") {
+    return clampLayoutLevel(settings.layoutLevel);
+  }
+
+  if (typeof settings?.spacing === "number" || typeof settings?.margin === "number") {
+    return getLegacyLayoutLevel(settings);
+  }
+
+  return 2;
 }
 
 export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement | null) {
@@ -490,13 +563,9 @@ export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement 
   view?.renderer?.setStyles?.(getBookStyles());
 }
 
-export function applyReaderSpacing(spacing: number, view?: FoliateViewElement | null) {
-  state.readerSpacing = clampReaderSpacing(spacing);
+export function applyReaderLayoutLevel(layoutLevel: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
+  state.readerLayoutLevel = clampLayoutLevel(layoutLevel);
   view?.renderer?.setStyles?.(getBookStyles());
-}
-
-export function applyReaderMargin(fontSize: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  state.readerMargin = clampReaderMargin(fontSize);
   if (view) applyReaderLayout(view, readerRoot);
 }
 
@@ -506,16 +575,10 @@ export function changeReaderFontSize(delta: number, view?: FoliateViewElement | 
   applyReaderFontSize(nextSize, view);
 }
 
-export function changeReaderWidth(delta: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  const nextMargin = clampReaderMargin(state.readerMargin - delta);
-  if (nextMargin === state.readerMargin) return;
-  applyReaderMargin(nextMargin, view, readerRoot);
-}
-
-export function changeReaderDensity(delta: number, view?: FoliateViewElement | null) {
-  const nextSpacing = clampReaderSpacing(state.readerSpacing + delta);
-  if (nextSpacing === state.readerSpacing) return;
-  applyReaderSpacing(nextSpacing, view);
+export function changeReaderLayoutLevel(delta: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
+  const nextLevel = clampLayoutLevel(state.readerLayoutLevel + delta);
+  if (nextLevel === state.readerLayoutLevel) return;
+  applyReaderLayoutLevel(nextLevel, view, readerRoot);
 }
 
 export function applyReaderFlow(flow: ReaderFlow, view: FoliateViewElement | null, readerRoot: HTMLElement) {

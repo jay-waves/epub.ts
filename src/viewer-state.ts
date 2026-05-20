@@ -5,9 +5,8 @@ export const state = {
   currentHref: "",
   currentBookKey: "",
   currentSourceUrl: "",
-  readerMargin: 8,
   isRestoring: false,
   readerFontSize: 19,
-  readerSpacing: 0,
+  readerLayoutLevel: 2,
   readerTheme: "light" as ReaderThemeId,
 };
