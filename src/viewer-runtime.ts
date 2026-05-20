@@ -10,6 +10,7 @@ export const runtime: {
   foliateScrollbarPatchReady: boolean;
   foliateViewReady: Promise<unknown> | null;
   highlightController: ReturnType<typeof createHighlightController> | null;
+  isImageZoomOpen: boolean;
   isSearchOpen: boolean;
   keybindings: ReturnType<typeof setupViewerKeybindings> | null;
   postLoadTaskToken: number;
@@ -25,6 +26,7 @@ export const runtime: {
   foliateScrollbarPatchReady: false,
   foliateViewReady: null,
   highlightController: null,
+  isImageZoomOpen: false,
   isSearchOpen: false,
   keybindings: null,
   postLoadTaskToken: 0,

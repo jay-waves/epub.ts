@@ -329,7 +329,13 @@ async function ensureReaderImageZoom() {
     margin: 28,
     scrollOffset: 24,
   });
+  readerImageZoom.on("open", () => {
+    runtime.isImageZoomOpen = true;
+    document.body.classList.add("reader-image-zoom-open");
+  });
   readerImageZoom.on("closed", () => {
+    runtime.isImageZoomOpen = false;
+    document.body.classList.remove("reader-image-zoom-open");
     activeZoomProxy?.remove();
     activeZoomProxy = null;
   });
@@ -512,6 +518,7 @@ async function openReaderImageZoom(image: HTMLImageElement) {
   activeZoomProxy = proxy;
   document.body.appendChild(proxy);
   zoom.attach(proxy);
+  await ensureImageReady(proxy);
   await zoom.open({ target: proxy });
 }
 
@@ -543,6 +550,31 @@ function createReaderImageZoomProxy(image: HTMLImageElement) {
   proxy.style.objectFit = getComputedStyle(image).objectFit || "contain";
 
   return proxy;
+}
+
+async function ensureImageReady(image: HTMLImageElement) {
+  if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) return;
+
+  try {
+    await image.decode();
+    return;
+  } catch {
+    // Fall through to load/error events for browsers or image types decode() cannot resolve.
+  }
+
+  await new Promise<void>((resolve) => {
+    const cleanup = () => {
+      image.removeEventListener("load", handleDone);
+      image.removeEventListener("error", handleDone);
+    };
+    const handleDone = () => {
+      cleanup();
+      resolve();
+    };
+
+    image.addEventListener("load", handleDone, { once: true });
+    image.addEventListener("error", handleDone, { once: true });
+  });
 }
 
 function getFootnoteTargets(doc: Document) {
@@ -804,6 +836,7 @@ function readSourceFromQuery() {
 
 function setupCriticalInteractions() {
   window.addEventListener(VIEWER_EVENTS.pageTurn, (event) => {
+    if (runtime.isImageZoomOpen) return;
     turnPage((event as CustomEvent<PageTurnDetail>).detail.direction);
   });
 

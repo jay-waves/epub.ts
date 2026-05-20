@@ -263,6 +263,10 @@
     @apply outline outline-2 outline-offset-[-8px] outline-sky-500/50;
   }
 
+  .reader-image-zoom-open .page-click-zone {
+    pointer-events: none;
+  }
+
   .reader-progress-shell {
     @apply fixed bottom-8 left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 items-center px-2;
   }
