@@ -26,6 +26,7 @@ import { createSearchController } from "./search-controller";
 import { normalizeTocItems } from "./toc-controller";
 import { App } from "./app";
 import { createReadingProgressController } from "./components/reading-progress";
+import type { ReadingProgressElements } from "./components/reading-progress";
 import { VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
 import { runtime } from "./viewer-runtime";
@@ -42,14 +43,36 @@ import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing required element: #app");
+
+let readingProgressElements: ReadingProgressElements | null = null;
+
+function mountReadingProgressController(elements: ReadingProgressElements | null) {
+  runtime.readingProgressController?.destroy?.();
+  runtime.readingProgressController = null;
+  readingProgressElements = elements;
+  if (!elements) return;
+
+  runtime.readingProgressController = createReadingProgressController({
+    ...elements,
+    canSeek: () => Boolean(runtime.readerView?.book),
+    onSeek: (progress) => {
+      void runtime.readerView?.goTo({ fraction: progress }).catch((error) => {
+        console.warn("Failed to seek reading progress.", error);
+      });
+    },
+    onReturn: (progress) => {
+      void runtime.readerView?.goTo({ fraction: progress }).catch((error) => {
+        console.warn("Failed to return to reading position.", error);
+      });
+    },
+  });
+}
+
 flushSync(() => {
-  createRoot(appRoot).render(App());
+  createRoot(appRoot).render(App({ onReadingProgressReady: mountReadingProgressController }));
 });
 
 const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
-const readingProgress = queryRequired<HTMLElement>("#reading-progress");
-const readingProgressTrack = queryRequired<HTMLElement>(".reader-progress-track");
-const readingProgressFill = queryRequired<HTMLElement>("#reading-progress-fill");
 
 function queryRequired<T extends Element>(selector: string) {
   const node = document.querySelector<T>(selector);
@@ -64,17 +87,6 @@ const defaultReaderSettings: ReaderSettings = {
   spacing: 0,
   theme: "light",
 };
-runtime.readingProgressController = createReadingProgressController({
-  root: readingProgress,
-  track: readingProgressTrack,
-  fill: readingProgressFill,
-  canSeek: () => Boolean(runtime.readerView?.book),
-  onSeek: (progress) => {
-    void runtime.readerView?.goTo({ fraction: progress }).catch((error) => {
-      console.warn("Failed to seek reading progress.", error);
-    });
-  },
-});
 runtime.highlightController = createHighlightController({
   getBookKey: () => state.currentBookKey,
   getProgress: () => runtime.readingProgressController?.getProgress() ?? 0,
@@ -191,8 +203,44 @@ function ensureFoliateView() {
 }
 
 function updatePageStatus(detail: RelocateDetail) {
-  const progress = typeof detail.fraction === "number" ? detail.fraction : 0;
-  runtime.readingProgressController?.setProgress(progress);
+  runtime.readingProgressController?.handleRelocate({
+    ...detail,
+    index: resolveRelocateSectionIndex(detail),
+  });
+}
+
+function resolveRelocateSectionIndex(detail: RelocateDetail) {
+  if (typeof detail.index === "number") return detail.index;
+
+  const href = detail.tocItem?.href;
+  if (!href || !runtime.tocItems.length) return undefined;
+
+  const sectionHrefs = collectSectionHrefs(runtime.tocItems);
+  const currentHref = normalizeSectionHref(href);
+  if (!currentHref) return undefined;
+
+  const index = sectionHrefs.findIndex((item) => item === currentHref);
+  return index >= 0 ? index : undefined;
+}
+
+function collectSectionHrefs(items: typeof runtime.tocItems, sections: string[] = []) {
+  for (const item of items) {
+    const href = normalizeSectionHref(item.href);
+    if (href && !sections.includes(href)) sections.push(href);
+    if (item.subitems?.length) collectSectionHrefs(item.subitems, sections);
+  }
+  return sections;
+}
+
+function normalizeSectionHref(href?: string) {
+  if (!href) return "";
+
+  try {
+    const url = new URL(href, "https://reader.local/");
+    return `${url.pathname}${url.hash}`;
+  } catch {
+    return href.trim();
+  }
 }
 
 function queuePositionSave(detail: RelocateDetail) {
@@ -207,7 +255,12 @@ function queuePositionSave(detail: RelocateDetail) {
 function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", (event) => {
     const { doc } = (event as CustomEvent<{ doc?: Document }>).detail;
-    if (doc) labelFootnotes(doc);
+    if (!doc) return;
+
+    runWhenIdle(() => {
+      if (runtime.readerView !== view) return;
+      labelFootnotes(doc);
+    }, 1500);
   });
 
   view.addEventListener("relocate", (event) => {
@@ -218,7 +271,6 @@ function wireReaderEvents(view: FoliateViewElement) {
     updatePageStatus(detail);
     queuePositionSave(detail);
     runtime.highlightController?.bindContextTargets();
-    labelFootnoteTargets();
   });
 
   view.addEventListener("create-overlay", (event) => {
@@ -277,6 +329,8 @@ function normalizeFootnoteLabel(value: string | undefined, fallbackIndex: number
 }
 
 function labelFootnotes(doc: Document) {
+  if (runtime.footnotesLabeledDocs.has(doc)) return;
+
   const labelsByTargetId = new Map<string, string>();
   getFootnoteReferenceAnchors(doc).forEach((anchor, index) => {
     const href = anchor.getAttribute("href")?.trim();
@@ -300,12 +354,8 @@ function labelFootnotes(doc: Document) {
     element.dataset.footnoteLabel = labelsByTargetId.get(element.id)
       || normalizeFootnoteLabel(element.textContent || undefined, index + 1);
   });
-}
 
-function labelFootnoteTargets() {
-  for (const { doc } of runtime.readerView?.renderer?.getContents?.() ?? []) {
-    if (doc) labelFootnotes(doc);
-  }
+  runtime.footnotesLabeledDocs.add(doc);
 }
 
 async function ensureFileSchemeAccess(fileUrl?: string) {
@@ -333,7 +383,7 @@ function getDockUpdateDetail(): DockUpdateDetail {
     searchActive: runtime.isSearchOpen,
     themeActive: theme.mode === "dark",
     themeCount: String(themeIndex + 1),
-    themeLabel: `Change theme, current theme ${theme.label}`,
+    themeLabel: `Change theme`,
   };
 }
 
@@ -403,6 +453,7 @@ function resetTransientBookState() {
   runtime.tocItems = [];
   emitTocUpdate();
   runtime.highlightController?.reset();
+  runtime.readingProgressController?.setHistoryProgress(null);
 }
 
 function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
@@ -483,16 +534,7 @@ async function openBook(input: File | string, sourceLabel: string) {
       runtime.readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
     );
-    scheduleExtraUiSetup();
-    runWhenIdle(()=> {
-      runtime.highlightController?.bindContextTargets();
-      if (state.currentBookKey) 
-        runtime.highlightController?.scheduleRestore(runtime.readerView!, state.currentBookKey);
-    }, 1000);
-    runWhenIdle(() => {
-      runtime.tocItems = normalizeTocItems(runtime.readerView?.book?.toc);
-      emitTocUpdate();
-    }, 1200);
+    schedulePostLoadTasks(runtime.readerView, state.currentBookKey);
   } catch (error) {
     console.error(`Failed to open ${sourceLabel}`, error);
   }
@@ -633,6 +675,28 @@ function setupExtraUi() {
 
 function scheduleExtraUiSetup() {
   runWhenIdle(setupExtraUi, 1000);
+}
+
+function schedulePostLoadTasks(view: FoliateViewElement, bookKey: string) {
+  const taskToken = ++runtime.postLoadTaskToken;
+
+  requestAnimationFrame(() => {
+    if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
+
+    scheduleExtraUiSetup();
+
+    runWhenIdle(() => {
+      if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
+      runtime.highlightController?.bindContextTargets();
+      if (bookKey) runtime.highlightController?.scheduleRestore(view, bookKey);
+    }, 1500);
+
+    runWhenIdle(() => {
+      if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
+      runtime.tocItems = normalizeTocItems(view.book?.toc);
+      emitTocUpdate();
+    }, 2000);
+  });
 }
 
 async function bootstrap() {

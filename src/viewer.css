@@ -263,32 +263,75 @@
     @apply outline outline-2 outline-offset-[-8px] outline-sky-500/50;
   }
 
-  .reader-progress {
-    @apply fixed bottom-8 left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 cursor-pointer touch-none items-center justify-center px-2 opacity-60 transition-opacity duration-200 ease-out;
+  .reader-progress-shell {
+    @apply fixed bottom-8 left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 items-center px-2;
   }
 
-  .reader-progress:hover,
+  .reader-progress-float {
+    @apply flex w-full items-center gap-2 opacity-60 transition-[opacity,transform] duration-200 ease-out;
+  }
+
+  .reader-progress {
+    @apply flex h-full w-full cursor-pointer touch-none items-center justify-center;
+    position: relative;
+  }
+
   .reader-progress:focus-visible,
   .reader-progress.is-dragging {
-    @apply opacity-100 outline-none;
+    @apply outline-none;
+  }
+
+  .reader-progress-join {
+    @apply relative flex w-full items-center;
   }
 
   .reader-progress-track {
-    @apply relative h-1.5 w-4/5 rounded-md transition-all duration-200 ease-out;
+    @apply relative h-1.5 min-w-0 flex-1 overflow-visible rounded-md transition-all duration-200 ease-out;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 22%, transparent);
+  }
+
+  .reader-progress-shell:hover .reader-progress-float,
+  .reader-progress-shell:focus-within .reader-progress-float,
+  .reader-progress-shell:has(.reader-progress.is-dragging) .reader-progress-float {
+    @apply -translate-y-3 opacity-100;
   }
 
   .reader-progress:hover .reader-progress-track,
   .reader-progress:focus-visible .reader-progress-track,
   .reader-progress.is-dragging .reader-progress-track {
-    @apply h-2.5 w-full -translate-y-3 rounded-lg shadow-lg;
+    @apply h-2.5 rounded-lg shadow-lg;
     box-shadow: 0 14px 30px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent);
   }
 
   .reader-progress-fill {
-    @apply absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-md transition-[width] duration-300 ease-out;
+    @apply absolute top-1/2 left-0 z-[2] h-1.5 -translate-y-1/2 rounded-md transition-[width] duration-300 ease-out;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 68%, transparent);
     width: var(--reader-progress, 0%);
+  }
+
+  .reader-progress-thumb {
+    @apply absolute top-1/2 z-[4] h-1 w-1 -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent p-0 opacity-0 outline-none;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .reader-progress-thumb {
+    pointer-events: none;
+  }
+
+  .reader-progress-history-marker {
+    @apply relative z-[5] inline-flex h-1.5 w-1.5 shrink-0 cursor-pointer appearance-none items-center justify-center rounded-full border-0 p-0 opacity-0 outline-none transition-[background-color,height,opacity,width] duration-200 ease-out;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 62%, transparent);
+    pointer-events: none;
+  }
+
+  .reader-progress-history-marker.is-history-visible {
+    @apply opacity-100;
+    pointer-events: auto;
+  }
+
+  .reader-progress-history-marker:hover,
+  .reader-progress-history-marker:focus-visible {
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
   }
 
   .reader-context-menu {
@@ -331,6 +374,12 @@
   .reader-progress:focus-visible .reader-progress-fill,
   .reader-progress.is-dragging .reader-progress-fill {
     @apply h-3 rounded-lg;
+  }
+
+  .reader-progress-shell:hover .reader-progress-history-marker,
+  .reader-progress-shell:focus-within .reader-progress-history-marker,
+  .reader-progress-shell:has(.reader-progress.is-dragging) .reader-progress-history-marker {
+    @apply h-2.5 w-2.5;
   }
 
   .search-nav {

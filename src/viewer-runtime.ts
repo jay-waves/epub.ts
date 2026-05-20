@@ -6,11 +6,13 @@ import type { FoliateViewElement, TocItem } from "./viewer-types";
 
 export const runtime: {
   extraUiReady: boolean;
+  footnotesLabeledDocs: WeakSet<Document>;
   foliateScrollbarPatchReady: boolean;
   foliateViewReady: Promise<unknown> | null;
   highlightController: ReturnType<typeof createHighlightController> | null;
   isSearchOpen: boolean;
   keybindings: ReturnType<typeof setupViewerKeybindings> | null;
+  postLoadTaskToken: number;
   readerFontsReady: Promise<void> | null;
   readerView: FoliateViewElement | null;
   readingProgressController: ReturnType<typeof createReadingProgressController> | null;
@@ -19,11 +21,13 @@ export const runtime: {
   tocItems: TocItem[];
 } = {
   extraUiReady: false,
+  footnotesLabeledDocs: new WeakSet<Document>(),
   foliateScrollbarPatchReady: false,
   foliateViewReady: null,
   highlightController: null,
   isSearchOpen: false,
   keybindings: null,
+  postLoadTaskToken: 0,
   readerFontsReady: null,
   readerView: null,
   readingProgressController: null,

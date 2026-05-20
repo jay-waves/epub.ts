@@ -4,8 +4,13 @@ import { PageClickZones } from "./components/page-click-zones";
 import { ReadingProgress } from "./components/reading-progress";
 import { SearchBar } from "./components/search-bar";
 import { TocPage } from "./components/toc-page";
+import type { ReadingProgressElements } from "./components/reading-progress";
 
-export function App() {
+export function App({
+  onReadingProgressReady,
+}: {
+  onReadingProgressReady?: (elements: ReadingProgressElements | null) => void;
+}) {
   return (
     <div className="reader-app">
       <ReaderDock />
@@ -16,7 +21,7 @@ export function App() {
 
       <PageClickZones />
 
-      <ReadingProgress />
+      <ReadingProgress onReady={onReadingProgressReady} />
 
       <SearchBar />
       <TocPage />
