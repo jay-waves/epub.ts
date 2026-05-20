@@ -483,9 +483,12 @@ async function openBook(input: File | string, sourceLabel: string) {
       runtime.readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
     );
-    if (state.currentBookKey) runtime.highlightController?.scheduleRestore(runtime.readerView, state.currentBookKey);
-    runtime.highlightController?.bindContextTargets();
     scheduleExtraUiSetup();
+    runWhenIdle(()=> {
+      runtime.highlightController?.bindContextTargets();
+      if (state.currentBookKey) 
+        runtime.highlightController?.scheduleRestore(runtime.readerView!, state.currentBookKey);
+    }, 1000);
     runWhenIdle(() => {
       runtime.tocItems = normalizeTocItems(runtime.readerView?.book?.toc);
       emitTocUpdate();

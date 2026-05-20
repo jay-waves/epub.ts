@@ -1,65 +1,43 @@
 # EPUB Viewer Extension
 
-Chrome MV3 EPUB reader extension built with `pnpm`, `Vite`, `TypeScript`, and `foliate-js`.
+Chrome EPUB reader extension.
 
-## Features
+EPUB 阅读器，Chrome 浏览器插件。
 
-- Redirects top-level `file://...epub` navigation into the extension reader.
-- Opens local EPUB files inside the extension page.
-- Supports direct file navigation, file picker, and drag-and-drop.
-- Persists reading position and reader preferences locally.
-- Uses `foliate-js` as the rendering engine.
+<img src="assets/screenshot1.png" width=800>
 
-## Local Commands
+## 功能 Features 
 
-```bash
-pnpm install
-pnpm typecheck
-pnpm build
-pnpm run release:prepare
-```
+用户通过 Chrome 打开某个 `.epub` 文件，本插件将拦截 `file://*.epub` 并重定向到插件页面阅读。
 
-`pnpm build` generates an unpacked extension in `dist/`.
+#### 美观性 Aesthetics
 
-`pnpm run release:prepare` builds the extension and creates a release ZIP in `release/`, for example `release/epub-viewer-extension-v0.1.0.zip`.
+* 字体采用霞鹜文楷，等宽字体采用 Monaspace Argon 
+* 支持多种主题颜色：Light, Dark, Grey, Nord
+* 亚克力面板，Dock 栏
 
-## Load In Chrome
+#### 高效性 Efficiency
 
-### Unpacked build
+* 支持单栏、双栏切换
+* 支持字体放大、缩小调整
+* 支持页面排版调整：包括留白宽度、行间距、字间距、图大小等
+* 支持 Vim 键绑定：hjkl 
+* 高亮：右键菜单中高亮文本，删除高亮文本等
+* 目录以及快速跳转进度条
+* 搜索：全文搜索，仅搜索高亮文本
 
-1. Run `pnpm build`.
-2. Open `chrome://extensions`.
-3. Enable `Developer mode`.
-4. Click `Load unpacked`.
-5. Select the generated `dist` directory.
-6. Open the extension details page and enable `Allow access to file URLs`.
+##### 展示
 
-### Release ZIP
+<img src="assets/toc.png" width=800>
 
-1. Run `pnpm run release:prepare`.
-2. Extract it locally.
-3. Open `chrome://extensions`.
-4. Enable `Developer mode`.
-5. Click `Load unpacked`.
-6. Select the extracted folder.
-7. Enable `Allow access to file URLs`.
+<img src="assets/search.png" width=800>
 
-## Release Flow
+<img src="assets/dock.png" width=800>
 
-1. Update `package.json` version.
-2. Run `pnpm run release:prepare`.
-3. Upload the generated `release/*.zip` wherever you want to distribute it.
+## 开发者 Dev 
 
-The extension `manifest.json` version is synced automatically from `package.json` during build, so the version only needs to be maintained in one place.
-
-## How It Works
-
-- The background service worker installs a dynamic `declarativeNetRequest` rule.
-- Requests matching `file://...epub` are redirected to `viewer.html?src=<original-file-url>`.
-- The viewer page passes that source URL to `foliate-view`.
-
-## Notes
-
-- `Allow access to file URLs` is required, otherwise Chrome will block local EPUB access.
-- `dist/`, `release/`, and ZIP artifacts are treated as generated output and should not be committed.
-- The project targets modern Chrome and Manifest V3.
+技术栈：
+* react + vite + typescript 
+* tailwindcss
+* shadcn/ui
+* foliate.js 
