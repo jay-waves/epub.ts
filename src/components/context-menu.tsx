@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, createIcons, Highlighter, Languages, Trash2 } from "lucide";
+import { LucideIcon, Copy, Highlighter, Languages, Trash2 } from "lucide-react"
 import { VIEWER_EVENTS } from "../viewer-events";
 import type {
   HighlightContextAction,
@@ -50,19 +50,6 @@ export function HighlightContextMenu() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!state.open) return;
-
-    createIcons({
-      icons: {
-        Copy,
-        Highlighter,
-        Languages,
-        Trash2,
-      },
-    });
-  }, [state.open]);
-
   if (!state.open) return null;
 
   return (
@@ -76,16 +63,16 @@ export function HighlightContextMenu() {
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <ContextMenuItem action="copy" disabled={!state.canCopy} icon="copy" onClose={closeMenu}>
+      <ContextMenuItem action="copy" disabled={!state.canCopy} icon={Copy} onClose={closeMenu}>
         Copy
       </ContextMenuItem>
-      <ContextMenuItem action="translate" disabled={!state.canCopy} icon="languages" onClose={closeMenu}>
+      <ContextMenuItem action="translate" disabled={!state.canCopy} icon={Languages} onClose={closeMenu}>
         Translate
       </ContextMenuItem>
-      <ContextMenuItem action="highlight" disabled={!state.canHighlight} icon="highlighter" onClose={closeMenu}>
+      <ContextMenuItem action="highlight" disabled={!state.canHighlight} icon={Highlighter} onClose={closeMenu}>
         Highlight
       </ContextMenuItem>
-      <ContextMenuItem action="delete" disabled={!state.canDelete} destructive icon="trash-2" onClose={closeMenu}>
+      <ContextMenuItem action="delete" disabled={!state.canDelete} destructive icon={Trash2} onClose={closeMenu}>
         Delete
       </ContextMenuItem>
     </div>
@@ -101,14 +88,14 @@ function ContextMenuItem({
   children,
   destructive = false,
   disabled,
-  icon,
+  icon: Icon,
   onClose,
 }: {
   action: HighlightContextAction;
   children: string;
   destructive?: boolean;
   disabled: boolean;
-  icon: string;
+  icon: LucideIcon;
   onClose: () => void;
 }) {
   return (
@@ -127,7 +114,7 @@ function ContextMenuItem({
         window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.highlightContextClose));
       }}
     >
-      <i aria-hidden="true" data-lucide={icon} />
+      <Icon size={20} aria-hidden="true" />
       {children}
     </button>
   );

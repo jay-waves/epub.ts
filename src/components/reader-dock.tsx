@@ -4,27 +4,29 @@ import type { DockAction, DockActionDetail, DockUpdateDetail } from "../viewer-e
 import { Button } from "./ui/button";
 import { Tooltip } from "./ui/tooltip";
 
+import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, ListTree, Download } from "lucide-react";
+
 const dockItems = [
   {
     action: "toggle-flow",
     id: "toggle-flow-button",
     label: "Switch to scrolling mode",
-    icon: "book-open",
+    icon: BookOpen,
   },
   {
     action: "toggle-theme",
     id: "toggle-theme-button",
     label: "Change theme",
-    icon: "palette",
+    icon: Palette,
     countId: "theme-count",
   },
-  { action: "decrease-font", id: "decrease-font-button", label: "Decrease font size", icon: "minus" },
-  { action: "increase-font", id: "increase-font-button", label: "Increase font size", icon: "plus" },
-  { action: "decrease-width", id: "decrease-width-button", label: "Narrower layout", icon: "minimize-2" },
-  { action: "increase-width", id: "increase-width-button", label: "Wider layout", icon: "maximize-2" },
-  { action: "toggle-search", id: "open-search-button", label: "Search", icon: "search" },
-  { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: "list-tree" },
-  { action: "export", id: "export-button", label: "Export original EPUB", icon: "download" },
+  { action: "decrease-font", id: "decrease-font-button", label: "Decrease font size", icon: Minus },
+  { action: "increase-font", id: "increase-font-button", label: "Increase font size", icon: Plus },
+  { action: "decrease-width", id: "decrease-width-button", label: "Narrower layout", icon: Minimize2 },
+  { action: "increase-width", id: "increase-width-button", label: "Wider layout", icon: Maximize2 },
+  { action: "toggle-search", id: "open-search-button", label: "Search", icon: Search },
+  { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: ListTree },
+  { action: "export", id: "export-button", label: "Export original EPUB", icon: Download },
 ] as const;
 
 const initialDockState: DockUpdateDetail = {
@@ -65,6 +67,7 @@ export function ReaderDock() {
           const label = getDockItemLabel(item.action, item.label, dockState);
           const disabled = isDockItemDisabled(item.action, dockState);
           const active = isDockItemActive(item.action, dockState);
+          const Icon = item.icon;
 
           return (
             <Tooltip key={item.id} label={label} side="right">
@@ -79,9 +82,7 @@ export function ReaderDock() {
                 onClick={() => runAction(item.action)}
               >
                 <span className="dock-button-content">
-                  <i
-                    data-lucide={item.icon}
-                  />
+                  <Icon size={20} aria-hidden="true" />
                   {"countId" in item ? (
                     <span id={item.countId} className="dock-button-count">
                       {dockState.themeCount}

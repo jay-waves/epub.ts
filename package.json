@@ -21,7 +21,7 @@
 	},
 	"dependencies": {
 		"foliate-js": "github:johnfactotum/foliate-js#main",
-		"lucide": "^1.14.0",
+		"lucide-react": "^1.16.0",
 		"react": "^19.2.6",
 		"react-dom": "^19.2.6"
 	}

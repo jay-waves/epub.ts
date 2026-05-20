@@ -4,6 +4,7 @@ import type { SearchCollectDetail, SearchUpdateDetail } from "../viewer-events";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Tooltip } from "./ui/tooltip";
+import { ChevronLeft, ChevronRight, X, Highlighter } from "lucide-react"
 
 export function SearchBar() {
   const [canNavigate, setCanNavigate] = useState(false);
@@ -72,7 +73,7 @@ export function SearchBar() {
           size="icon"
           onClick={() => window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchPrevious))}
         >
-          <i data-lucide="chevron-left" />
+          <ChevronLeft size={20} aria-hidden="true" />
         </Button>
       </Tooltip>
       <span className="search-count">
@@ -86,7 +87,7 @@ export function SearchBar() {
           size="icon"
           onClick={() => window.dispatchEvent(new CustomEvent(VIEWER_EVENTS.searchNext))}
         >
-          <i data-lucide="chevron-right" />
+          <ChevronRight size={20} aria-hidden="true"/>
         </Button>
       </Tooltip>
       <form
@@ -115,7 +116,7 @@ export function SearchBar() {
           size="icon"
           onClick={toggleHighlightedOnly}
         >
-          <i data-lucide="highlighter" />
+          <Highlighter size={20} aria-hidden="true"/>
         </Button>
       </Tooltip>
       <Tooltip label="Close search" side="bottom">
@@ -125,7 +126,7 @@ export function SearchBar() {
           size="icon"
           onClick={clearSearch}
         >
-          <i data-lucide="x" />
+          <X size={20} aria-hidden="true"/>
         </Button>
       </Tooltip>
     </div>

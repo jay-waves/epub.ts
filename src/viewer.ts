@@ -1,22 +1,6 @@
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
-  ChevronLeft,
-  ChevronRight,
-  BookOpen,
-  createIcons,
-  Download,
-  Highlighter,
-  ListTree,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Palette,
-  Plus,
-  Search,
-  X,
-} from "lucide";
-import {
   applyReaderFlow,
   applyReaderFontSize,
   applyReaderLayout,
@@ -638,23 +622,6 @@ function setupExtraUi() {
   if (runtime.extraUiReady) return;
   runtime.extraUiReady = true;
 
-  createIcons({
-    icons: {
-      ChevronLeft,
-      ChevronRight,
-      BookOpen,
-      Download,
-      Highlighter,
-      ListTree,
-      Maximize2,
-      Minimize2,
-      Minus,
-      Palette,
-      Plus,
-      Search,
-      X,
-    },
-  });
   ensureKeybindings();
   emitDockUpdate();
   runtime.highlightController?.bindContextTargets();
