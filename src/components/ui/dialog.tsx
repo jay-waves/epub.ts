@@ -1,6 +1,6 @@
 import { forwardRef } from "react";
 import type { DialogHTMLAttributes, ReactNode } from "react";
-import { cn } from "../../classnames";
+import { cn } from "./utils";
 
 type DialogProps = DialogHTMLAttributes<HTMLDialogElement> & {
   children: ReactNode;

@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { cn } from "../../classnames";
+import { cn } from "./utils";
 
 type ButtonVariant = "ghost";
 type ButtonSize = "icon";

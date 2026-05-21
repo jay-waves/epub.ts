@@ -7,8 +7,10 @@ import {
 import type { FoliateViewElement, ReaderFlow, ReaderSettings } from "./viewer-types";
 
 export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
+export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
 export const READER_FONT_URL = chrome.runtime.getURL("LXGWWenKai-Regular.ttf");
+export const READER_LATIN_FONT_URL = chrome.runtime.getURL("EBGaramond-VariableFont_wght.ttf");
 export const READER_MONO_FONT_URL = chrome.runtime.getURL("Monaspace Argon Var.ttf");
 
 const MIN_READER_FONT_SIZE = 14;
@@ -23,7 +25,7 @@ const PAGINATED_TWO_COLUMN_MIN_WIDTH = 1500;
 const PAGINATED_THREE_COLUMN_MIN_WIDTH = 2000;
 
 const READER_SERIF_STACK =
-  `"${READER_FONT_FAMILY}", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;
+  `"${READER_LATIN_FONT_FAMILY}", "${READER_FONT_FAMILY}", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;
 const READER_SANS_STACK =
   `"${READER_FONT_FAMILY}", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`;
 const READER_MONO_STACK =
@@ -36,16 +38,48 @@ const READER_PARAGRAPH_BLOCK_SELECTOR =
   ':is(p, [epub|type~="bodymatter"] p, [class~="para"], [class*="para-" i], [class*="paragraph" i], [class*="bodytext" i], [class*="body-text" i])';
 const READER_HEADING_SELECTOR =
   ':is(h1, h2, h3, h4, h5, h6, [role="heading"], [epub|type~="title"], [epub|type~="subtitle"], [class*="title" i], [class*="heading" i], [class*="chapter" i])';
+const READER_INLINE_TEXT_SELECTOR = ":where(span, a, em, strong, b, i)";
 const READER_CAPTION_SELECTOR =
   ':is(figcaption, caption, [epub|type~="caption"], [epub|type~="subtitle"], [epub|type~="credit"], [class*="caption" i], [class*="figcaption" i], [class*="legend" i], [class*="credit" i])';
 const READER_FIGURE_CAPTION_SELECTOR =
   ':is(figcaption, caption, [epub|type~="caption"], [class*="caption" i], [class*="figcaption" i], [class*="legend" i])';
+const READER_FORM_CONTROL_SELECTOR = ":is(input, textarea, select, button)";
+const READER_TEXT_COLOR_TARGET_SELECTOR = ':where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *))';
+const READER_LINK_COLOR_TARGET_SELECTOR = ":where(*:not(svg):not(svg *))";
+const READER_SERIF_CONTENT_SELECTOR =
+  "body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *)";
+const READER_NON_VISUAL_BACKGROUND_SELECTOR =
+  "body *:not(img):not(svg):not(video):not(audio):not(canvas):not(iframe):not(.hljs):not(.hljs *)";
 const READER_REFERENCE_SELECTOR =
   ':is(a[epub|type~="noteref"], a[role~="doc-noteref"], a[epub|type~="biblioref"], a[role~="doc-biblioref"], a[epub|type~="glossref"], a[role~="doc-glossref"], sup a, a sup, small a[href^="#"])';
 const READER_NOTE_SELECTOR =
   ':is(aside, details, [epub|type~="note"], [epub|type~="footnote"], [epub|type~="endnote"], [epub|type~="rearnote"], [epub|type~="sidebar"], [epub|type~="annotation"], [epub|type~="z3998:annotation"], [class*="note" i], [class*="annotation" i], [class*="comment" i], [class*="remark" i], [class*="sidebar" i])';
 const READER_FOOTNOTE_SELECTOR =
   ':is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-footnote-target="true"])';
+const READER_FOOTNOTE_LINK_SELECTOR = ':is(a[epub|type~="noteref"], a[role~="doc-noteref"])';
+const READER_QUOTE_SELECTOR = ':is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i])';
+const READER_TABLE_SELECTOR = ':is(table, .table, [class*="table" i])';
+const READER_MEDIA_SELECTOR = ":is(img, svg, video)";
+
+const READER_INHERIT_INLINE_TEXT_CSS = `
+      font-size: inherit !important;
+      line-height: inherit !important;
+      letter-spacing: inherit !important;
+      word-spacing: inherit !important;
+`;
+const READER_SMALL_TEXT_CSS = `
+      font-size: var(--reader-small-font-size) !important;
+      line-height: var(--reader-small-line-height) !important;
+`;
+const READER_MUTED_COLOR_CSS = `
+      color: var(--reader-muted-color) !important;
+      -webkit-text-fill-color: var(--reader-muted-color) !important;
+`;
+const READER_AUTO_BREAK_CSS = `
+      break-inside: auto !important;
+      page-break-inside: auto !important;
+      -webkit-column-break-inside: auto !important;
+`;
 
 const READER_LAYOUT_PRESETS = [
   {
@@ -115,14 +149,22 @@ export function getBookStyles(themeId = state.readerTheme) {
       src: url("${READER_FONT_URL}") format("truetype");
       font-weight: 400;
       font-style: normal;
-      font-display: block;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "${READER_LATIN_FONT_FAMILY}";
+      src: url("${READER_LATIN_FONT_URL}") format("truetype");
+      font-weight: 400 800;
+      font-style: normal;
+      font-display: swap;
+      unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
     }
     @font-face {
       font-family: "${READER_MONO_FONT_FAMILY}";
       src: url("${READER_MONO_FONT_URL}") format("truetype");
       font-weight: 100 900;
       font-style: normal;
-      font-display: block;
+      font-display: swap;
     }
     html,
     body {
@@ -137,6 +179,8 @@ export function getBookStyles(themeId = state.readerTheme) {
       --reader-letter-spacing: ${layout.letterSpacing};
       --reader-word-spacing: ${layout.wordSpacing};
       --reader-paragraph-spacing: ${layout.paragraphSpacing};
+      --reader-small-font-size: calc(var(--reader-font-size) * 0.78);
+      --reader-small-line-height: 1.4;
       --reader-font-serif: ${READER_SERIF_STACK};
       --reader-font-sans: ${READER_SANS_STACK};
       --reader-font-mono: ${READER_MONO_STACK};
@@ -155,8 +199,10 @@ export function getBookStyles(themeId = state.readerTheme) {
     }
     body {
       font-family: var(--reader-font-serif) !important;
+      font-size-adjust: 0.54;
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
+      text-autospace: ideograph-alpha ideograph-numeric;
     }
     html::-webkit-scrollbar,
     body::-webkit-scrollbar,
@@ -166,18 +212,18 @@ export function getBookStyles(themeId = state.readerTheme) {
       display: none !important;
     }
     body,
-    body :where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *)) {
+    body ${READER_TEXT_COLOR_TARGET_SELECTOR} {
       color: var(--reader-fg-color) !important;
       -webkit-text-fill-color: var(--reader-fg-color) !important;
       caret-color: var(--reader-fg-color) !important;
       text-shadow: none !important;
     }
     a,
-    a :where(*:not(svg):not(svg *)) {
+    a ${READER_LINK_COLOR_TARGET_SELECTOR} {
       color: var(--reader-link-color) !important;
       -webkit-text-fill-color: var(--reader-link-color) !important;
     }
-    body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *) {
+    ${READER_SERIF_CONTENT_SELECTOR} {
       font-family: var(--reader-font-serif) !important;
     }
     ${READER_MONO_SELECTOR} {
@@ -189,10 +235,10 @@ export function getBookStyles(themeId = state.readerTheme) {
       -webkit-text-fill-color: var(--reader-fg-color) !important;
       text-shadow: none !important;
     }
-    :is(input, textarea, select, button) {
+    ${READER_FORM_CONTROL_SELECTOR} {
       font-family: var(--reader-font-sans) !important;
     }
-    body *:not(img):not(svg):not(video):not(audio):not(canvas):not(iframe):not(.hljs):not(.hljs *) {
+    ${READER_NON_VISUAL_BACKGROUND_SELECTOR} {
       background: transparent !important;
       max-inline-size: none !important;
       max-width: none !important;
@@ -208,16 +254,14 @@ export function getBookStyles(themeId = state.readerTheme) {
       hyphens: auto !important;
       hanging-punctuation: allow-end last;
       word-spacing: var(--reader-word-spacing) !important;
+      text-autospace: ideograph-alpha ideograph-numeric;
     }
     ${READER_PARAGRAPH_BLOCK_SELECTOR} {
       margin-block-start: 0 !important;
       margin-block-end: var(--reader-paragraph-spacing) !important;
     }
-    ${READER_PARAGRAPH_SELECTOR} :where(span, a, em, strong, b, i) {
-      font-size: inherit !important;
-      line-height: inherit !important;
-      letter-spacing: inherit !important;
-      word-spacing: inherit !important;
+    ${READER_PARAGRAPH_SELECTOR} ${READER_INLINE_TEXT_SELECTOR} {
+${READER_INHERIT_INLINE_TEXT_CSS}
     }
     ${READER_HEADING_SELECTOR},
     ${READER_HEADING_SELECTOR} * {
@@ -241,14 +285,13 @@ export function getBookStyles(themeId = state.readerTheme) {
       font-size: calc(var(--reader-font-size) * 1.1) !important;
       line-height: 1.45 !important;
     }
-    ${READER_HEADING_SELECTOR} :where(span, a, em, strong, b, i) {
+    ${READER_HEADING_SELECTOR} ${READER_INLINE_TEXT_SELECTOR} {
       font-size: inherit !important;
       line-height: inherit !important;
       font-weight: inherit !important;
     }
     ${READER_CAPTION_SELECTOR} {
-      color: var(--reader-muted-color) !important;
-      -webkit-text-fill-color: var(--reader-muted-color) !important;
+${READER_MUTED_COLOR_CSS}
       font-size: 0.82em !important;
       line-height: 1.45 !important;
       text-align: center !important;
@@ -267,16 +310,12 @@ export function getBookStyles(themeId = state.readerTheme) {
       vertical-align: super !important;
       word-spacing: 0 !important;
     }
-    :is(a[epub|type~="noteref"],
-    a[role~="doc-noteref"]) img.epub-footnote,
-    :is(a[epub|type~="noteref"],
-    a[role~="doc-noteref"]) img[alt] {
+    ${READER_FOOTNOTE_LINK_SELECTOR} img.epub-footnote,
+    ${READER_FOOTNOTE_LINK_SELECTOR} img[alt] {
       display: none !important;
     }
-    :is(a[epub|type~="noteref"],
-    a[role~="doc-noteref"]):has(img.epub-footnote)::after,
-    :is(a[epub|type~="noteref"],
-    a[role~="doc-noteref"]):has(img[alt])::after {
+    ${READER_FOOTNOTE_LINK_SELECTOR}:has(img.epub-footnote)::after,
+    ${READER_FOOTNOTE_LINK_SELECTOR}:has(img[alt])::after {
       content: attr(data-footnote-label) !important;
       display: inline !important;
       font-size: 0.9em !important;
@@ -290,8 +329,8 @@ export function getBookStyles(themeId = state.readerTheme) {
       text-align: inherit !important;
       vertical-align: baseline !important;
     }
-    :is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i]),
-    :is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i]) * {
+    ${READER_QUOTE_SELECTOR},
+    ${READER_QUOTE_SELECTOR} * {
       font-size: 0.94em !important;
       line-height: 1.62 !important;
       word-spacing: 0 !important;
@@ -305,8 +344,7 @@ export function getBookStyles(themeId = state.readerTheme) {
     }
     ${READER_NOTE_SELECTOR},
     ${READER_NOTE_SELECTOR} * {
-      font-size: 0.86em !important;
-      line-height: 1.52 !important;
+${READER_SMALL_TEXT_CSS}
       word-spacing: 0 !important;
       opacity: 0.92 !important;
     }
@@ -326,10 +364,8 @@ export function getBookStyles(themeId = state.readerTheme) {
       border: 0 !important;
       border-radius: 0 !important;
       background: transparent !important;
-      color: var(--reader-muted-color) !important;
-      -webkit-text-fill-color: var(--reader-muted-color) !important;
-      font-size: 0.72em !important;
-      line-height: 1.42 !important;
+${READER_MUTED_COLOR_CSS}
+${READER_SMALL_TEXT_CSS}
       text-align: start !important;
     }
     ${READER_FOOTNOTE_SELECTOR}::before {
@@ -338,17 +374,15 @@ export function getBookStyles(themeId = state.readerTheme) {
       inset-inline-start: 0 !important;
       top: 0 !important;
       min-inline-size: 1.6em !important;
-      color: var(--reader-muted-color) !important;
-      -webkit-text-fill-color: var(--reader-muted-color) !important;
+${READER_MUTED_COLOR_CSS}
       font-family: var(--reader-font-sans) !important;
-      font-size: 0.9em !important;
+      font-size: calc(var(--reader-small-font-size) * 0.9) !important;
       font-weight: 700 !important;
       line-height: inherit !important;
       text-align: end !important;
     }
     ${READER_FOOTNOTE_SELECTOR} :is(p, div, span, a, small) {
-      color: var(--reader-muted-color) !important;
-      -webkit-text-fill-color: var(--reader-muted-color) !important;
+${READER_MUTED_COLOR_CSS}
       font-size: inherit !important;
       line-height: inherit !important;
       text-align: start !important;
@@ -363,7 +397,7 @@ export function getBookStyles(themeId = state.readerTheme) {
       text-align: center !important;
       box-sizing: border-box !important;
     }
-    img, svg, video {
+    ${READER_MEDIA_SELECTOR} {
       max-inline-size: 100% !important;
       max-width: 100% !important;
       block-size: auto !important;
@@ -375,10 +409,12 @@ export function getBookStyles(themeId = state.readerTheme) {
       margin-inline: auto !important;
     }
     img[data-reader-zoomable="true"] {
-      inline-size: auto !important;
-      width: auto !important;
-      max-inline-size: 66.6667% !important;
-      max-width: 66.6667% !important;
+      inline-size: 80% !important;
+      width: 80% !important;
+      max-inline-size: 80% !important;
+      max-width: 80% !important;
+      block-size: auto !important;
+      height: auto !important;
       border-radius: 0.5rem !important;
       cursor: zoom-in !important;
     }
@@ -393,16 +429,65 @@ export function getBookStyles(themeId = state.readerTheme) {
       border-radius: 0.95rem !important;
       box-shadow: 0 24px 60px color-mix(in srgb, var(--reader-fg-color) 18%, transparent) !important;
     }
-    :is(table, .table, [class*="table" i]) {
+    ${READER_TABLE_SELECTOR} {
       max-inline-size: 100% !important;
       max-width: 100% !important;
-      inline-size: auto !important;
-      width: auto !important;
+      inline-size: 100% !important;
+      width: 100% !important;
+      margin-block: 1.15em !important;
       margin-inline: auto !important;
-      border-collapse: collapse;
-      table-layout: auto;
+      border-collapse: collapse !important;
+      table-layout: auto !important;
+      border: 1px solid var(--reader-border-color) !important;
+      border-radius: 0.45rem !important;
+      background: color-mix(in srgb, var(--reader-panel-bg) 64%, transparent) !important;
+${READER_SMALL_TEXT_CSS}
+      overflow-wrap: break-word !important;
+      word-break: normal !important;
+${READER_AUTO_BREAK_CSS}
     }
-    :is(table, .table, [class*="table" i]) :is(img, svg, video) {
+    ${READER_TABLE_SELECTOR} :is(thead, tbody, tfoot, tr, th, td) {
+      border-color: var(--reader-border-color) !important;
+    }
+    ${READER_TABLE_SELECTOR} :is(th, td) {
+      min-inline-size: 0 !important;
+      max-inline-size: 18rem !important;
+      padding: 0.4em 0.56em !important;
+      border: 1px solid var(--reader-border-color) !important;
+      vertical-align: top !important;
+      font-size: inherit !important;
+      overflow-wrap: break-word !important;
+      word-break: keep-all !important;
+      white-space: normal !important;
+      hyphens: auto !important;
+      line-height: inherit !important;
+    }
+    ${READER_TABLE_SELECTOR} th {
+      background: color-mix(in srgb, var(--reader-fg-color) 9%, var(--reader-panel-bg)) !important;
+      font-family: var(--reader-font-sans) !important;
+      font-weight: 650 !important;
+      text-align: start !important;
+    }
+    ${READER_TABLE_SELECTOR} thead {
+      break-after: avoid !important;
+      page-break-after: avoid !important;
+      -webkit-column-break-after: avoid !important;
+    }
+    ${READER_TABLE_SELECTOR} tr {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+      -webkit-column-break-inside: avoid !important;
+    }
+    ${READER_TABLE_SELECTOR} tbody tr:nth-child(even) {
+      background: color-mix(in srgb, var(--reader-fg-color) 4%, transparent) !important;
+    }
+    ${READER_TABLE_SELECTOR} :is(th, td) > :first-child {
+      margin-block-start: 0 !important;
+    }
+    ${READER_TABLE_SELECTOR} :is(th, td) > :last-child {
+      margin-block-end: 0 !important;
+    }
+    ${READER_TABLE_SELECTOR} ${READER_MEDIA_SELECTOR} {
       max-inline-size: 100% !important;
       max-width: 100% !important;
     }
@@ -410,27 +495,55 @@ export function getBookStyles(themeId = state.readerTheme) {
     ${READER_FIGURE_CAPTION_SELECTOR} {
       display: block !important;
       margin-inline: auto !important;
+      margin-block: 0.45em 0.75em !important;
       text-align: center !important;
+      caption-side: bottom !important;
+${READER_MUTED_COLOR_CSS}
+      font-family: var(--reader-font-sans) !important;
+      font-size: 0.82em !important;
+      line-height: 1.45 !important;
     }
-    code, kbd, samp {
-      font-size: 0.9em !important;
-      line-height: 1.5 !important;
+    :is(code, kbd, samp):not(pre code):not(.hljs) {
+      display: inline-flex !important;
+      align-items: center !important;
+      vertical-align: 0.1em !important;
+${READER_SMALL_TEXT_CSS}
       border-radius: 0.25em !important;
+      border: 1px solid var(--reader-border-color) !important;
       background: var(--reader-panel-bg) !important;
       padding: 0.08em 0.28em !important;
+      box-decoration-break: clone !important;
+      -webkit-box-decoration-break: clone !important;
     }
     pre,
     .hljs {
       white-space: pre-wrap !important;
-      font-size: 0.78em !important;
-      line-height: 1.55 !important;
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+${READER_SMALL_TEXT_CSS}
       font-family: var(--reader-font-mono) !important;
+      max-inline-size: 100% !important;
       margin-block: 1em !important;
       padding: 0.9em 1em !important;
       border: 1px solid var(--reader-border-color) !important;
       border-radius: 0.35em !important;
       background: var(--reader-panel-bg) !important;
-      overflow: auto !important;
+      overflow: visible !important;
+${READER_AUTO_BREAK_CSS}
+      box-decoration-break: clone !important;
+      -webkit-box-decoration-break: clone !important;
+    }
+    pre code,
+    pre .hljs,
+    .hljs code {
+      white-space: inherit !important;
+      overflow-wrap: inherit !important;
+      word-break: inherit !important;
+      break-inside: auto !important;
+      page-break-inside: auto !important;
+      border: 0 !important;
+      background: transparent !important;
+      padding: 0 !important;
     }
     ${highlightThemeCss}
     .hljs {

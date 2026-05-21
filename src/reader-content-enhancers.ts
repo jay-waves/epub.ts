@@ -11,6 +11,14 @@ let activeZoomProxy: HTMLImageElement | null = null;
 const codeEnhancedDocs = new WeakSet<Document>();
 const footnotesLabeledDocs = new WeakSet<Document>();
 const imagesEnhancedDocs = new WeakSet<Document>();
+const cjkSpacingEnhancedDocs = new WeakSet<Document>();
+const MIN_ZOOMABLE_IMAGE_SIZE = 160;
+const CJK_CHAR_PATTERN = "[\\u2E80-\\u2EFF\\u3040-\\u30FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]";
+const HALF_WIDTH_WORD_PATTERN = "[A-Za-z0-9]";
+const HALF_WIDTH_TRAILING_PATTERN = String.raw`[A-Za-z0-9.,:;!?%\)\]\}]`;
+const CJK_TO_HALF_WIDTH_RE = new RegExp(`(${CJK_CHAR_PATTERN})(${HALF_WIDTH_WORD_PATTERN})`, "gu");
+const HALF_WIDTH_TO_CJK_RE = new RegExp(`(${HALF_WIDTH_TRAILING_PATTERN})(${CJK_CHAR_PATTERN})`, "gu");
+const CJK_SPACING_SKIP_SELECTOR = "script, style";
 
 export function enhanceReaderContent(doc: Document, options: {
   isCurrent: () => boolean;
@@ -21,6 +29,7 @@ export function enhanceReaderContent(doc: Document, options: {
     await beautifyCodeBlocks(doc);
     await beautifyImages(doc);
     labelFootnotes(doc);
+    addCjkHalfWidthSpacing(doc);
   }, 500);
 }
 
@@ -202,7 +211,7 @@ function isZoomableImage(image: HTMLImageElement) {
 
   const knownWidth = image.naturalWidth || image.width;
   const knownHeight = image.naturalHeight || image.height;
-  if (knownWidth && knownHeight && knownWidth < 48 && knownHeight < 48) return false;
+  if (knownWidth && knownHeight && knownWidth < MIN_ZOOMABLE_IMAGE_SIZE && knownHeight < MIN_ZOOMABLE_IMAGE_SIZE) return false;
 
   return true;
 }
@@ -361,4 +370,32 @@ function labelFootnotes(doc: Document) {
   });
 
   footnotesLabeledDocs.add(doc);
+}
+
+function addCjkHalfWidthSpacing(doc: Document) {
+  if (cjkSpacingEnhancedDocs.has(doc)) return;
+  cjkSpacingEnhancedDocs.add(doc);
+
+  const root = doc.body ?? doc.documentElement;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (!node.textContent?.trim()) return NodeFilter.FILTER_REJECT;
+      const parent = node.parentElement;
+      if (parent?.closest(CJK_SPACING_SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+  for (const textNode of textNodes) {
+    textNode.data = addCjkHalfWidthSpacingToText(textNode.data);
+  }
+}
+
+function addCjkHalfWidthSpacingToText(value: string) {
+  return value
+    .replace(CJK_TO_HALF_WIDTH_RE, "$1 $2")
+    .replace(HALF_WIDTH_TO_CJK_RE, "$1 $2");
 }

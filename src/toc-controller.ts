@@ -21,3 +21,15 @@ export function normalizeTocItems(items: TocItem[] = []): TocItem[] {
     };
   });
 }
+
+export function collectSectionHrefs(items: TocItem[], sections: string[] = [], seen = new Set<string>()) {
+  for (const item of items) {
+    const href = normalizeTocHref(item.href);
+    if (href && !seen.has(href)) {
+      seen.add(href);
+      sections.push(href);
+    }
+    if (item.subitems?.length) collectSectionHrefs(item.subitems, sections, seen);
+  }
+  return sections;
+}

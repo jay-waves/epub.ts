@@ -12,6 +12,8 @@ import {
   READER_FONT_FAMILY,
   READER_FONT_SIZE_STEP,
   READER_FONT_URL,
+  READER_LATIN_FONT_FAMILY,
+  READER_LATIN_FONT_URL,
   READER_MONO_FONT_FAMILY,
   READER_MONO_FONT_URL,
   READER_LAYOUT_LEVEL_STEP,
@@ -29,7 +31,7 @@ import { createReaderDocumentCache } from "./reader-document-cache";
 import { enhanceReaderContent } from "./reader-content-enhancers";
 import { createSearchController } from "./search-controller";
 import { createDebouncedTask, runWhenIdle } from "./scheduler";
-import { normalizeTocHref, normalizeTocItems } from "./toc-controller";
+import { collectSectionHrefs, normalizeTocHref, normalizeTocItems } from "./toc-controller";
 import { App } from "./app";
 import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
@@ -133,6 +135,10 @@ function preloadReaderFonts() {
       style: "normal",
       weight: "400",
     }).load(),
+    new FontFace(READER_LATIN_FONT_FAMILY, `url("${READER_LATIN_FONT_URL}") format("truetype")`, {
+      style: "normal",
+      weight: "400 800",
+    }).load(),
     new FontFace(READER_MONO_FONT_FAMILY, `url("${READER_MONO_FONT_URL}") format("truetype")`, {
       style: "normal",
       weight: "100 900",
@@ -207,18 +213,6 @@ function resolveRelocateSectionIndex(detail: RelocateDetail) {
   return index >= 0 ? index : undefined;
 }
 
-function collectSectionHrefs(items: typeof runtime.tocItems, sections: string[] = [], seen = new Set<string>()) {
-  for (const item of items) {
-    const href = normalizeTocHref(item.href);
-    if (href && !seen.has(href)) {
-      seen.add(href);
-      sections.push(href);
-    }
-    if (item.subitems?.length) collectSectionHrefs(item.subitems, sections, seen);
-  }
-  return sections;
-}
-
 const savePositionTask = createDebouncedTask((detail: RelocateDetail) => {
   if (state.currentBookKey) {
     void saveReadingPosition(state.currentBookKey, detail);
@@ -249,14 +243,12 @@ function wireReaderEvents(view: FoliateViewElement) {
       isCurrent: () => runtime.readerView === view,
       runWhenIdle,
     });
-    runWhenIdle(() => {
-      if (runtime.readerView !== view) return;
-      runtime.readerDocumentCache?.prepareAround(index);
-    }, 700);
+    if (runtime.readerView === view) runtime.readerDocumentCache?.prepareAround(index);
   });
 
   view.addEventListener("relocate", (event) => {
     const detail = (event as CustomEvent<RelocateDetail>).detail;
+    const sectionIndex = resolveRelocateSectionIndex(detail);
 
     const currentHref = detail.tocItem?.href ?? "";
     if (currentHref !== state.currentHref) {
@@ -264,6 +256,7 @@ function wireReaderEvents(view: FoliateViewElement) {
       emitTocUpdate();
     }
     updatePageStatus(detail);
+    runtime.readerDocumentCache?.prepareAround(sectionIndex);
     queuePositionSave(detail);
     queueHighlightContextBind(view);
   });
@@ -404,19 +397,30 @@ function createView() {
 async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: ReadingPosition) {
   state.isRestoring = true;
   try {
-    await view.init(getSavedPositionInitOptions(savedPosition));
+    const attempts: Array<Parameters<FoliateViewElement["init"]>[0]> = [];
+    if (savedPosition?.cfi) attempts.push({ lastLocation: savedPosition.cfi });
+    if (typeof savedPosition?.fraction === "number") {
+      attempts.push({ lastLocation: { fraction: savedPosition.fraction } });
+    }
+    attempts.push({ showTextStart: true });
+
+    let lastError: unknown;
+    for (const attempt of attempts) {
+      try {
+        await view.init(attempt);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) throw lastError;
   } catch (error) {
     console.warn("Failed to restore saved reading position.", error);
     await view.init({ showTextStart: true });
   } finally {
     state.isRestoring = false;
   }
-}
-
-function getSavedPositionInitOptions(savedPosition?: ReadingPosition): Parameters<FoliateViewElement["init"]>[0] {
-  if (savedPosition?.cfi) return { lastLocation: savedPosition.cfi };
-  if (typeof savedPosition?.fraction === "number") return { lastLocation: { fraction: savedPosition.fraction } };
-  return { showTextStart: true };
 }
 
 async function openBook(input: File | string, sourceLabel: string) {

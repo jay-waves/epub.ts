@@ -18,6 +18,12 @@ type CachedDocumentSnapshot = {
 
 const CACHE_WINDOW = 1;
 
+type OriginalSectionMethods = {
+  createDocument?: () => Promise<Document>;
+  load?: () => Promise<string | null>;
+  unload?: () => void;
+};
+
 export function createReaderDocumentCache() {
   let activeBook: FoliateBook | null = null;
   let generation = 0;
@@ -26,12 +32,26 @@ export function createReaderDocumentCache() {
   const cache = new Map<number, CachedDocumentSnapshot>();
   const desired = new Set<number>();
   const pending = new Map<number, Promise<void>>();
+  const originals = new WeakMap<CacheableSection, OriginalSectionMethods>();
 
   const getSection = (index: number) => activeBook?.sections?.[index] as CacheableSection | undefined;
 
+  const getOriginals = (section: CacheableSection) => {
+    const original = originals.get(section);
+    if (original) return original;
+
+    const methods: OriginalSectionMethods = {
+      createDocument: section.createDocument,
+      load: section.load,
+      unload: section.unload,
+    };
+    originals.set(section, methods);
+    return methods;
+  };
+
   const releaseEntry = (index: number) => {
     const section = getSection(index);
-    if (cache.has(index)) section?.unload?.();
+    if (cache.has(index) && section) getOriginals(section).unload?.();
     cache.delete(index);
   };
 
@@ -43,19 +63,22 @@ export function createReaderDocumentCache() {
 
   const prepareSection = async (index: number, token: number) => {
     const section = getSection(index);
-    if (!section?.createDocument || !section.load) return;
+    if (!section) return;
+
+    const { createDocument, load } = getOriginals(section);
+    if (!createDocument || !load) return;
 
     const id = String(section.id ?? index);
     const cached = cache.get(index);
     if (cached?.id === id) return;
 
     const [sourceUrl, doc] = await Promise.all([
-      section.load(),
-      section.createDocument(),
+      load(),
+      createDocument(),
     ]);
 
     if (token !== generation || activeBook?.sections?.[index] !== section) {
-      section.unload?.();
+      getOriginals(section).unload?.();
       return;
     }
 
@@ -143,6 +166,48 @@ export function createReaderDocumentCache() {
     setBook: (book: FoliateBook | null) => {
       reset();
       activeBook = book;
+      const sections = activeBook?.sections as CacheableSection[] | undefined;
+      if (!sections?.length) return;
+
+      sections.forEach((section, index) => {
+        const original = getOriginals(section);
+        if (original.createDocument) {
+          section.createDocument = async () => {
+            const cached = cache.get(index);
+            const id = String(section.id ?? index);
+            if (cached?.id === id) return cached.document;
+
+            if (pending.has(index)) {
+              await pending.get(index);
+              const pendingCached = cache.get(index);
+              if (pendingCached?.id === id) return pendingCached.document;
+            }
+
+            await prepareSection(index, generation);
+            const prepared = cache.get(index);
+            if (prepared?.id === id) return prepared.document;
+
+            return original.createDocument!();
+          };
+        }
+
+        if (original.load) {
+          section.load = async () => {
+            const cached = cache.get(index);
+            const id = String(section.id ?? index);
+            if (cached?.id === id && cached.sourceUrl) return cached.sourceUrl;
+
+            return original.load!();
+          };
+        }
+
+        if (original.unload) {
+          section.unload = () => {
+            cache.delete(index);
+            original.unload?.();
+          };
+        }
+      });
     },
   };
 }
