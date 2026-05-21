@@ -5,6 +5,8 @@ import {
   applyReaderFontSize,
   applyReaderLayoutLevel,
   applyReaderLayout,
+  canChangeReaderFontSize,
+  canChangeReaderLayoutLevel,
   changeReaderFontSize,
   changeReaderFlow,
   changeReaderLayoutLevel,
@@ -91,7 +93,7 @@ function queryRequired<T extends Element>(selector: string) {
 
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
-  fontSize: 19,
+  fontSize: 18,
   layoutLevel: 2,
   theme: "light",
 };
@@ -603,11 +605,20 @@ function setupExtraInteractions() {
     runtime.highlightController?.handleContextAction(action);
   });
 
-  listenViewerEvent(VIEWER_EVENTS.dockAction, handleDockAction);
+  listenViewerEvent(VIEWER_EVENTS.dockAction, (action) => {
+    void handleDockAction(action);
+  });
 
 }
 
-function handleDockAction(action: DockAction) {
+async function runReaderStyleChange(action: () => void) {
+  await runWithReaderRenderPending(async () => {
+    await preloadReaderFonts();
+    action();
+  });
+}
+
+async function handleDockAction(action: DockAction) {
   if (action === "open-toc") {
     emitTocUpdate();
     emitViewerEvent(VIEWER_EVENTS.tocOpen);
@@ -620,42 +631,62 @@ function handleDockAction(action: DockAction) {
   }
 
   if (action === "toggle-flow") {
-    changeReaderFlow(runtime.readerView, readerRoot);
+    await runReaderStyleChange(() => {
+      changeReaderFlow(runtime.readerView, readerRoot);
+    });
     saveCurrentReaderSettings();
     emitDockUpdate();
     return;
   }
 
   if (action === "toggle-theme") {
-    const nextTheme = getNextReaderTheme();
-    applyReaderTheme(nextTheme.id);
-    runtime.readerView?.renderer?.setStyles?.(getBookStyles());
+    await runReaderStyleChange(() => {
+      const nextTheme = getNextReaderTheme();
+      applyReaderTheme(nextTheme.id);
+      runtime.readerView?.renderer?.setStyles?.(getBookStyles());
+    });
     saveCurrentReaderSettings();
     emitDockUpdate();
     return;
   }
 
   if (action === "decrease-font") {
-    changeReaderFontSize(-READER_FONT_SIZE_STEP, runtime.readerView);
-    saveCurrentReaderSettings();
+    if (!canChangeReaderFontSize(-READER_FONT_SIZE_STEP)) return;
+    let changed = false;
+    await runReaderStyleChange(() => {
+      changed = changeReaderFontSize(-READER_FONT_SIZE_STEP, runtime.readerView);
+    });
+    if (changed) saveCurrentReaderSettings();
     return;
   }
 
   if (action === "increase-font") {
-    changeReaderFontSize(READER_FONT_SIZE_STEP, runtime.readerView);
-    saveCurrentReaderSettings();
+    if (!canChangeReaderFontSize(READER_FONT_SIZE_STEP)) return;
+    let changed = false;
+    await runReaderStyleChange(() => {
+      changed = changeReaderFontSize(READER_FONT_SIZE_STEP, runtime.readerView);
+    });
+    if (changed) saveCurrentReaderSettings();
     return;
   }
 
   if (action === "decrease-width") {
-    changeReaderLayoutLevel(-READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
-    saveCurrentReaderSettings();
+    if (!canChangeReaderLayoutLevel(-READER_LAYOUT_LEVEL_STEP)) return;
+    let changed = false;
+    await runReaderStyleChange(() => {
+      changed = changeReaderLayoutLevel(-READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
+    });
+    if (changed) saveCurrentReaderSettings();
     return;
   }
 
   if (action === "increase-width") {
-    changeReaderLayoutLevel(READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
-    saveCurrentReaderSettings();
+    if (!canChangeReaderLayoutLevel(READER_LAYOUT_LEVEL_STEP)) return;
+    let changed = false;
+    await runReaderStyleChange(() => {
+      changed = changeReaderLayoutLevel(READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
+    });
+    if (changed) saveCurrentReaderSettings();
     return;
   }
 

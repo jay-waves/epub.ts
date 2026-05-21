@@ -14,8 +14,8 @@ export const READER_LATIN_FONT_URL = chrome.runtime.getURL("EBGaramond-VariableF
 export const READER_MONO_FONT_URL = chrome.runtime.getURL("Monaspace Argon Var.ttf");
 
 const MIN_READER_FONT_SIZE = 14;
-const MAX_READER_FONT_SIZE = 32;
-export const READER_FONT_SIZE_STEP = 1;
+const MAX_READER_FONT_SIZE = 22;
+export const READER_FONT_SIZE_STEP = 0.5;
 const MIN_READER_LAYOUT_LEVEL = 0;
 export const READER_LAYOUT_LEVEL_STEP = 1;
 
@@ -59,6 +59,8 @@ const READER_FOOTNOTE_LINK_SELECTOR = ':is(a[epub|type~="noteref"], a[role~="doc
 const READER_QUOTE_SELECTOR = ':is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i])';
 const READER_TABLE_SELECTOR = ':is(table, .table, [class*="table" i])';
 const READER_MEDIA_SELECTOR = ":is(img, svg, video)";
+const READER_MEDIA_WRAPPER_SELECTOR =
+  ':is(div, p, section, article, figure, aside, li):has(> img), :is(div, p, section, article, figure, aside, li):has(> svg), :is(div, p, section, article, figure, aside, li):has(> video), :is(div, p, section, article, figure, aside, li):has(> a > img), :is(div, p, section, article, figure, aside, li):has(> a > svg), :is(div, p, section, article, figure, aside, li):has(> a > video)';
 
 const READER_INHERIT_INLINE_TEXT_CSS = `
       font-size: inherit !important;
@@ -82,22 +84,13 @@ const READER_AUTO_BREAK_CSS = `
 
 const READER_LAYOUT_PRESETS = [
   {
-    margin: 20,
-    singleColumnMaxInlineSize: 880,
-    multiColumnMaxInlineSize: 720,
-    lineHeight: 1.58,
-    letterSpacing: "-0.01em",
-    wordSpacing: "-0.01em",
-    paragraphSpacing: "0.55em",
-  },
-  {
     margin: 14,
     singleColumnMaxInlineSize: 960,
     multiColumnMaxInlineSize: 780,
     lineHeight: 1.64,
-    letterSpacing: "-0.005em",
-    wordSpacing: "0em",
-    paragraphSpacing: "0.72em",
+    letterSpacing: "-0.01em",
+    wordSpacing: "-0.01em",
+    paragraphSpacing: "0.65em",
   },
   {
     margin: 8,
@@ -106,48 +99,48 @@ const READER_LAYOUT_PRESETS = [
     lineHeight: 1.7,
     letterSpacing: "0em",
     wordSpacing: "0.01em",
-    paragraphSpacing: "0.92em",
+    paragraphSpacing: "0.75em",
   },
   {
     margin: 4,
     singleColumnMaxInlineSize: 1120,
     multiColumnMaxInlineSize: 900,
     lineHeight: 1.77,
-    letterSpacing: "0.008em",
-    wordSpacing: "0.02em",
-    paragraphSpacing: "1.12em",
+    letterSpacing: "0.005em",
+    wordSpacing: "0.015em",
+    paragraphSpacing: "0.85em",
   },
   {
-    margin: 0,
+    margin: 4,
     singleColumnMaxInlineSize: 1200,
     multiColumnMaxInlineSize: 960,
     lineHeight: 1.84,
-    letterSpacing: "0.015em",
-    wordSpacing: "0.03em",
-    paragraphSpacing: "1.34em",
+    letterSpacing: "0.008em",
+    wordSpacing: "0.02em",
+    paragraphSpacing: "0.95em",
   },
   {
-    margin: 0,
+    margin: 4,
     singleColumnMaxInlineSize: 1280,
     multiColumnMaxInlineSize: 1020,
     lineHeight: 1.94,
-    letterSpacing: "0.02em",
-    wordSpacing: "0.04em",
-    paragraphSpacing: "1.58em",
+    letterSpacing: "0.01em",
+    wordSpacing: "0.025em",
+    paragraphSpacing: "1.15em",
   },
   {
-    margin: 0,
+    margin: 4,
     singleColumnMaxInlineSize: 1360,
     multiColumnMaxInlineSize: 1080,
     lineHeight: 2.05,
-    letterSpacing: "0.026em",
-    wordSpacing: "0.055em",
-    paragraphSpacing: "1.86em",
+    letterSpacing: "0.02em",
+    wordSpacing: "0.03em",
+    paragraphSpacing: "1.25em",
   },
 ] as const;
 
 const MAX_READER_LAYOUT_LEVEL = READER_LAYOUT_PRESETS.length - 1;
-const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[2];
+const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[3];
 
 function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {
   return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
@@ -197,7 +190,9 @@ export function getBookStyles(themeId = state.readerTheme) {
       --reader-letter-spacing: ${layout.letterSpacing};
       --reader-word-spacing: ${layout.wordSpacing};
       --reader-paragraph-spacing: ${layout.paragraphSpacing};
+      --reader-media-spacing: max(1em, calc(var(--reader-paragraph-spacing) * 1.15));
       --reader-small-font-size: calc(var(--reader-font-size) * 0.78);
+      --reader-footnote-font-size: calc(var(--reader-font-size) * 0.68);
       --reader-small-line-height: 1.4;
       --reader-font-serif: ${READER_SERIF_STACK};
       --reader-font-sans: ${READER_SANS_STACK};
@@ -384,6 +379,7 @@ ${READER_SMALL_TEXT_CSS}
       background: transparent !important;
 ${READER_MUTED_COLOR_CSS}
 ${READER_SMALL_TEXT_CSS}
+      font-size: var(--reader-footnote-font-size) !important;
       text-align: start !important;
     }
     ${READER_FOOTNOTE_SELECTOR}::before {
@@ -394,7 +390,7 @@ ${READER_SMALL_TEXT_CSS}
       min-inline-size: 1.6em !important;
 ${READER_MUTED_COLOR_CSS}
       font-family: var(--reader-font-sans) !important;
-      font-size: calc(var(--reader-small-font-size) * 0.9) !important;
+      font-size: calc(var(--reader-footnote-font-size) * 0.9) !important;
       font-weight: 700 !important;
       line-height: inherit !important;
       text-align: end !important;
@@ -411,9 +407,15 @@ ${READER_MUTED_COLOR_CSS}
     :is(ul, ol, dl) { margin-inline: 0 !important; }
     :is(figure, .figure, [class*="figure" i], [class*="illustration" i], [class*="image" i]) {
       max-inline-size: 100% !important;
+      margin-block: var(--reader-media-spacing) !important;
       margin-inline: auto !important;
       text-align: center !important;
       box-sizing: border-box !important;
+    }
+    ${READER_MEDIA_WRAPPER_SELECTOR},
+    [data-reader-media-block="true"] {
+      margin-block: var(--reader-media-spacing) !important;
+      text-align: center !important;
     }
     ${READER_MEDIA_SELECTOR} {
       max-inline-size: 100% !important;
@@ -611,7 +613,7 @@ function clampReaderFontSize(fontSize: number) {
 }
 
 function clampLayoutLevel(layoutLevel: number) {
-  return clamp(layoutLevel, MIN_READER_LAYOUT_LEVEL, MAX_READER_LAYOUT_LEVEL);
+  return clamp(Math.round(layoutLevel), MIN_READER_LAYOUT_LEVEL, MAX_READER_LAYOUT_LEVEL);
 }
 
 function getLegacyLayoutLevel(settings: Partial<ReaderSettings>) {
@@ -644,16 +646,36 @@ export function applyReaderLayoutLevel(layoutLevel: number, view: FoliateViewEle
   if (view) applyReaderLayout(view, readerRoot);
 }
 
+export function canChangeReaderFontSize(delta: number) {
+  const currentSize = clampReaderFontSize(state.readerFontSize);
+  return clampReaderFontSize(currentSize + delta) !== currentSize;
+}
+
 export function changeReaderFontSize(delta: number, view?: FoliateViewElement | null) {
-  const nextSize = clampReaderFontSize(state.readerFontSize + delta);
-  if (nextSize === state.readerFontSize) return;
+  const currentSize = clampReaderFontSize(state.readerFontSize);
+  const nextSize = clampReaderFontSize(currentSize + delta);
+  if (nextSize === currentSize) {
+    state.readerFontSize = currentSize;
+    return false;
+  }
   applyReaderFontSize(nextSize, view);
+  return true;
+}
+
+export function canChangeReaderLayoutLevel(delta: number) {
+  const currentLevel = clampLayoutLevel(state.readerLayoutLevel);
+  return clampLayoutLevel(currentLevel + delta) !== currentLevel;
 }
 
 export function changeReaderLayoutLevel(delta: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  const nextLevel = clampLayoutLevel(state.readerLayoutLevel + delta);
-  if (nextLevel === state.readerLayoutLevel) return;
+  const currentLevel = clampLayoutLevel(state.readerLayoutLevel);
+  const nextLevel = clampLayoutLevel(currentLevel + delta);
+  if (nextLevel === currentLevel) {
+    state.readerLayoutLevel = currentLevel;
+    return false;
+  }
   applyReaderLayoutLevel(nextLevel, view, readerRoot);
+  return true;
 }
 
 export function applyReaderFlow(flow: ReaderFlow, view: FoliateViewElement | null, readerRoot: HTMLElement) {
@@ -667,5 +689,5 @@ export function changeReaderFlow(view: FoliateViewElement | null, readerRoot: HT
 }
 
 function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.round(value)));
+  return Math.min(max, Math.max(min, value));
 }

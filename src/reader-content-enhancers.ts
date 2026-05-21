@@ -19,6 +19,7 @@ const HALF_WIDTH_TRAILING_PATTERN = String.raw`[A-Za-z0-9.,:;!?%\)\]\}]`;
 const CJK_TO_HALF_WIDTH_RE = new RegExp(`(${CJK_CHAR_PATTERN})(${HALF_WIDTH_WORD_PATTERN})`, "gu");
 const HALF_WIDTH_TO_CJK_RE = new RegExp(`(${HALF_WIDTH_TRAILING_PATTERN})(${CJK_CHAR_PATTERN})`, "gu");
 const CJK_SPACING_SKIP_SELECTOR = "script, style";
+const MEDIA_SPACING_PARENT_TAGS = new Set(["A", "DIV", "P", "FIGURE", "SECTION", "ARTICLE", "ASIDE", "LI"]);
 
 export function enhanceReaderContent(doc: Document, options: {
   isCurrent: () => boolean;
@@ -91,8 +92,21 @@ async function beautifyImages(doc: Document) {
   for (const image of images) {
     image.dataset.readerZoomEnhanced = "true";
     image.dataset.readerZoomable = "true";
+    markMediaSpacingBlock(image);
     image.addEventListener("click", handleReaderImageClick, { passive: false });
   }
+}
+
+function markMediaSpacingBlock(image: HTMLImageElement) {
+  const parent = image.parentElement;
+  if (!parent || !MEDIA_SPACING_PARENT_TAGS.has(parent.tagName)) return;
+
+  const block = parent.tagName === "A" && parent.parentElement
+    ? parent.parentElement
+    : parent;
+  if (!MEDIA_SPACING_PARENT_TAGS.has(block.tagName)) return;
+
+  block.dataset.readerMediaBlock = "true";
 }
 
 function beautifyCodeBlock(block: HTMLElement, hljs: HighlightJs) {

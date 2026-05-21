@@ -6,7 +6,7 @@ export const state = {
   currentBookKey: "",
   currentSourceUrl: "",
   isRestoring: false,
-  readerFontSize: 19,
+  readerFontSize: 18,
   readerLayoutLevel: 2,
   readerTheme: "light" as ReaderThemeId,
 };
