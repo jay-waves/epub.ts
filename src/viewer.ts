@@ -49,7 +49,7 @@ import {
   saveReadingPosition,
 } from "./viewer-storage";
 import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
-import type { DockAction, DockUpdateDetail } from "./viewer-events";
+import type { ContentEdgeClickDetail, DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
 import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
@@ -253,6 +253,7 @@ function wireReaderEvents(view: FoliateViewElement) {
     }
 
     enhanceReaderContent(doc, {
+      getFlow: () => state.flow,
       isCurrent: () => runtime.readerView === view,
       runWhenIdle,
     });
@@ -585,6 +586,9 @@ function setupCriticalInteractions() {
 }
 
 function setupExtraInteractions() {
+  listenViewerEvent(VIEWER_EVENTS.contentEdgeClick, (detail) => {
+    handleContentEdgeClick(detail);
+  });
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
     if (!href) return;
     void runWithReaderRenderPending(() => runtime.readerView?.goTo(href));
@@ -609,6 +613,34 @@ function setupExtraInteractions() {
     void handleDockAction(action);
   });
 
+}
+
+function handleContentEdgeClick(detail: ContentEdgeClickDetail) {
+  const readerView = runtime.readerView;
+  if (!readerView || document.body.classList.contains("reader-image-zoom-open")) return;
+  const direction = resolveEdgeClickDirection(detail.x);
+  if (!direction) return;
+
+  if (state.flow === "paginated") {
+    const isRtl = readerView.book?.dir === "rtl";
+    const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+    const isSectionEdge = shouldGoNext ? readerView.renderer?.atEnd : readerView.renderer?.atStart;
+    if (isSectionEdge) setReaderRenderPending(true);
+    void (direction === "left" ? readerView.goLeft?.() : readerView.goRight?.());
+    return;
+  }
+
+  const isRtl = readerView.book?.dir === "rtl";
+  const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+  setReaderRenderPending(true);
+  void (shouldGoNext ? readerView.renderer?.nextSection?.() : readerView.renderer?.prevSection?.());
+}
+
+function resolveEdgeClickDirection(clientX: number): PageTurnDirection | null {
+  const edgeWidth = window.innerWidth * 0.22;
+  if (clientX <= edgeWidth) return "left";
+  if (clientX >= window.innerWidth - edgeWidth) return "right";
+  return null;
 }
 
 async function runReaderStyleChange(action: () => void) {

@@ -1,6 +1,7 @@
 import type { TocItem } from "./viewer-types";
 
 export const VIEWER_EVENTS = {
+  contentEdgeClick: "reader:content-edge-click",
   highlightContextAction: "reader:highlight-context-action",
   highlightContextClose: "reader:highlight-context-close",
   highlightContextOpen: "reader:highlight-context-open",
@@ -19,6 +20,10 @@ export const VIEWER_EVENTS = {
 } as const;
 
 export type HighlightContextAction = "copy" | "delete" | "highlight" | "translate";
+export type PageTurnDirection = "left" | "right";
+export type ContentEdgeClickDetail = {
+  x: number;
+};
 
 export type HighlightContextOpenDetail = {
   canCopy: boolean;
@@ -49,8 +54,6 @@ export type DockUpdateDetail = {
   themeCount: string;
 };
 
-export type PageTurnDirection = "left" | "right";
-
 export type SearchCollectDetail = {
   query: string;
   highlightedOnly?: boolean;
@@ -69,6 +72,7 @@ export type TocUpdateDetail = {
 };
 
 export type ViewerEventDetailMap = {
+  [VIEWER_EVENTS.contentEdgeClick]: ContentEdgeClickDetail;
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
   [VIEWER_EVENTS.highlightContextClose]: void;
   [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;

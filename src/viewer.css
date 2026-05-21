@@ -294,26 +294,6 @@
     }
   }
 
-  .page-click-zone {
-    @apply fixed inset-y-0 z-10 border-0 bg-transparent p-0;
-  }
-
-  .page-click-zone--left {
-    @apply left-0 w-[12vw];
-  }
-
-  .page-click-zone--right {
-    @apply right-0 w-[12vw];
-  }
-
-  .page-click-zone:focus-visible {
-    @apply outline outline-2 outline-offset-[-8px] outline-sky-500/50;
-  }
-
-  .reader-image-zoom-open .page-click-zone {
-    pointer-events: none;
-  }
-
   .reader-progress-shell {
     @apply fixed bottom-8 left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 items-center px-2;
   }
