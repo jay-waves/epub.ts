@@ -30,6 +30,8 @@ export function setupViewerKeybindings(options: {
   getReaderView: () => FoliateViewElement | null;
   getFlow: () => "paginated" | "scrolled";
   canTurnPage?: () => boolean;
+  beforeSectionTurn?: () => void;
+  onScrollEdge?: (direction: number) => void;
   openSearch: () => void;
   closeSearch: () => void;
 }) {
@@ -69,12 +71,19 @@ export function setupViewerKeybindings(options: {
     return direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
   };
 
+  const signalScrollEdge = (direction: number) => {
+    if (options.getFlow() === "scrolled") options.onScrollEdge?.(direction);
+  };
+
   const scrollCurrentSectionWithBounds = (direction: number, distance: number) => {
     const metrics = getSectionScrollMetrics();
     if (!metrics) return;
 
     const remaining = getRemainingSectionDistance(direction);
-    if (remaining <= SECTION_EDGE_EPSILON) return;
+    if (remaining <= SECTION_EDGE_EPSILON) {
+      signalScrollEdge(direction);
+      return;
+    }
 
     void (direction < 0 ? metrics.renderer.prev?.(Math.min(distance, remaining)) : metrics.renderer.next?.(Math.min(distance, remaining)));
   };
@@ -84,12 +93,17 @@ export function setupViewerKeybindings(options: {
 
     const readerView = options.getReaderView();
     if (options.getFlow() === "paginated") {
+      const isRtl = readerView?.book?.dir === "rtl";
+      const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+      const isSectionEdge = shouldGoNext ? readerView?.renderer?.atEnd : readerView?.renderer?.atStart;
+      if (isSectionEdge) options.beforeSectionTurn?.();
       void (direction === "left" ? readerView?.goLeft?.() : readerView?.goRight?.());
       return;
     }
 
     const isRtl = readerView?.book?.dir === "rtl";
     const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+    options.beforeSectionTurn?.();
     void (shouldGoNext ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
   };
 
@@ -133,6 +147,7 @@ export function setupViewerKeybindings(options: {
     const delta = holdScrollDirection * speed * (elapsed / 1000);
     const remaining = holdScrollDirection < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) {
+      signalScrollEdge(holdScrollDirection);
       stopHoldScroll();
       return;
     }
@@ -213,11 +228,24 @@ export function setupViewerKeybindings(options: {
     stopHoldScroll();
   };
 
+  const handleWheel = (event: WheelEvent) => {
+    if (options.getFlow() !== "scrolled") return;
+
+    const direction = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+      ? Math.sign(event.deltaY)
+      : Math.sign(event.deltaX);
+    if (!direction) return;
+
+    const remaining = getRemainingSectionDistance(direction);
+    if (remaining <= SECTION_EDGE_EPSILON) signalScrollEdge(direction);
+  };
+
   const bindKeyTarget = (targetDocument: Document) => {
     if (keyTargets.has(targetDocument)) return;
     keyTargets.add(targetDocument);
     targetDocument.addEventListener("keydown", handleKeyDown);
     targetDocument.addEventListener("keyup", handleKeyUp);
+    targetDocument.addEventListener("wheel", handleWheel, { passive: true });
     targetDocument.defaultView?.addEventListener("blur", handleBlur);
   };
 

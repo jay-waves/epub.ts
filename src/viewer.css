@@ -227,17 +227,71 @@
 
   .reader-frame {
     @apply min-h-screen flex-1 overflow-hidden;
+    position: relative;
   }
 
   .reader-frame > foliate-view {
     width: 100%;
     height: 100%;
     display: block;
+    opacity: 1;
+  }
+
+  .reader-frame.reader-frame--pending > foliate-view {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .reader-frame > foliate-view::part(container),
   .reader-frame > foliate-view::part(filter) {
     background: var(--reader-chrome-bg, #fffefd);
+  }
+
+  .reader-frame::before,
+  .reader-frame::after {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 12;
+    height: 5.5rem;
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .reader-frame::before {
+    top: 0;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 12%, transparent),
+      transparent
+    );
+  }
+
+  .reader-frame::after {
+    bottom: 0;
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 12%, transparent),
+      transparent
+    );
+  }
+
+  .reader-frame.reader-frame--edge-top::before,
+  .reader-frame.reader-frame--edge-bottom::after {
+    animation: reader-edge-feedback 360ms ease-out;
+  }
+
+  @keyframes reader-edge-feedback {
+    0% {
+      opacity: 0;
+    }
+    18% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
 
   .page-click-zone {

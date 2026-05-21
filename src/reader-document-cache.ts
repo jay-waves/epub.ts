@@ -1,4 +1,9 @@
-import { getBookStyles } from "./reader-settings";
+import {
+  getBookStyles,
+  READER_FONT_URL,
+  READER_LATIN_FONT_URL,
+  READER_MONO_FONT_URL,
+} from "./reader-settings";
 import { runWhenIdle } from "./scheduler";
 import type { FoliateBook } from "./viewer-types";
 
@@ -187,7 +192,9 @@ export function createReaderDocumentCache() {
             const prepared = cache.get(index);
             if (prepared?.id === id) return prepared.document;
 
-            return original.createDocument!();
+            const doc = await original.createDocument!();
+            prepareDocumentSnapshot(doc, index);
+            return doc;
           };
         }
 
@@ -217,8 +224,27 @@ function prepareDocumentSnapshot(doc: Document, index: number) {
   doc.documentElement.dataset.readerSectionIndex = String(index);
 
   const head = doc.head ?? doc.documentElement.insertBefore(doc.createElement("head"), doc.documentElement.firstChild);
+  ensureReaderFontPreloads(doc, head);
+  head.querySelectorAll('style[data-reader-cached-styles="true"]').forEach((node) => node.remove());
   const style = doc.createElement("style");
   style.dataset.readerCachedStyles = "true";
   style.textContent = getBookStyles();
   head.append(style);
+}
+
+function ensureReaderFontPreloads(doc: Document, head: HTMLHeadElement) {
+  [READER_FONT_URL, READER_LATIN_FONT_URL, READER_MONO_FONT_URL].forEach((href) => {
+    const hasPreload = Array.from(head.querySelectorAll<HTMLLinkElement>('link[data-reader-font-preload="true"]'))
+      .some((link) => link.href === href);
+    if (hasPreload) return;
+
+    const link = doc.createElement("link");
+    link.dataset.readerFontPreload = "true";
+    link.href = href;
+    link.rel = "preload";
+    link.as = "font";
+    link.type = "font/ttf";
+    link.crossOrigin = "anonymous";
+    head.prepend(link);
+  });
 }

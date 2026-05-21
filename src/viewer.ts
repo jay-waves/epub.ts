@@ -62,12 +62,12 @@ function mountReadingProgressController(elements: ReadingProgressElements | null
     ...elements,
     canSeek: () => Boolean(runtime.readerView?.book),
     onSeek: (progress) => {
-      void runtime.readerView?.goTo({ fraction: progress }).catch((error) => {
+      void runWithReaderRenderPending(() => runtime.readerView?.goTo({ fraction: progress })).catch((error) => {
         console.warn("Failed to seek reading progress.", error);
       });
     },
     onReturn: (progress) => {
-      void runtime.readerView?.goTo({ fraction: progress }).catch((error) => {
+      void runWithReaderRenderPending(() => runtime.readerView?.goTo({ fraction: progress })).catch((error) => {
         console.warn("Failed to return to reading position.", error);
       });
     },
@@ -79,6 +79,9 @@ flushSync(() => {
 });
 
 const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
+let renderPendingToken = 0;
+let scrollEdgeFeedbackTimer: number | undefined;
+let lastScrollEdgeFeedbackAt = 0;
 
 function queryRequired<T extends Element>(selector: string) {
   const node = document.querySelector<T>(selector);
@@ -92,6 +95,7 @@ const defaultReaderSettings: ReaderSettings = {
   layoutLevel: 2,
   theme: "light",
 };
+const READER_DOCUMENT_FONT_TIMEOUT_MS = 2500;
 
 runtime.highlightController = createHighlightController({
   getBookKey: () => state.currentBookKey,
@@ -105,6 +109,8 @@ function ensureKeybindings() {
     getReaderView: () => runtime.readerView,
     getFlow: () => state.flow,
     canTurnPage: () => !document.body.classList.contains("reader-image-zoom-open"),
+    beforeSectionTurn: () => setReaderRenderPending(true),
+    onScrollEdge: showScrollEdgeFeedback,
     openSearch,
     closeSearch: clearSearchState,
   });
@@ -116,6 +122,7 @@ function ensureSearchController() {
   runtime.searchController ??= createSearchController({
     getBookKey: () => state.currentBookKey,
     getReaderView: () => runtime.readerView,
+    runWithReaderRenderPending,
   });
   return runtime.searchController;
 }
@@ -238,6 +245,10 @@ function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", (event) => {
     const { doc, index } = (event as CustomEvent<{ doc?: Document; index?: number }>).detail;
     if (!doc) return;
+    if (runtime.readerView === view) {
+      setReaderRenderPending(true);
+      void revealReaderAfterPaint(doc);
+    }
 
     enhanceReaderContent(doc, {
       isCurrent: () => runtime.readerView === view,
@@ -388,10 +399,95 @@ function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
 
 function createView() {
   const view = document.createElement("foliate-view") as FoliateViewElement;
+  setReaderRenderPending(true);
   readerRoot.replaceChildren(view);
   wireReaderEvents(view);
   runtime.keybindings?.bindReaderView(view);
   return view;
+}
+
+function setReaderRenderPending(isPending: boolean) {
+  if (isPending) renderPendingToken += 1;
+  readerRoot.classList.toggle("reader-frame--pending", isPending);
+}
+
+function showScrollEdgeFeedback(direction: number) {
+  const now = performance.now();
+  if (now - lastScrollEdgeFeedbackAt < 220) return;
+  lastScrollEdgeFeedbackAt = now;
+
+  const edgeClass = direction < 0 ? "reader-frame--edge-top" : "reader-frame--edge-bottom";
+  readerRoot.classList.remove("reader-frame--edge-top", "reader-frame--edge-bottom");
+  void readerRoot.offsetWidth;
+  readerRoot.classList.add(edgeClass);
+
+  if (scrollEdgeFeedbackTimer !== undefined) window.clearTimeout(scrollEdgeFeedbackTimer);
+  scrollEdgeFeedbackTimer = window.setTimeout(() => {
+    readerRoot.classList.remove(edgeClass);
+    scrollEdgeFeedbackTimer = undefined;
+  }, 360);
+}
+
+async function revealReaderAfterPaint(...documents: Array<Document | undefined>) {
+  const token = renderPendingToken;
+  await waitForReaderDocumentsReady(documents);
+  await waitForNextPaint();
+  if (token === renderPendingToken) setReaderRenderPending(false);
+}
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+async function runWithReaderRenderPending(action: () => Promise<unknown> | undefined) {
+  setReaderRenderPending(true);
+  try {
+    await action();
+    await revealReaderAfterPaint(...getCurrentReaderDocuments());
+  } catch (error) {
+    setReaderRenderPending(false);
+    throw error;
+  }
+}
+
+function getCurrentReaderDocuments() {
+  return runtime.readerView?.renderer?.getContents?.()
+    .map((content) => content.doc)
+    .filter((doc): doc is Document => Boolean(doc)) ?? [];
+}
+
+async function waitForReaderDocumentsReady(documents: Array<Document | undefined>) {
+  const uniqueDocuments = Array.from(new Set(documents.filter((doc): doc is Document => Boolean(doc))));
+  if (!uniqueDocuments.length) return;
+
+  await Promise.all(uniqueDocuments.map(waitForReaderDocumentFonts));
+}
+
+async function waitForReaderDocumentFonts(doc: Document) {
+  const fonts = doc.fonts;
+  if (!fonts) return;
+
+  try {
+    await withTimeout(Promise.allSettled([
+      fonts.load(`${state.readerFontSize}px "${READER_FONT_FAMILY}"`),
+      fonts.load(`${state.readerFontSize}px "${READER_LATIN_FONT_FAMILY}"`),
+      fonts.load(`${state.readerFontSize}px "${READER_MONO_FONT_FAMILY}"`),
+      fonts.ready,
+    ]), READER_DOCUMENT_FONT_TIMEOUT_MS);
+  } catch (error) {
+    console.warn("Timed out waiting for reader document fonts.", error);
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+    promise.then(resolve, reject).finally(() => window.clearTimeout(timeout));
+  });
 }
 
 async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: ReadingPosition) {
@@ -440,8 +536,9 @@ async function openBook(input: File | string, sourceLabel: string) {
     state.currentSourceUrl = fileUrl ?? "";
     emitDockUpdate();
     resetTransientBookState();
+    setReaderRenderPending(true);
     if (runtime.readerView.book) runtime.readerView.close();
-    void preloadReaderFonts();
+    await preloadReaderFonts();
     await runtime.readerView.open(input);
     runtime.readerDocumentCache = createReaderDocumentCache();
     runtime.readerDocumentCache.setBook(runtime.readerView.book ?? null);
@@ -459,8 +556,10 @@ async function openBook(input: File | string, sourceLabel: string) {
       runtime.readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
     );
+    await revealReaderAfterPaint(...getCurrentReaderDocuments());
     schedulePostLoadTasks(runtime.readerView, state.currentBookKey);
   } catch (error) {
+    setReaderRenderPending(false);
     console.error(`Failed to open ${sourceLabel}`, error);
   }
 }
@@ -486,7 +585,7 @@ function setupCriticalInteractions() {
 function setupExtraInteractions() {
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
     if (!href) return;
-    void runtime.readerView?.goTo(href);
+    void runWithReaderRenderPending(() => runtime.readerView?.goTo(href));
   });
   listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
     void ensureSearchController().collect(query, { highlightedOnly });

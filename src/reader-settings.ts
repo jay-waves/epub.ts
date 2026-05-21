@@ -17,7 +17,6 @@ const MIN_READER_FONT_SIZE = 14;
 const MAX_READER_FONT_SIZE = 32;
 export const READER_FONT_SIZE_STEP = 1;
 const MIN_READER_LAYOUT_LEVEL = 0;
-const MAX_READER_LAYOUT_LEVEL = 4;
 export const READER_LAYOUT_LEVEL_STEP = 1;
 
 const PAGINATED_GAP = "2.5%";
@@ -127,8 +126,27 @@ const READER_LAYOUT_PRESETS = [
     wordSpacing: "0.03em",
     paragraphSpacing: "1.34em",
   },
+  {
+    margin: 0,
+    singleColumnMaxInlineSize: 1280,
+    multiColumnMaxInlineSize: 1020,
+    lineHeight: 1.94,
+    letterSpacing: "0.02em",
+    wordSpacing: "0.04em",
+    paragraphSpacing: "1.58em",
+  },
+  {
+    margin: 0,
+    singleColumnMaxInlineSize: 1360,
+    multiColumnMaxInlineSize: 1080,
+    lineHeight: 2.05,
+    letterSpacing: "0.026em",
+    wordSpacing: "0.055em",
+    paragraphSpacing: "1.86em",
+  },
 ] as const;
 
+const MAX_READER_LAYOUT_LEVEL = READER_LAYOUT_PRESETS.length - 1;
 const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[2];
 
 function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {

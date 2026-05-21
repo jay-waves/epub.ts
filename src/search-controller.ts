@@ -11,6 +11,7 @@ const MAX_SEARCH_RESULTS = 200;
 export function createSearchController(options: {
   getBookKey: () => string;
   getReaderView: () => FoliateViewElement | null;
+  runWithReaderRenderPending?: (action: () => Promise<unknown> | undefined) => Promise<void>;
 }) {
   let searchRunId = 0;
   let searchHits: SearchHit[] = [];
@@ -44,7 +45,12 @@ export function createSearchController(options: {
     if (!hit) return;
 
     try {
-      await (readerView.select?.(hit.cfi) ?? readerView.goTo(hit.cfi));
+      const navigate = () => readerView.select?.(hit.cfi) ?? readerView.goTo(hit.cfi);
+      if (options.runWithReaderRenderPending) {
+        await options.runWithReaderRenderPending(navigate);
+      } else {
+        await navigate();
+      }
     } catch (error) {
       console.warn("Failed to navigate to search hit.", error);
     }
