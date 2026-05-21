@@ -578,6 +578,15 @@ function setupCriticalInteractions() {
     runtime.highlightController?.close();
   });
 
+  readerRoot.addEventListener("click", (event) => {
+    if (state.flow !== "scrolled") return;
+    if (event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (!(event.target instanceof Node) || !readerRoot.contains(event.target)) return;
+
+    emitViewerEvent(VIEWER_EVENTS.contentEdgeClick, { x: event.clientX });
+  });
+
   window.addEventListener("contextmenu", (event) => {
     if (event.target instanceof Node && readerRoot.contains(event.target)) {
       event.preventDefault();
@@ -587,7 +596,8 @@ function setupCriticalInteractions() {
 
 function setupExtraInteractions() {
   listenViewerEvent(VIEWER_EVENTS.contentEdgeClick, (detail) => {
-    handleContentEdgeClick(detail);
+    const direction = resolveEdgeClickDirection(detail.x);
+    if (direction) emitViewerEvent(VIEWER_EVENTS.pageTurn, direction);
   });
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
     if (!href) return;
@@ -613,27 +623,6 @@ function setupExtraInteractions() {
     void handleDockAction(action);
   });
 
-}
-
-function handleContentEdgeClick(detail: ContentEdgeClickDetail) {
-  const readerView = runtime.readerView;
-  if (!readerView || document.body.classList.contains("reader-image-zoom-open")) return;
-  const direction = resolveEdgeClickDirection(detail.x);
-  if (!direction) return;
-
-  if (state.flow === "paginated") {
-    const isRtl = readerView.book?.dir === "rtl";
-    const shouldGoNext = direction === "left" ? isRtl : !isRtl;
-    const isSectionEdge = shouldGoNext ? readerView.renderer?.atEnd : readerView.renderer?.atStart;
-    if (isSectionEdge) setReaderRenderPending(true);
-    void (direction === "left" ? readerView.goLeft?.() : readerView.goRight?.());
-    return;
-  }
-
-  const isRtl = readerView.book?.dir === "rtl";
-  const shouldGoNext = direction === "left" ? isRtl : !isRtl;
-  setReaderRenderPending(true);
-  void (shouldGoNext ? readerView.renderer?.nextSection?.() : readerView.renderer?.prevSection?.());
 }
 
 function resolveEdgeClickDirection(clientX: number): PageTurnDirection | null {
