@@ -40,10 +40,13 @@ Dock 工具栏：（自动隐藏）
 
 <img src="assets/dock.png" width=800>
 
-## 开发者 Dev 
+## FAQ
 
-技术栈：
-* react + vite + typescript 
-* tailwindcss
-* shadcn/ui
-* foliate.js 
+#### 冷启动打开 epub 文件时，会触发下载
+
+本插件通过 TS 运行时注册一个重定向钩子，把 `file://` 重定向到扩展页面。当 chrome 冷启动时，`background.ts` 还没有注册，
+所以会使用 Chrome 默认行为，也就是下载。
+
+#### 翻页模式加载新章节比滚动模式慢
+
+因为渲染步骤比滚动模式复杂。这个通过缓存也无法解决。

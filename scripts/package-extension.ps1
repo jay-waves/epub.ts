@@ -2,11 +2,12 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $packageJsonPath = Join-Path $root "package.json"
-$manifestPath = Join-Path $root "dist\\manifest.json"
+$extensionDir = Join-Path $root "release\\extension"
+$manifestPath = Join-Path $extensionDir "manifest.json"
 $releaseDir = Join-Path $root "release"
 
 if (-not (Test-Path $manifestPath)) {
-  throw "Missing dist\\manifest.json. Run the build step before packaging."
+  throw "Missing release\\extension\\manifest.json. Run the build step before packaging."
 }
 
 $packageJson = Get-Content $packageJsonPath | ConvertFrom-Json
@@ -14,11 +15,10 @@ $version = $packageJson.version
 $archiveName = "epub-viewer-extension-v$version.zip"
 $archivePath = Join-Path $releaseDir $archiveName
 
-if (Test-Path $releaseDir) {
-  Remove-Item -LiteralPath $releaseDir -Recurse -Force
+New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+if (Test-Path $archivePath) {
+  Remove-Item -LiteralPath $archivePath -Force
 }
-
-New-Item -ItemType Directory -Path $releaseDir | Out-Null
-Compress-Archive -Path (Join-Path $root "dist\\*") -DestinationPath $archivePath -Force
+Compress-Archive -Path (Join-Path $extensionDir "*") -DestinationPath $archivePath -Force
 
 Write-Host "Created $archivePath"
