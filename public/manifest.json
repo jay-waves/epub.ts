@@ -7,10 +7,12 @@
   "permissions": [
     "declarativeNetRequestWithHostAccess",
     "downloads",
-    "storage"
+    "storage",
+	"tabs"
   ],
   "host_permissions": [
-    "file:///*"
+    "<all_urls>",
+	"file:///*"
   ],
   "background": {
     "service_worker": "background.js",
