@@ -30,7 +30,7 @@ import {
 import { deriveBookKey, formatLocalized } from "./book-key";
 import { createHighlightController } from "./highlight-controller";
 import { createReaderDocumentCache } from "./reader-document-cache";
-import { enhanceReaderContent } from "./reader-content-enhancers";
+import { enhanceReaderContent, prepareReaderContentDocument } from "./reader-content-enhancers";
 import { createSearchController } from "./search-controller";
 import { createDebouncedTask, runWhenIdle } from "./scheduler";
 import { collectSectionHrefs, normalizeTocHref, normalizeTocItems } from "./toc-controller";
@@ -98,6 +98,7 @@ const defaultReaderSettings: ReaderSettings = {
   theme: "light",
 };
 const READER_DOCUMENT_FONT_TIMEOUT_MS = 2500;
+const SCROLL_EDGE_FEEDBACK_COOLDOWN_MS = 900;
 
 runtime.highlightController = createHighlightController({
   getBookKey: () => state.currentBookKey,
@@ -255,7 +256,6 @@ function wireReaderEvents(view: FoliateViewElement) {
     enhanceReaderContent(doc, {
       getFlow: () => state.flow,
       isCurrent: () => runtime.readerView === view,
-      runWhenIdle,
     });
     if (runtime.readerView === view) runtime.readerDocumentCache?.prepareAround(index);
   });
@@ -416,7 +416,7 @@ function setReaderRenderPending(isPending: boolean) {
 
 function showScrollEdgeFeedback(direction: number) {
   const now = performance.now();
-  if (now - lastScrollEdgeFeedbackAt < 220) return;
+  if (now - lastScrollEdgeFeedbackAt < SCROLL_EDGE_FEEDBACK_COOLDOWN_MS) return;
   lastScrollEdgeFeedbackAt = now;
 
   const edgeClass = direction < 0 ? "reader-frame--edge-top" : "reader-frame--edge-bottom";
@@ -471,6 +471,8 @@ async function waitForReaderDocumentsReady(documents: Array<Document | undefined
 }
 
 async function waitForReaderDocumentFonts(doc: Document) {
+  if (doc.documentElement.dataset.readerCachedDocument === "true") return;
+
   const fonts = doc.fonts;
   if (!fonts) return;
 
@@ -543,7 +545,11 @@ async function openBook(input: File | string, sourceLabel: string) {
     if (runtime.readerView.book) runtime.readerView.close();
     await preloadReaderFonts();
     await runtime.readerView.open(input);
-    runtime.readerDocumentCache = createReaderDocumentCache();
+    runtime.readerDocumentCache = createReaderDocumentCache({
+      enhanceDocument: (doc) => prepareReaderContentDocument(doc, {
+        isCurrent: () => true,
+      }),
+    });
     runtime.readerDocumentCache.setBook(runtime.readerView.book ?? null);
     state.currentBookKey = await deriveBookKey(runtime.readerView.book, legacyBookKey);
     await reconcileBookStorage(state.currentBookKey, [legacyBookKey]);

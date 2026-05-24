@@ -7,11 +7,9 @@
   "permissions": [
     "declarativeNetRequestWithHostAccess",
     "downloads",
-    "storage",
-	"tabs"
+    "storage"
   ],
   "host_permissions": [
-    "<all_urls>",
 	"file:///*"
   ],
   "background": {

@@ -28,17 +28,20 @@ const MEDIA_SPACING_PARENT_TAGS = new Set(["A", "DIV", "P", "FIGURE", "SECTION",
 export function enhanceReaderContent(doc: Document, options: {
   getFlow: () => ReaderFlow;
   isCurrent: () => boolean;
-  runWhenIdle: (callback: () => void, timeout?: number) => void;
 }) {
   bindInlinePageTurn(doc, options);
+  void prepareReaderContentDocument(doc, options);
+}
 
-  options.runWhenIdle(async () => {
-    if (!options.isCurrent()) return;
-    await beautifyCodeBlocks(doc);
-    await beautifyImages(doc);
-    labelFootnotes(doc);
-    addCjkHalfWidthSpacing(doc);
-  }, 500);
+export async function prepareReaderContentDocument(doc: Document, options: {
+  isCurrent: () => boolean;
+}) {
+  if (!options.isCurrent()) return;
+
+  labelFootnotes(doc);
+  await beautifyImages(doc);
+  await beautifyCodeBlocks(doc);
+  addCjkHalfWidthSpacing(doc);
 }
 
 function bindInlinePageTurn(doc: Document, options: {

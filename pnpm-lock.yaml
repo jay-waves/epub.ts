@@ -29,6 +29,9 @@ importers:
       react-dom:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
+      wheel-gestures:
+        specifier: ^2.2.48
+        version: 2.2.48
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.2.4
@@ -672,6 +675,10 @@ packages:
       yaml:
         optional: true
 
+  wheel-gestures@2.2.48:
+    resolution: {integrity: sha512-f+Gy33Oa5Z14XY9679Zze+7VFhbsQfBFXodnU2x589l4kxGM9L5Y8zETTmcMR5pWOPQyRv4Z0lNax6xCO0NSlA==}
+    engines: {node: '>=18'}
+
 snapshots:
 
   '@emnapi/core@1.10.0':
@@ -1124,3 +1131,5 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
       jiti: 2.6.1
+
+  wheel-gestures@2.2.48: {}

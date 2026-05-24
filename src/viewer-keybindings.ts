@@ -1,3 +1,4 @@
+import { WheelGestures } from "wheel-gestures";
 import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import type { PageTurnDirection } from "./viewer-events";
 import type { FoliateViewElement } from "./viewer-types";
@@ -6,6 +7,10 @@ const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const HOLD_SCROLL_SPEED_RATIO = 1.75;
 const HOLD_SCROLL_DELAY_MS = 180;
 const SECTION_EDGE_EPSILON = 2;
+const WHEEL_SWIPE_AXIS_RATIO = 1.35;
+const WHEEL_SWIPE_MIN_DISTANCE = 42;
+const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
+const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -43,6 +48,9 @@ export function setupViewerKeybindings(options: {
   let holdScrollFrame: number | undefined;
   let holdScrollLastTime = 0;
   let holdScrollRefreshingBounds = false;
+  let wheelSwipeConsumed = false;
+  let suppressWheelScrollUntil = 0;
+  const wheelGestures = WheelGestures({ preventWheelAction: "x" });
 
   const stopHoldScroll = () => {
     if (holdScrollDelayTimer !== undefined) {
@@ -58,6 +66,16 @@ export function setupViewerKeybindings(options: {
     holdScrollRefreshingBounds = false;
   };
 
+  const resetWheelSwipe = () => {
+    wheelSwipeConsumed = false;
+  };
+
+  const suppressWheelScroll = () => {
+    suppressWheelScrollUntil = performance.now() + WHEEL_SWIPE_SUPPRESS_SCROLL_MS;
+  };
+
+  const isWheelScrollSuppressed = () => performance.now() < suppressWheelScrollUntil;
+
   const getSectionScrollMetrics = () => {
     const renderer = options.getReaderView()?.renderer;
     const { end, start, viewSize } = renderer ?? {};
@@ -72,6 +90,7 @@ export function setupViewerKeybindings(options: {
   };
 
   const signalScrollEdge = (direction: number) => {
+    if (isWheelScrollSuppressed()) return;
     if (options.getFlow() === "scrolled") options.onScrollEdge?.(direction);
   };
 
@@ -88,6 +107,15 @@ export function setupViewerKeybindings(options: {
     void (direction < 0 ? metrics.renderer.prev?.(Math.min(distance, remaining)) : metrics.renderer.next?.(Math.min(distance, remaining)));
   };
 
+  const turnReaderSection = (direction: PageTurnDirection) => {
+    const readerView = options.getReaderView();
+    const isRtl = readerView?.book?.dir === "rtl";
+    const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+    suppressWheelScroll();
+    options.beforeSectionTurn?.();
+    void (shouldGoNext ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
+  };
+
   const turnPage = (direction: PageTurnDirection) => {
     if (options.canTurnPage && !options.canTurnPage()) return;
 
@@ -101,10 +129,7 @@ export function setupViewerKeybindings(options: {
       return;
     }
 
-    const isRtl = readerView?.book?.dir === "rtl";
-    const shouldGoNext = direction === "left" ? isRtl : !isRtl;
-    options.beforeSectionTurn?.();
-    void (shouldGoNext ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
+    turnReaderSection(direction);
   };
 
   const refreshHoldScrollBounds = async () => {
@@ -230,6 +255,7 @@ export function setupViewerKeybindings(options: {
 
   const handleWheel = (event: WheelEvent) => {
     if (options.getFlow() !== "scrolled") return;
+    if (isWheelScrollSuppressed()) return;
 
     const direction = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
       ? Math.sign(event.deltaY)
@@ -240,6 +266,33 @@ export function setupViewerKeybindings(options: {
     if (remaining <= SECTION_EDGE_EPSILON) signalScrollEdge(direction);
   };
 
+  wheelGestures.on("wheel", (state) => {
+    if (state.isStart || state.isEnding || state.isMomentumCancel) resetWheelSwipe();
+    if (state.isEnding || state.isMomentum || wheelSwipeConsumed) return;
+
+    const event = state.event;
+    if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || event.ctrlKey) return;
+
+    const [movementX, movementY] = state.axisMovement;
+    const [velocityX] = state.axisVelocity;
+    const absMovementX = Math.abs(movementX);
+    const absMovementY = Math.abs(movementY);
+    const isClearHorizontalIntent = absMovementX >= WHEEL_SWIPE_MIN_DISTANCE
+      && absMovementX >= absMovementY * WHEEL_SWIPE_AXIS_RATIO
+      && Math.abs(velocityX) >= WHEEL_SWIPE_MIN_VELOCITY;
+    if (!isClearHorizontalIntent) return;
+
+    wheelSwipeConsumed = true;
+    suppressWheelScroll();
+    const direction = movementX < 0 ? "left" : "right";
+    if (options.getFlow() === "scrolled") {
+      turnReaderSection(direction);
+      return;
+    }
+
+    turnPage(direction);
+  });
+
   const bindKeyTarget = (targetDocument: Document) => {
     if (keyTargets.has(targetDocument)) return;
     keyTargets.add(targetDocument);
@@ -247,11 +300,15 @@ export function setupViewerKeybindings(options: {
     targetDocument.addEventListener("keyup", handleKeyUp);
     targetDocument.addEventListener("wheel", handleWheel, { passive: true });
     targetDocument.defaultView?.addEventListener("blur", handleBlur);
+    wheelGestures.observe(targetDocument);
   };
 
   const bindReaderView = (view: FoliateViewElement) => {
     if (boundReaderViews.has(view)) return;
     boundReaderViews.add(view);
+    view.renderer?.getContents?.().forEach((content) => {
+      if (content.doc) bindKeyTarget(content.doc);
+    });
     view.addEventListener("load", (event) => {
       const detail = (event as CustomEvent<{ doc?: Document }>).detail;
       if (detail?.doc) bindKeyTarget(detail.doc);

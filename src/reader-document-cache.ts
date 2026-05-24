@@ -16,12 +16,10 @@ type CacheableSection = NonNullable<FoliateBook["sections"]>[number] & {
 type CachedDocumentSnapshot = {
   document: Document;
   id: string;
-  index: number;
-  preparedAt: number;
   sourceUrl: string | null;
 };
 
-const CACHE_WINDOW = 1;
+const CACHE_OFFSETS = [0, 1, -1, 2];
 
 type OriginalSectionMethods = {
   createDocument?: () => Promise<Document>;
@@ -29,7 +27,9 @@ type OriginalSectionMethods = {
   unload?: () => void;
 };
 
-export function createReaderDocumentCache() {
+export function createReaderDocumentCache(options: {
+  enhanceDocument?: (doc: Document) => Promise<void> | void;
+} = {}) {
   let activeBook: FoliateBook | null = null;
   let generation = 0;
   let isPreparing = false;
@@ -87,12 +87,16 @@ export function createReaderDocumentCache() {
       return;
     }
 
-    prepareDocumentSnapshot(doc, index);
+    prepareDocumentSnapshot(doc);
+    await options.enhanceDocument?.(doc);
+    if (token !== generation || activeBook?.sections?.[index] !== section) {
+      getOriginals(section).unload?.();
+      return;
+    }
+
     cache.set(index, {
       document: doc,
       id,
-      index,
-      preparedAt: Date.now(),
       sourceUrl,
     });
   };
@@ -120,12 +124,13 @@ export function createReaderDocumentCache() {
 
     isPreparing = true;
     const token = generation;
-    const task = prepareSection(index, token)
+    let task: Promise<void>;
+    task = prepareSection(index, token)
       .catch((error) => {
         console.warn(`Failed to prepare section ${index}.`, error);
       })
       .finally(() => {
-        pending.delete(index);
+        if (pending.get(index) === task) pending.delete(index);
       });
     pending.set(index, task);
 
@@ -142,7 +147,7 @@ export function createReaderDocumentCache() {
 
     const sections = activeBook.sections ?? [];
     const targets = new Set<number>();
-    for (let offset = -CACHE_WINDOW; offset <= CACHE_WINDOW; offset += 1) {
+    for (const offset of CACHE_OFFSETS) {
       const index = currentIndex + offset;
       if (index >= 0 && index < sections.length) targets.add(index);
     }
@@ -165,7 +170,6 @@ export function createReaderDocumentCache() {
   };
 
   return {
-    getSnapshot: (index: number) => cache.get(index) ?? null,
     prepareAround,
     reset,
     setBook: (book: FoliateBook | null) => {
@@ -193,7 +197,8 @@ export function createReaderDocumentCache() {
             if (prepared?.id === id) return prepared.document;
 
             const doc = await original.createDocument!();
-            prepareDocumentSnapshot(doc, index);
+            prepareDocumentSnapshot(doc);
+            await options.enhanceDocument?.(doc);
             return doc;
           };
         }
@@ -210,7 +215,7 @@ export function createReaderDocumentCache() {
 
         if (original.unload) {
           section.unload = () => {
-            cache.delete(index);
+            if (cache.has(index)) return;
             original.unload?.();
           };
         }
@@ -219,9 +224,8 @@ export function createReaderDocumentCache() {
   };
 }
 
-function prepareDocumentSnapshot(doc: Document, index: number) {
+function prepareDocumentSnapshot(doc: Document) {
   doc.documentElement.dataset.readerCachedDocument = "true";
-  doc.documentElement.dataset.readerSectionIndex = String(index);
 
   const head = doc.head ?? doc.documentElement.insertBefore(doc.createElement("head"), doc.documentElement.firstChild);
   ensureReaderFontPreloads(doc, head);
