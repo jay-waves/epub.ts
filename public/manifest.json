@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EPUB Viewer",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Open local EPUB files in a Chrome extension reader powered by foliate-js.",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -10,13 +10,25 @@
     "storage"
   ],
   "host_permissions": [
-	"file:///*"
+    "file:///*"
   ],
+  "icons": {
+    "16": "logo.png",
+    "32": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "action": {
+    "default_icon": {
+      "16": "logo.png",
+      "32": "logo.png",
+      "48": "logo.png",
+      "128": "logo.png"
+    },
     "default_title": "Open EPUB Viewer"
   },
   "web_accessible_resources": [
