@@ -49,11 +49,12 @@ import {
   saveReadingPosition,
 } from "./viewer-storage";
 import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
-import type { ContentEdgeClickDetail, DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
+import type { DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
 import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing required element: #app");
+const PAGE_TURN_CLICK_MAX_DISTANCE = 4;
 
 function mountReadingProgressController(elements: ReadingProgressElements | null) {
   runtime.readingProgressController?.destroy?.();
@@ -579,16 +580,31 @@ function readSourceFromQuery() {
 }
 
 function setupCriticalInteractions() {
+  let clickStart: { x: number; y: number } | null = null;
+
   window.addEventListener("resize", () => {
     if (runtime.readerView) applyReaderLayout(runtime.readerView, readerRoot);
     runtime.highlightController?.close();
   });
 
+  readerRoot.addEventListener("pointerdown", (event) => {
+    clickStart = null;
+    if (state.flow !== "scrolled") return;
+    if (!event.isPrimary || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (!(event.target instanceof Node) || !readerRoot.contains(event.target)) return;
+
+    clickStart = { x: event.clientX, y: event.clientY };
+  }, true);
+
   readerRoot.addEventListener("click", (event) => {
+    const start = clickStart;
+    clickStart = null;
     if (state.flow !== "scrolled") return;
     if (event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     if (!(event.target instanceof Node) || !readerRoot.contains(event.target)) return;
+    if (!start || !isClickDistance(start.x, start.y, event.clientX, event.clientY)) return;
 
     emitViewerEvent(VIEWER_EVENTS.contentEdgeClick, { x: event.clientX });
   });
@@ -636,6 +652,11 @@ function resolveEdgeClickDirection(clientX: number): PageTurnDirection | null {
   if (clientX <= edgeWidth) return "left";
   if (clientX >= window.innerWidth - edgeWidth) return "right";
   return null;
+}
+
+function isClickDistance(startX: number, startY: number, endX: number, endY: number) {
+  return Math.abs(endX - startX) <= PAGE_TURN_CLICK_MAX_DISTANCE
+    && Math.abs(endY - startY) <= PAGE_TURN_CLICK_MAX_DISTANCE;
 }
 
 async function runReaderStyleChange(action: () => void) {
