@@ -36,6 +36,7 @@ export function setupViewerKeybindings(options: {
   getFlow: () => "paginated" | "scrolled";
   canTurnPage?: () => boolean;
   beforeSectionTurn?: () => void;
+  afterSectionTurn?: () => void;
   onScrollEdge?: (direction: number) => void;
   openSearch: () => void;
   closeSearch: () => void;
@@ -48,6 +49,7 @@ export function setupViewerKeybindings(options: {
   let holdScrollFrame: number | undefined;
   let holdScrollLastTime = 0;
   let holdScrollRefreshingBounds = false;
+  let sectionTurnInFlight = false;
   let wheelSwipeConsumed = false;
   let suppressWheelScrollUntil = 0;
   const wheelGestures = WheelGestures({ preventWheelAction: "x" });
@@ -108,12 +110,32 @@ export function setupViewerKeybindings(options: {
   };
 
   const turnReaderSection = (direction: PageTurnDirection) => {
+    if (sectionTurnInFlight) return;
+
     const readerView = options.getReaderView();
+    const renderer = readerView?.renderer;
+    if (!renderer) return;
+
     const isRtl = readerView?.book?.dir === "rtl";
     const shouldGoNext = direction === "left" ? isRtl : !isRtl;
+    const isBookEdge = shouldGoNext ? renderer.atEnd : renderer.atStart;
+    if (isBookEdge) {
+      signalScrollEdge(shouldGoNext ? 1 : -1);
+      return;
+    }
+
     suppressWheelScroll();
     options.beforeSectionTurn?.();
-    void (shouldGoNext ? readerView?.renderer?.nextSection?.() : readerView?.renderer?.prevSection?.());
+    sectionTurnInFlight = true;
+    const turn = shouldGoNext ? renderer.nextSection?.() : renderer.prevSection?.();
+    void Promise.resolve(turn)
+      .catch((error) => {
+        console.warn("Failed to turn reader section.", error);
+      })
+      .finally(() => {
+        sectionTurnInFlight = false;
+        options.afterSectionTurn?.();
+      });
   };
 
   const turnPage = (direction: PageTurnDirection) => {

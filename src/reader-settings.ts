@@ -190,6 +190,8 @@ export function getBookStyles(themeId = state.readerTheme) {
       --reader-letter-spacing: ${layout.letterSpacing};
       --reader-word-spacing: ${layout.wordSpacing};
       --reader-paragraph-spacing: ${layout.paragraphSpacing};
+      --reader-list-font-size: calc(var(--reader-font-size) * 0.9);
+      --reader-list-paragraph-spacing: calc(var(--reader-paragraph-spacing) * 0.72);
       --reader-media-spacing: max(1em, calc(var(--reader-paragraph-spacing) * 1.15));
       --reader-small-font-size: calc(var(--reader-font-size) * 0.78);
       --reader-footnote-font-size: calc(var(--reader-font-size) * 0.68);
@@ -273,6 +275,25 @@ export function getBookStyles(themeId = state.readerTheme) {
       margin-block-start: 0 !important;
       margin-block-end: var(--reader-paragraph-spacing) !important;
     }
+    :is(ul, ol),
+    blockquote,
+    li,
+    li ${READER_PARAGRAPH_SELECTOR} {
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
+    }
+    :is(ul, ol),
+    blockquote {
+      margin-block-start: 0 !important;
+      margin-block-end: var(--reader-list-paragraph-spacing) !important;
+    }
+    li {
+      margin-block-start: 0 !important;
+      margin-block-end: var(--reader-list-paragraph-spacing) !important;
+    }
+    li > :last-child {
+      margin-block-end: 0 !important;
+    }
     ${READER_PARAGRAPH_SELECTOR} ${READER_INLINE_TEXT_SELECTOR} {
 ${READER_INHERIT_INLINE_TEXT_CSS}
     }
@@ -343,17 +364,30 @@ ${READER_MUTED_COLOR_CSS}
       vertical-align: baseline !important;
     }
     ${READER_QUOTE_SELECTOR},
-    ${READER_QUOTE_SELECTOR} * {
-      font-size: 0.94em !important;
-      line-height: 1.62 !important;
+    blockquote :is(p, span, a, em, strong, b, i, code, kbd, samp, pre) {
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
       word-spacing: 0 !important;
       opacity: 0.94 !important;
     }
     blockquote {
-      margin-block: 1.1em !important;
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
       margin-inline: 1.25em !important;
       padding-inline-start: 1em !important;
       border-inline-start: 0.18em solid var(--reader-border-color) !important;
+    }
+    blockquote ${READER_PARAGRAPH_SELECTOR},
+    blockquote ${READER_INLINE_TEXT_SELECTOR},
+    blockquote ${READER_PARAGRAPH_SELECTOR} ${READER_INLINE_TEXT_SELECTOR} {
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
+    }
+    blockquote[class] :is(p, span, a, em, strong, b, i, code)[class],
+    blockquote[class] :is(p, span, a, em, strong, b, i, code),
+    blockquote :is(p, span, a, em, strong, b, i, code)[class] {
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
     }
     ${READER_NOTE_SELECTOR},
     ${READER_NOTE_SELECTOR} * {
@@ -577,6 +611,15 @@ ${READER_AUTO_BREAK_CSS}
       font-size: inherit !important;
       line-height: inherit !important;
       -webkit-text-fill-color: currentColor !important;
+    }
+    blockquote :is(code, kbd, samp):not(.hljs),
+    blockquote pre,
+    blockquote pre code,
+    blockquote pre .hljs,
+    blockquote .hljs,
+    blockquote .hljs * {
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
     }
   `;
 }

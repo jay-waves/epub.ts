@@ -65,11 +65,13 @@ function mountReadingProgressController(elements: ReadingProgressElements | null
     ...elements,
     canSeek: () => Boolean(runtime.readerView?.book),
     onSeek: (progress) => {
+      if (isReaderRenderPending()) return;
       void runWithReaderRenderPending(() => runtime.readerView?.goTo({ fraction: progress })).catch((error) => {
         console.warn("Failed to seek reading progress.", error);
       });
     },
     onReturn: (progress) => {
+      if (isReaderRenderPending()) return;
       void runWithReaderRenderPending(() => runtime.readerView?.goTo({ fraction: progress })).catch((error) => {
         console.warn("Failed to return to reading position.", error);
       });
@@ -85,6 +87,9 @@ const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
 let renderPendingToken = 0;
 let scrollEdgeFeedbackTimer: number | undefined;
 let lastScrollEdgeFeedbackAt = 0;
+let currentScrollSectionIndex: number | null = null;
+let shouldRestoreScrolledSectionProgress = false;
+const scrolledSectionProgress = new Map<number, number>();
 
 function queryRequired<T extends Element>(selector: string) {
   const node = document.querySelector<T>(selector);
@@ -112,8 +117,9 @@ function ensureKeybindings() {
   runtime.keybindings ??= setupViewerKeybindings({
     getReaderView: () => runtime.readerView,
     getFlow: () => state.flow,
-    canTurnPage: () => !document.body.classList.contains("reader-image-zoom-open"),
-    beforeSectionTurn: () => setReaderRenderPending(true),
+    canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
+    beforeSectionTurn: handleBeforeSectionTurn,
+    afterSectionTurn: handleAfterSectionTurn,
     onScrollEdge: showScrollEdgeFeedback,
     openSearch,
     closeSearch: clearSearchState,
@@ -211,6 +217,54 @@ function updatePageStatus(detail: RelocateDetail) {
   });
 }
 
+function getCurrentScrolledSectionAnchor() {
+  if (state.flow !== "scrolled") return null;
+
+  const renderer = runtime.readerView?.renderer;
+  const { start, viewSize } = renderer ?? {};
+  if (typeof start !== "number" || typeof viewSize !== "number" || viewSize <= 0) return null;
+
+  return Math.min(1, Math.max(0, start / viewSize));
+}
+
+function saveCurrentScrolledSectionProgress() {
+  if (currentScrollSectionIndex == null) return;
+
+  const anchor = getCurrentScrolledSectionAnchor();
+  if (anchor == null) return;
+
+  scrolledSectionProgress.set(currentScrollSectionIndex, anchor);
+}
+
+function handleBeforeSectionTurn() {
+  saveCurrentScrolledSectionProgress();
+  shouldRestoreScrolledSectionProgress = state.flow === "scrolled";
+  setReaderRenderPending(true);
+}
+
+function handleAfterSectionTurn() {
+  void revealReaderAfterPaint(...getCurrentReaderDocuments());
+}
+
+function restoreScrolledSectionProgress(sectionIndex: number | undefined) {
+  if (!shouldRestoreScrolledSectionProgress || state.flow !== "scrolled" || typeof sectionIndex !== "number") {
+    shouldRestoreScrolledSectionProgress = false;
+    return;
+  }
+
+  const anchor = scrolledSectionProgress.get(sectionIndex);
+  shouldRestoreScrolledSectionProgress = false;
+  if (typeof anchor !== "number") return;
+
+  requestAnimationFrame(() => {
+    if (state.flow !== "scrolled" || currentScrollSectionIndex !== sectionIndex) return;
+
+    void runtime.readerView?.renderer?.scrollToAnchor?.(anchor).catch((error) => {
+      console.warn("Failed to restore section reading progress.", error);
+    });
+  });
+}
+
 function resolveRelocateSectionIndex(detail: RelocateDetail) {
   if (typeof detail.index === "number") return detail.index;
 
@@ -274,6 +328,9 @@ function wireReaderEvents(view: FoliateViewElement) {
     runtime.readerDocumentCache?.prepareAround(sectionIndex);
     queuePositionSave(detail);
     queueHighlightContextBind(view);
+    const previousSectionIndex = currentScrollSectionIndex;
+    currentScrollSectionIndex = typeof sectionIndex === "number" ? sectionIndex : null;
+    if (sectionIndex !== previousSectionIndex) restoreScrolledSectionProgress(sectionIndex);
   });
 
   view.addEventListener("create-overlay", (event) => {
@@ -384,6 +441,9 @@ function resetTransientBookState() {
   runtime.readerDocumentCache?.reset();
   runtime.tocItems = [];
   runtime.tocSectionHrefs = [];
+  currentScrollSectionIndex = null;
+  shouldRestoreScrolledSectionProgress = false;
+  scrolledSectionProgress.clear();
   emitTocUpdate();
   runtime.highlightController?.reset();
   runtime.readingProgressController?.setHistoryProgress(null);
@@ -413,6 +473,10 @@ function createView() {
 function setReaderRenderPending(isPending: boolean) {
   if (isPending) renderPendingToken += 1;
   readerRoot.classList.toggle("reader-frame--pending", isPending);
+}
+
+function isReaderRenderPending() {
+  return readerRoot.classList.contains("reader-frame--pending");
 }
 
 function showScrollEdgeFeedback(direction: number) {
@@ -623,6 +687,7 @@ function setupExtraInteractions() {
   });
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
     if (!href) return;
+    if (isReaderRenderPending()) return;
     void runWithReaderRenderPending(() => runtime.readerView?.goTo(href));
   });
   listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
@@ -660,6 +725,8 @@ function isClickDistance(startX: number, startY: number, endX: number, endY: num
 }
 
 async function runReaderStyleChange(action: () => void) {
+  if (isReaderRenderPending()) return;
+
   await runWithReaderRenderPending(async () => {
     await preloadReaderFonts();
     action();
