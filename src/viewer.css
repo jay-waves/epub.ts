@@ -353,6 +353,12 @@
     pointer-events: none;
   }
 
+  .reader-progress-history-marker::before {
+    position: absolute;
+    inset: -0.5rem -0.625rem -0.5rem -0.25rem;
+    content: "";
+  }
+
   .reader-progress-history-marker.is-history-visible {
     @apply opacity-100;
     pointer-events: auto;

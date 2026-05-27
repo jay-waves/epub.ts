@@ -73,7 +73,7 @@ export function ReadingProgress({
   );
 }
 
-const HISTORY_MARKER_DISMISS_MS = 5000;
+const HISTORY_MARKER_DISMISS_MS = 8000;
 const HISTORY_SECTION_JUMP_THRESHOLD = 2;
 
 export function createReadingProgressController(options: {
