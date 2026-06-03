@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { LucideIcon, Copy, Highlighter, Languages, Trash2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react";
+import { LucideIcon, Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react"
+import { useFloatingPosition } from "./floating-position";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type {
   HighlightContextAction,
@@ -23,11 +24,19 @@ const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
   { action: "translate", enabledBy: "canCopy", icon: Languages, label: "Translate" },
   { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
+  { action: "annotate", enabledBy: "canCopy", icon: MessageSquareText, label: "Annotate" },
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
 ] as const;
 
 export function HighlightContextMenu() {
   const [state, setState] = useState<MenuState>(closedState);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const position = useFloatingPosition(
+    menuRef,
+    { x: state.x, y: state.y },
+    state.open,
+    { fallbackHeight: 150, fallbackWidth: 144, gap: 4 },
+  );
 
   useEffect(() => {
     const open = (detail: HighlightContextOpenDetail) => {
@@ -60,10 +69,8 @@ export function HighlightContextMenu() {
   return (
     <div
       className="reader-context-menu"
-      style={{
-        left: state.x,
-        top: state.y,
-      }}
+      ref={menuRef}
+      style={position}
       role="menu"
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}

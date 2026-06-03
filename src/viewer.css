@@ -453,10 +453,23 @@
   .reader-translation-source,
   .reader-translation-result,
   .reader-translation-message {
-    @apply m-0 max-h-28 overflow-y-auto rounded-md px-2 py-1.5 text-xs leading-5;
+    @apply m-0 max-h-[min(12rem,32vh)] overflow-y-auto rounded-md px-2 py-1.5 text-xs leading-5;
     scrollbar-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent) transparent;
     scrollbar-width: thin;
     overflow-wrap: anywhere;
+  }
+
+  textarea.reader-translation-source,
+  textarea.reader-translation-result {
+    @apply block w-full resize-none border-0 outline-none;
+  }
+
+  textarea.reader-translation-source {
+    min-height: 7rem;
+  }
+
+  .reader-annotation-input {
+    min-height: 8rem;
   }
 
   .reader-translation-source::-webkit-scrollbar,

@@ -56,6 +56,7 @@ export type FoliateRenderer = HTMLElement & {
     doc?: Document;
     index: number;
     overlayer?: {
+      element?: SVGSVGElement;
       hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
     };
   }>;
@@ -125,6 +126,7 @@ export type ReadingHistory = Record<string, ReadingPosition>;
 export type ReaderHighlight = {
   value: string;
   color: string;
+  kind?: "annotation" | "highlight";
   text?: string;
   note?: string;
   index?: number;

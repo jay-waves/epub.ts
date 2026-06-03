@@ -5,6 +5,10 @@ export const VIEWER_EVENTS = {
   highlightContextAction: "reader:highlight-context-action",
   highlightContextClose: "reader:highlight-context-close",
   highlightContextOpen: "reader:highlight-context-open",
+  annotationClose: "reader:annotation-close",
+  annotationDelete: "reader:annotation-delete",
+  annotationOpen: "reader:annotation-open",
+  annotationSave: "reader:annotation-save",
   translationClose: "reader:translation-close",
   translationOpen: "reader:translation-open",
   translationUpdate: "reader:translation-update",
@@ -24,7 +28,7 @@ export const VIEWER_EVENTS = {
   tocUpdate: "reader:toc-update",
 } as const;
 
-export type HighlightContextAction = "copy" | "delete" | "highlight" | "translate";
+export type HighlightContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
 export type TranslationStatus = "error" | "loading" | "success";
 export type PageTurnDirection = "left" | "right";
 export type ContentEdgeClickDetail = {
@@ -49,6 +53,23 @@ export type TranslationDetail = {
   translatedText?: string;
   x: number;
   y: number;
+};
+
+export type AnnotationDetail = {
+  note: string;
+  sourceText: string;
+  value: string;
+  x: number;
+  y: number;
+};
+
+export type AnnotationSaveDetail = {
+  note: string;
+  value: string;
+};
+
+export type AnnotationDeleteDetail = {
+  value: string;
 };
 
 export type DockAction =
@@ -107,6 +128,10 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
   [VIEWER_EVENTS.highlightContextClose]: void;
   [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;
+  [VIEWER_EVENTS.annotationClose]: void;
+  [VIEWER_EVENTS.annotationDelete]: AnnotationDeleteDetail;
+  [VIEWER_EVENTS.annotationOpen]: AnnotationDetail;
+  [VIEWER_EVENTS.annotationSave]: AnnotationSaveDetail;
   [VIEWER_EVENTS.translationClose]: void;
   [VIEWER_EVENTS.translationOpen]: TranslationDetail;
   [VIEWER_EVENTS.translationUpdate]: TranslationDetail;
