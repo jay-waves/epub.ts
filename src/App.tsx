@@ -2,6 +2,7 @@ import { ReaderDock } from "./components/reader-dock";
 import { HighlightContextMenu } from "./components/context-menu";
 import { ReadingProgress } from "./components/reading-progress";
 import { SearchBar } from "./components/search-bar";
+import { TranslationPopover } from "./components/translation-popover";
 import { TocPage } from "./components/toc-page";
 import type { ReadingProgressElements } from "./components/reading-progress";
 
@@ -23,6 +24,7 @@ export function App({
       <SearchBar />
       <TocPage />
       <HighlightContextMenu />
+      <TranslationPopover />
     </div>
   );
 }

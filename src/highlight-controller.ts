@@ -16,8 +16,17 @@ type ReaderContent = {
   };
 };
 
+type BuiltInAiGlobals = typeof globalThis & {
+  LanguageDetector?: LanguageDetectorConstructor;
+  Translator?: TranslatorConstructor;
+};
+
 type HighlightContext = {
   highlight?: ReaderHighlight;
+  point?: {
+    x: number;
+    y: number;
+  };
   selection?: {
     index: number;
     range: Range;
@@ -108,7 +117,7 @@ export function createHighlightController(options: {
     pageY: number;
     selection?: NonNullable<HighlightContext>["selection"];
   }) => {
-    activeContext = { highlight, selection };
+    activeContext = { highlight, point: { x: pageX, y: pageY }, selection };
 
     const hasSelection = Boolean(selection);
     const hasHighlight = Boolean(highlight);
@@ -163,9 +172,18 @@ export function createHighlightController(options: {
 
       if (!contextTargets.has(doc)) {
         contextTargets.add(doc);
-        doc.addEventListener("pointerdown", close, true);
-        doc.addEventListener("keydown", close, true);
-        doc.addEventListener("scroll", close, true);
+        doc.addEventListener("pointerdown", () => {
+          close();
+          emitViewerEvent(VIEWER_EVENTS.translationClose);
+        }, true);
+        doc.addEventListener("keydown", () => {
+          close();
+          emitViewerEvent(VIEWER_EVENTS.translationClose);
+        }, true);
+        doc.addEventListener("scroll", () => {
+          close();
+          emitViewerEvent(VIEWER_EVENTS.translationClose);
+        }, true);
         doc.addEventListener("contextmenu", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -253,17 +271,95 @@ export function createHighlightController(options: {
     || activeContext?.highlight?.value.trim()
     || "";
 
-  const translateContextText = () => {
+  const detectLanguage = async (text: string) => {
+    const builtInAi = globalThis as BuiltInAiGlobals;
+    if (!builtInAi.LanguageDetector) return "en";
+
+    const availability = await builtInAi.LanguageDetector.availability();
+    if (availability === "unavailable") return "en";
+
+    const detector = await builtInAi.LanguageDetector.create();
+    const [result] = await detector.detect(text);
+    return result?.confidence && result.confidence >= 0.45 ? result.detectedLanguage : "en";
+  };
+
+  const translateContextText = async () => {
     const text = getContextText();
     if (!text) return;
 
-    const url = `https://translate.google.com/?sl=auto&tl=zh-CN&text=${encodeURIComponent(text)}&op=translate`;
-    if (globalThis.chrome?.tabs?.create) {
-      void globalThis.chrome.tabs.create({ url });
-    } else {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
+    const targetLanguage = "zh";
+    const point = activeContext?.point ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const baseDetail = {
+      sourceText: text,
+      status: "loading" as const,
+      targetLanguage,
+      x: point.x,
+      y: point.y,
+    };
+
+    emitViewerEvent(VIEWER_EVENTS.translationOpen, {
+      ...baseDetail,
+      message: "Translating to Chinese...",
+    });
+    options.getReaderView()?.deselect?.();
     close();
+
+    try {
+      const builtInAi = globalThis as BuiltInAiGlobals;
+      if (!builtInAi.Translator) {
+        throw new Error("Chrome Translator API is not available in this browser.");
+      }
+
+      const sourceLanguage = await detectLanguage(text);
+      if (sourceLanguage === targetLanguage || sourceLanguage.toLowerCase().startsWith("zh")) {
+        emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+          ...baseDetail,
+          message: "Selected text is already Chinese.",
+          sourceLanguage,
+          status: "success",
+          translatedText: text,
+        });
+        return;
+      }
+
+      const availability = await builtInAi.Translator.availability({
+        sourceLanguage,
+        targetLanguage,
+      });
+      if (availability === "unavailable") {
+        throw new Error(`Chrome cannot translate from ${sourceLanguage} to Chinese on this device.`);
+      }
+
+      const translator = await builtInAi.Translator.create({
+        sourceLanguage,
+        targetLanguage,
+        monitor(monitor) {
+          monitor.addEventListener("downloadprogress", (event) => {
+            emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+              ...baseDetail,
+              message: "Downloading Chrome translation model...",
+              progress: event.loaded,
+              sourceLanguage,
+            });
+          });
+        },
+      });
+      await translator.ready;
+
+      const translatedText = await translator.translate(text);
+      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+        ...baseDetail,
+        sourceLanguage,
+        status: "success",
+        translatedText,
+      });
+    } catch (error) {
+      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+        ...baseDetail,
+        message: error instanceof Error ? error.message : "Translation failed.",
+        status: "error",
+      });
+    }
   };
 
   const deleteHighlight = async (highlight: ReaderHighlight) => {
@@ -324,7 +420,7 @@ export function createHighlightController(options: {
     }
 
     if (action === "translate") {
-      translateContextText();
+      void translateContextText();
       return;
     }
 

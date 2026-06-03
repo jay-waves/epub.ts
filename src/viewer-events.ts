@@ -5,6 +5,9 @@ export const VIEWER_EVENTS = {
   highlightContextAction: "reader:highlight-context-action",
   highlightContextClose: "reader:highlight-context-close",
   highlightContextOpen: "reader:highlight-context-open",
+  translationClose: "reader:translation-close",
+  translationOpen: "reader:translation-open",
+  translationUpdate: "reader:translation-update",
   dockAction: "reader:dock-action",
   dockUpdate: "reader:dock-update",
   pageTurn: "reader:page-turn",
@@ -20,6 +23,7 @@ export const VIEWER_EVENTS = {
 } as const;
 
 export type HighlightContextAction = "copy" | "delete" | "highlight" | "translate";
+export type TranslationStatus = "error" | "loading" | "success";
 export type PageTurnDirection = "left" | "right";
 export type ContentEdgeClickDetail = {
   x: number;
@@ -29,6 +33,18 @@ export type HighlightContextOpenDetail = {
   canCopy: boolean;
   canDelete: boolean;
   canHighlight: boolean;
+  x: number;
+  y: number;
+};
+
+export type TranslationDetail = {
+  message?: string;
+  progress?: number;
+  sourceLanguage?: string;
+  sourceText: string;
+  status: TranslationStatus;
+  targetLanguage: string;
+  translatedText?: string;
   x: number;
   y: number;
 };
@@ -76,6 +92,9 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
   [VIEWER_EVENTS.highlightContextClose]: void;
   [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;
+  [VIEWER_EVENTS.translationClose]: void;
+  [VIEWER_EVENTS.translationOpen]: TranslationDetail;
+  [VIEWER_EVENTS.translationUpdate]: TranslationDetail;
   [VIEWER_EVENTS.dockAction]: DockAction;
   [VIEWER_EVENTS.dockUpdate]: DockUpdateDetail;
   [VIEWER_EVENTS.pageTurn]: PageTurnDirection;

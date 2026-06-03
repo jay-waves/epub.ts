@@ -177,7 +177,8 @@
   .reader-dock,
   .search-nav,
   .toc-modal-box,
-  .reader-context-menu {
+  .reader-context-menu,
+  .reader-translation-popover {
     border-color: var(--reader-glass-border);
     background-color: var(--reader-glass-bg) !important;
     box-shadow: var(--reader-glass-shadow);
@@ -401,6 +402,100 @@
 
   .reader-context-menu-item:disabled {
     @apply pointer-events-none opacity-40;
+  }
+
+  .reader-translation-popover {
+    @apply fixed z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border p-1.5;
+    color: var(--reader-chrome-fg, #1f2933);
+  }
+
+  .reader-translation-header {
+    @apply flex min-w-0 items-center justify-between gap-2 pb-1;
+  }
+
+  .reader-translation-title {
+    @apply flex min-w-0 items-center gap-1.5 text-[11px] font-semibold;
+    color: var(--reader-control-strong-fg);
+  }
+
+  .reader-translation-title svg {
+    @apply size-3.5 shrink-0;
+  }
+
+  .reader-translation-title span {
+    @apply min-w-0 truncate;
+  }
+
+  .reader-translation-actions {
+    @apply flex shrink-0 items-center gap-0.5;
+  }
+
+  .reader-translation-actions button {
+    @apply grid h-6 w-6 place-items-center rounded-md outline-none transition-colors duration-100;
+    color: var(--reader-control-fg);
+  }
+
+  .reader-translation-actions button:hover,
+  .reader-translation-actions button:focus-visible {
+    background-color: var(--reader-control-hover-bg);
+    color: var(--reader-control-hover-fg);
+  }
+
+  .reader-translation-actions button:disabled {
+    @apply pointer-events-none opacity-35;
+  }
+
+  .reader-translation-body {
+    @apply grid gap-1.5;
+  }
+
+  .reader-translation-source,
+  .reader-translation-result,
+  .reader-translation-message {
+    @apply m-0 max-h-28 overflow-y-auto rounded-md px-2 py-1.5 text-xs leading-5;
+    scrollbar-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent) transparent;
+    scrollbar-width: thin;
+    overflow-wrap: anywhere;
+  }
+
+  .reader-translation-source::-webkit-scrollbar,
+  .reader-translation-result::-webkit-scrollbar,
+  .reader-translation-message::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  .reader-translation-source::-webkit-scrollbar-track,
+  .reader-translation-result::-webkit-scrollbar-track,
+  .reader-translation-message::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .reader-translation-source::-webkit-scrollbar-thumb,
+  .reader-translation-result::-webkit-scrollbar-thumb,
+  .reader-translation-message::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent);
+  }
+
+  .reader-translation-source {
+    background-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 6%, transparent);
+    color: var(--reader-control-fg);
+  }
+
+  .reader-translation-result {
+    background-color: var(--reader-field-bg);
+    color: var(--reader-control-strong-fg);
+  }
+
+  .reader-translation-message {
+    background-color: var(--reader-field-bg);
+    color: var(--reader-control-fg);
+  }
+
+  .reader-translation-message.is-error {
+    background-color: var(--reader-danger-hover-bg);
+    color: var(--reader-danger-fg);
   }
 
   .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-fill {
