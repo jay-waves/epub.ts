@@ -177,6 +177,7 @@
   .reader-dock,
   .search-nav,
   .toc-modal-box,
+  .book-info-modal-box,
   .reader-context-menu,
   .reader-translation-popover {
     border-color: var(--reader-glass-border);
@@ -644,6 +645,88 @@
   #toc-modal::backdrop {
     background: transparent;
   }
+
+  .book-info-modal-box {
+    @apply w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)];
+  }
+
+  #book-info-modal.reader-modal {
+    width: fit-content;
+    height: fit-content;
+    max-height: calc(100vh - 2rem);
+  }
+
+  #book-info-modal::backdrop {
+    background: transparent;
+  }
+
+  .book-info-root {
+    @apply grid max-h-[68vh] gap-4 overflow-y-auto p-3;
+    scrollbar-width: none;
+  }
+
+  .book-info-root::-webkit-scrollbar {
+    display: none;
+  }
+
+  .book-info-header {
+    @apply grid gap-1 border-b pb-3;
+    border-color: var(--reader-border-subtle);
+  }
+
+  .book-info-title {
+    @apply m-0 text-lg font-semibold leading-snug;
+    color: var(--reader-control-strong-fg);
+    overflow-wrap: anywhere;
+  }
+
+  .book-info-subtitle {
+    @apply m-0 text-sm leading-5;
+    color: var(--reader-control-fg);
+    overflow-wrap: anywhere;
+  }
+
+  .book-info-section {
+    @apply grid grid-cols-3 gap-2;
+  }
+
+  .book-info-stat {
+    @apply grid min-w-0 gap-1 rounded-lg px-3 py-2;
+    background-color: var(--reader-field-bg);
+  }
+
+  .book-info-stat-value {
+    @apply truncate text-sm font-semibold tabular-nums;
+    color: var(--reader-control-strong-fg);
+  }
+
+  .book-info-stat-label {
+    @apply text-[11px] font-medium leading-4;
+    color: var(--reader-control-fg);
+  }
+
+  .book-info-list {
+    @apply m-0 grid gap-0.5;
+  }
+
+  .book-info-row {
+    @apply grid grid-cols-[7.5rem_minmax(0,1fr)] gap-3 rounded-md px-2 py-2 text-sm leading-5;
+  }
+
+  .book-info-row:hover {
+    background-color: var(--reader-toc-hover-bg);
+  }
+
+  .book-info-row dt {
+    @apply font-medium;
+    color: var(--reader-control-fg);
+  }
+
+  .book-info-row dd {
+    @apply m-0;
+    color: var(--reader-control-strong-fg);
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (max-width: 960px) {
@@ -653,6 +736,14 @@
 
   .reader-dock button {
     @apply h-9 w-9;
+  }
+
+  .book-info-section {
+    @apply grid-cols-1;
+  }
+
+  .book-info-row {
+    @apply grid-cols-1 gap-1;
   }
 
 }

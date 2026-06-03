@@ -48,13 +48,15 @@ import {
   saveReaderSettings,
   saveReadingPosition,
 } from "./viewer-storage";
-import type { FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
-import type { DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
+import type { BookSection, FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
+import type { BookInfoUpdateDetail, DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
 import "./viewer.css";
 
 const appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing required element: #app");
 const PAGE_TURN_CLICK_MAX_DISTANCE = 4;
+const ESTIMATED_READING_WORDS_PER_MINUTE = 250;
+const ESTIMATED_CHARS_PER_WORD = 6;
 
 function mountReadingProgressController(elements: ReadingProgressElements | null) {
   runtime.readingProgressController?.destroy?.();
@@ -142,6 +144,97 @@ function emitTocUpdate() {
     currentHref: state.currentHref,
     items: runtime.tocItems,
   });
+}
+
+function emitBookInfoUpdate() {
+  emitViewerEvent(VIEWER_EVENTS.bookInfoUpdate, getBookInfoUpdateDetail());
+}
+
+function getBookInfoUpdateDetail(): BookInfoUpdateDetail {
+  const book = runtime.readerView?.book;
+  if (!book) {
+    return {
+      metadataRows: [],
+      statsRows: [],
+      title: "Book information",
+    };
+  }
+
+  const metadata = book?.metadata;
+  const title = formatMetadataValue(metadata?.title) || "Untitled Book";
+  const author = formatMetadataValue(metadata?.author);
+  const sectionCount = book?.sections?.length ?? 0;
+  const estimatedWords = estimateBookWords(book?.sections);
+  const estimatedMinutes = estimatedWords ? Math.max(1, Math.ceil(estimatedWords / ESTIMATED_READING_WORDS_PER_MINUTE)) : null;
+  const sourcePath = formatSourcePath(state.currentSourceUrl);
+
+  return {
+    title,
+    subtitle: author || sourcePath || undefined,
+    statsRows: [
+      estimatedMinutes ? { label: "Estimated reading time", value: formatReadingDuration(estimatedMinutes) } : null,
+      estimatedWords ? { label: "Estimated words", value: formatNumber(estimatedWords) } : null,
+      sectionCount ? { label: "Sections", value: formatNumber(sectionCount) } : null,
+    ].filter((row): row is { label: string; value: string } => Boolean(row)),
+    metadataRows: [
+      { label: "Title", value: title },
+      { label: "Author", value: author },
+      { label: "Publisher", value: formatMetadataValue(metadata?.publisher) },
+      { label: "Language", value: formatMetadataValue(metadata?.language) },
+      { label: "Published", value: formatMetadataValue(metadata?.published) },
+      { label: "Modified", value: formatMetadataValue(metadata?.modified) },
+      { label: "Identifier", value: formatMetadataValue(metadata?.identifier) },
+      { label: "Subject", value: formatMetadataValue(metadata?.subject) },
+      { label: "Source", value: sourcePath },
+    ].filter((row) => row.value),
+  };
+}
+
+function formatSourcePath(sourceUrl: string) {
+  if (!sourceUrl) return "";
+  try {
+    const url = new URL(sourceUrl);
+    if (url.protocol !== "file:") return sourceUrl;
+
+    const pathname = decodeURIComponent(url.pathname);
+    return pathname.replace(/^\/([A-Za-z]:\/)/, "$1");
+  } catch {
+    return sourceUrl;
+  }
+}
+
+function estimateBookWords(sections?: BookSection[]) {
+  const totalSize = (sections ?? []).reduce((sum, section) => {
+    return sum + (typeof section.size === "number" && Number.isFinite(section.size) ? section.size : 0);
+  }, 0);
+  if (totalSize <= 0) return null;
+  return Math.max(1, Math.round(totalSize / ESTIMATED_CHARS_PER_WORD));
+}
+
+function formatReadingDuration(totalMinutes: number) {
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours} hr ${minutes} min` : `${hours} hr`;
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(formatMetadataValue).filter(Boolean).join(", ");
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if ("name" in record) return formatMetadataValue(record.name);
+    const localized = Object.values(record).find((item): item is string => typeof item === "string" && Boolean(item.trim()));
+    if (localized) return localized;
+    return Object.values(record).map(formatMetadataValue).filter(Boolean).join(", ");
+  }
+  return "";
 }
 
 function preloadReaderFonts() {
@@ -445,6 +538,7 @@ function resetTransientBookState() {
   shouldRestoreScrolledSectionProgress = false;
   scrolledSectionProgress.clear();
   emitTocUpdate();
+  emitBookInfoUpdate();
   runtime.highlightController?.reset();
   runtime.readingProgressController?.setHistoryProgress(null);
 }
@@ -590,7 +684,8 @@ async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: Re
 }
 
 async function openBook(input: File | string, sourceLabel: string) {
-  const fileUrl = typeof input === "string" ? input : undefined;
+  const normalizedInput = typeof input === "string" ? normalizeSourceUrlForOpen(input) : input;
+  const fileUrl = typeof normalizedInput === "string" ? normalizedInput : undefined;
   const legacyBookKey = fileUrl ?? "";
   const canRead = await ensureFileSchemeAccess(fileUrl);
   if (!canRead) return;
@@ -609,7 +704,7 @@ async function openBook(input: File | string, sourceLabel: string) {
     setReaderRenderPending(true);
     if (runtime.readerView.book) runtime.readerView.close();
     await preloadReaderFonts();
-    await runtime.readerView.open(input);
+    await runtime.readerView.open(normalizedInput);
     runtime.readerDocumentCache = createReaderDocumentCache({
       enhanceDocument: (doc) => prepareReaderContentDocument(doc, {
         isCurrent: () => true,
@@ -626,6 +721,7 @@ async function openBook(input: File | string, sourceLabel: string) {
     const title = formatLocalized(metadata?.title) || "Untitled Book";
 
     document.title = `${title} · EPUB Viewer`;
+    emitBookInfoUpdate();
     await restoreSavedPosition(
       runtime.readerView,
       state.currentBookKey ? await getSavedPosition(state.currentBookKey) : undefined,
@@ -639,8 +735,41 @@ async function openBook(input: File | string, sourceLabel: string) {
 }
 
 function readSourceFromQuery() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("src");
+  const query = window.location.search;
+  if (!query) return null;
+
+  const rawSource = readRawQueryValue(query, "src");
+  if (rawSource) return decodeQueryValue(rawSource);
+
+  return new URLSearchParams(query).get("src");
+}
+
+function readRawQueryValue(query: string, key: string) {
+  const prefix = `${key}=`;
+  const parts = query.startsWith("?") ? query.slice(1).split("&") : query.split("&");
+  const partIndex = parts.findIndex((part) => part.startsWith(prefix));
+  if (partIndex < 0) return null;
+
+  // src is the only viewer query value today; keeping the tail preserves unescaped
+  // ampersands in local file names from older or manually opened URLs.
+  return parts.slice(partIndex).join("&").slice(prefix.length);
+}
+
+function decodeQueryValue(value: string) {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, "%20"));
+  } catch {
+    return value;
+  }
+}
+
+function normalizeSourceUrlForOpen(sourceUrl: string) {
+  if (!sourceUrl.startsWith("file://")) return sourceUrl;
+  try {
+    return new URL(sourceUrl).href;
+  } catch {
+    return sourceUrl;
+  }
 }
 
 function setupCriticalInteractions() {
@@ -734,6 +863,12 @@ async function runReaderStyleChange(action: () => void) {
 }
 
 async function handleDockAction(action: DockAction) {
+  if (action === "open-info") {
+    emitBookInfoUpdate();
+    emitViewerEvent(VIEWER_EVENTS.bookInfoOpen);
+    return;
+  }
+
   if (action === "open-toc") {
     emitTocUpdate();
     emitViewerEvent(VIEWER_EVENTS.tocOpen);
@@ -852,7 +987,7 @@ async function bootstrap() {
 
   const src = readSourceFromQuery();
   if (src) {
-    void openBook(src, src.split("/").pop() || src);
+    void openBook(src, formatSourcePath(src) || src);
   } else {
     void preloadReaderFonts();
     runWhenIdle(setupExtraUi, 1000);

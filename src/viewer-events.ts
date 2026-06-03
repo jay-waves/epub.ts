@@ -17,6 +17,8 @@ export const VIEWER_EVENTS = {
   searchOpen: "reader:search-open",
   searchPrevious: "reader:search-previous",
   searchUpdate: "reader:search-update",
+  bookInfoOpen: "reader:book-info-open",
+  bookInfoUpdate: "reader:book-info-update",
   tocOpen: "reader:toc-open",
   tocNavigate: "reader:toc-navigate",
   tocUpdate: "reader:toc-update",
@@ -57,6 +59,7 @@ export type DockAction =
   | "decrease-width"
   | "increase-width"
   | "toggle-search"
+  | "open-info"
   | "open-toc"
   | "export";
 
@@ -87,6 +90,18 @@ export type TocUpdateDetail = {
   items: TocItem[];
 };
 
+export type BookInfoRow = {
+  label: string;
+  value: string;
+};
+
+export type BookInfoUpdateDetail = {
+  metadataRows: BookInfoRow[];
+  statsRows: BookInfoRow[];
+  subtitle?: string;
+  title: string;
+};
+
 export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.contentEdgeClick]: ContentEdgeClickDetail;
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
@@ -104,6 +119,8 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.searchOpen]: void;
   [VIEWER_EVENTS.searchPrevious]: void;
   [VIEWER_EVENTS.searchUpdate]: SearchUpdateDetail;
+  [VIEWER_EVENTS.bookInfoOpen]: void;
+  [VIEWER_EVENTS.bookInfoUpdate]: BookInfoUpdateDetail;
   [VIEWER_EVENTS.tocOpen]: void;
   [VIEWER_EVENTS.tocNavigate]: string;
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;

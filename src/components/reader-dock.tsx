@@ -4,7 +4,7 @@ import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button } from "./ui/button";
 import { Tooltip } from "./ui/tooltip";
 
-import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, ListTree, Download } from "lucide-react";
+import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, Info, ListTree, Download } from "lucide-react";
 
 const dockItems = [
   {
@@ -25,6 +25,7 @@ const dockItems = [
   { action: "decrease-width", id: "decrease-width-button", label: "Tighter layout", icon: Minimize2 },
   { action: "increase-width", id: "increase-width-button", label: "Looser layout", icon: Maximize2 },
   { action: "toggle-search", id: "open-search-button", label: "Search", icon: Search },
+  { action: "open-info", id: "open-info-button", label: "Book information", icon: Info },
   { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: ListTree },
   { action: "export", id: "export-button", label: "Export original EPUB", icon: Download },
 ] as const;

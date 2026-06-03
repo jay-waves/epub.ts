@@ -1,4 +1,5 @@
 import { ReaderDock } from "./components/reader-dock";
+import { BookInfoPage } from "./components/book-info-page";
 import { HighlightContextMenu } from "./components/context-menu";
 import { ReadingProgress } from "./components/reading-progress";
 import { SearchBar } from "./components/search-bar";
@@ -22,6 +23,7 @@ export function App({
       <ReadingProgress onReady={onReadingProgressReady} />
 
       <SearchBar />
+      <BookInfoPage />
       <TocPage />
       <HighlightContextMenu />
       <TranslationPopover />

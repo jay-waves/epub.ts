@@ -10,7 +10,14 @@ export type BookMetadata = {
   altIdentifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>;
   title?: string | Record<string, string>;
   author?: string | { name?: string | Record<string, string> } | Array<string | { name?: string | Record<string, string> }>;
+  contributor?: unknown;
+  description?: unknown;
   identifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>;
+  language?: unknown;
+  modified?: unknown;
+  publisher?: unknown;
+  published?: unknown;
+  subject?: unknown;
 };
 
 export type BookSection = {

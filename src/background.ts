@@ -15,7 +15,9 @@ function isEpubFileUrl(url?: string): url is string {
 }
 
 function getViewerUrl(sourceUrl: string) {
-  return `${VIEWER_URL}?src=${encodeURIComponent(sourceUrl)}`;
+  const viewerUrl = new URL(VIEWER_URL);
+  viewerUrl.searchParams.set("src", sourceUrl);
+  return viewerUrl.href;
 }
 
 async function getStoredNumberSet(key: string) {
