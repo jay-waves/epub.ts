@@ -757,7 +757,7 @@ function readRawQueryValue(query: string, key: string) {
 
 function decodeQueryValue(value: string) {
   try {
-    return decodeURIComponent(value.replace(/\+/g, "%20"));
+    return decodeURIComponent(value);
   } catch {
     return value;
   }

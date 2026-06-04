@@ -12,7 +12,7 @@ EPUB 阅读器，Chrome 浏览器插件。
 
 #### 美观性 Aesthetics
 
-* 字体采用霞鹜文楷，等宽字体采用 Monaspace Argon 
+* 字体采用霞鹜文楷，英文字体采用 EBGaramond，等宽字体采用 Monaspace Argon 
 * 支持多种主题颜色：Light, Dark, Grey, Nord
 * 亚克力面板，Dock 栏
 

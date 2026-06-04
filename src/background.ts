@@ -16,7 +16,7 @@ function isEpubFileUrl(url?: string): url is string {
 
 function getViewerUrl(sourceUrl: string) {
   const viewerUrl = new URL(VIEWER_URL);
-  viewerUrl.searchParams.set("src", sourceUrl);
+  viewerUrl.search = `?src=${encodeURIComponent(sourceUrl)}`;
   return viewerUrl.href;
 }
 
