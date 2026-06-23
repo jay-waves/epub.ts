@@ -20,6 +20,26 @@ function getViewerUrl(sourceUrl: string) {
   return viewerUrl.href;
 }
 
+async function installEpubRedirectRule() {
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [REDIRECT_RULE_ID],
+    addRules: [{
+      id: REDIRECT_RULE_ID,
+      priority: 1,
+      action: {
+        type: "redirect",
+        redirect: {
+          regexSubstitution: `${VIEWER_URL}?src=\\0`,
+        },
+      },
+      condition: {
+        regexFilter: EPUB_URL_REGEX,
+        resourceTypes: ["main_frame"],
+      },
+    }],
+  });
+}
+
 async function getStoredNumberSet(key: string) {
   const stored = await chrome.storage.session.get(key);
   return new Set(Array.isArray(stored[key]) ? stored[key].filter(item => typeof item === "number") : []);
@@ -80,6 +100,7 @@ async function recoverRecentEpubDownload() {
 }
 
 async function recoverStartupEpubState() {
+  await installEpubRedirectRule();
   await recoverRecentEpubDownload();
 }
 
@@ -89,5 +110,6 @@ async function startup() {
 }
 
 chrome.runtime.onStartup.addListener(() => { void startup().catch(() => {}); });
+chrome.runtime.onInstalled.addListener(() => { void installEpubRedirectRule().catch(() => {}); });
 chrome.downloads.onCreated.addListener(item => { void recoverEpubDownload(item).catch(() => {}); });
 chrome.action.onClicked.addListener(() => { void chrome.tabs.create({ url: VIEWER_URL }); });

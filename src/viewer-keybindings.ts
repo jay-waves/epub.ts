@@ -40,6 +40,7 @@ export function setupViewerKeybindings(options: {
   onScrollEdge?: (direction: number) => void;
   openSearch: () => void;
   closeSearch: () => void;
+  saveBook: () => void;
 }) {
   const keyTargets = new WeakSet<Document>();
   const boundReaderViews = new WeakSet<FoliateViewElement>();
@@ -236,6 +237,12 @@ export function setupViewerKeybindings(options: {
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      options.saveBook();
+      return;
+    }
+
     if (event.key === "Escape") {
       event.preventDefault();
       options.closeSearch();

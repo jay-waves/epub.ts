@@ -4,7 +4,7 @@ import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button } from "./ui/button";
 import { Tooltip } from "./ui/tooltip";
 
-import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, Info, ListTree, Download } from "lucide-react";
+import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, Info, ListTree } from "lucide-react";
 
 const dockItems = [
   {
@@ -27,12 +27,11 @@ const dockItems = [
   { action: "toggle-search", id: "open-search-button", label: "Search", icon: Search },
   { action: "open-info", id: "open-info-button", label: "Book information", icon: Info },
   { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: ListTree },
-  { action: "export", id: "export-button", label: "Export original EPUB", icon: Download },
 ] as const;
 
 export function ReaderDock() {
   const [dockState, setDockState] = useState<DockUpdateDetail>({
-    canExport: false, canSearch: false, flowActive: false, flowLabel: "Switch to scrolling mode", searchActive: false, themeActive: false, themeCount: "1",
+    canSearch: false, flowActive: false, flowLabel: "Switch to scrolling mode", searchActive: false, themeActive: false, themeCount: "1",
   });
 
   useEffect(() => {
@@ -84,7 +83,6 @@ function getDockItemLabel(action: DockAction, fallback: string, dockState: DockU
 
 function isDockItemDisabled(action: DockAction, dockState: DockUpdateDetail) {
   if (action === "toggle-search") return !dockState.canSearch;
-  if (action === "export") return !dockState.canExport;
   return false;
 }
 

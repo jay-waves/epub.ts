@@ -112,6 +112,23 @@ export async function setSavedHighlights(bookKey: string, bookHighlights: Reader
   await setStorage(getBookHighlightsKey(bookKey), bookHighlights);
 }
 
+export async function mergeSavedHighlights(bookKey: string, highlights: ReaderHighlight[]) {
+  if (!bookKey || highlights.length === 0) return;
+
+  const mergedHighlights = new Map<string, ReaderHighlight>();
+  for (const highlight of await getBookHighlightsRecord(bookKey)) {
+    mergedHighlights.set(highlight.value, highlight);
+  }
+  for (const highlight of highlights) {
+    if (!mergedHighlights.has(highlight.value)) mergedHighlights.set(highlight.value, highlight);
+  }
+
+  await setSavedHighlights(
+    bookKey,
+    Array.from(mergedHighlights.values()).sort((left, right) => left.createdAt - right.createdAt),
+  );
+}
+
 export async function reconcileBookStorage(primaryKey: string, aliasKeys: string[]) {
   if (!primaryKey) return;
 

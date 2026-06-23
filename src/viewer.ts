@@ -28,13 +28,24 @@ import {
   getReaderThemeIndex,
 } from "./reader-themes";
 import { deriveBookKey, formatLocalized } from "./book-key";
+import {
+  clearFileHandle,
+  createAnnotatedEpub,
+  EPUB_MIME_TYPE,
+  getEpubBlob,
+  getStoredFileHandle,
+  readEmbeddedHighlights,
+  saveFileHandle,
+  verifyWritePermission,
+  writeBlobToFile,
+} from "./epub-overlays";
 import { createHighlightController } from "./highlight-controller";
 import { createReaderDocumentCache } from "./reader-document-cache";
 import { enhanceReaderContent, prepareReaderContentDocument } from "./reader-content-enhancers";
 import { createSearchController } from "./search-controller";
 import { createDebouncedTask, runWhenIdle } from "./scheduler";
 import { collectSectionHrefs, normalizeTocHref, normalizeTocItems } from "./toc-controller";
-import { App } from "./app";
+import { App } from "./App";
 import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
@@ -44,6 +55,8 @@ import { state } from "./viewer-state";
 import {
   getSavedPosition,
   getSavedReaderSettings,
+  getSavedHighlights,
+  mergeSavedHighlights,
   reconcileBookStorage,
   saveReaderSettings,
   saveReadingPosition,
@@ -91,6 +104,7 @@ let scrollEdgeFeedbackTimer: number | undefined;
 let lastScrollEdgeFeedbackAt = 0;
 let currentScrollSectionIndex: number | null = null;
 let shouldRestoreScrolledSectionProgress = false;
+let currentSaveHandle: FileSystemFileHandle | null | undefined;
 const scrolledSectionProgress = new Map<number, number>();
 
 function queryRequired<T extends Element>(selector: string) {
@@ -125,6 +139,7 @@ function ensureKeybindings() {
     onScrollEdge: showScrollEdgeFeedback,
     openSearch,
     closeSearch: clearSearchState,
+    saveBook: () => { void saveAnnotatedBook(); },
   });
   if (runtime.readerView) runtime.keybindings.bindReaderView(runtime.readerView);
   return runtime.keybindings;
@@ -458,7 +473,6 @@ function getDockUpdateDetail(): DockUpdateDetail {
   const isPaginated = state.flow === "paginated";
 
   return {
-    canExport: Boolean(state.currentSourceUrl),
     canSearch: Boolean(runtime.readerView?.search),
     flowActive: !isPaginated,
     flowLabel: isPaginated ? "Switch to scrolling mode" : "Switch to paginated mode",
@@ -481,14 +495,58 @@ function deriveDownloadFilename(sourceUrl: string) {
   }
 }
 
-async function exportCurrentBook() {
-  if (!state.currentSourceUrl) return;
+async function hydrateSavedFileHandle(bookKey: string) {
+  currentSaveHandle = await getStoredFileHandle(bookKey) ?? null;
+}
 
-  await chrome.downloads.download({
-    saveAs: true,
-    filename: deriveDownloadFilename(state.currentSourceUrl),
-    url: state.currentSourceUrl,
+async function getWritableSaveHandle(bookKey: string, sourceUrl: string) {
+  if (currentSaveHandle && await verifyWritePermission(currentSaveHandle)) return currentSaveHandle;
+
+  const storedHandle = currentSaveHandle === undefined ? await getStoredFileHandle(bookKey) : null;
+  if (storedHandle && await verifyWritePermission(storedHandle)) {
+    currentSaveHandle = storedHandle;
+    return storedHandle;
+  }
+
+  if (!("showSaveFilePicker" in window)) {
+    throw new Error("File System Access API is not available in this browser.");
+  }
+
+  const fileHandle = await window.showSaveFilePicker({
+    id: "epub-overlay-save-file",
+    suggestedName: deriveDownloadFilename(sourceUrl),
+    startIn: "documents",
+    types: [{
+      description: "EPUB files",
+      accept: { [EPUB_MIME_TYPE]: [".epub"] },
+    }],
   });
+  if (!await verifyWritePermission(fileHandle)) throw new Error("Write permission was not granted.");
+
+  currentSaveHandle = fileHandle;
+  await saveFileHandle(bookKey, fileHandle);
+  return fileHandle;
+}
+
+async function saveAnnotatedBook() {
+  const bookKey = state.currentBookKey;
+  const sourceUrl = state.currentSourceUrl;
+  if (!bookKey || !sourceUrl) return;
+
+  try {
+    const sourceBlob = await getEpubBlob(sourceUrl);
+    const fileHandle = await getWritableSaveHandle(bookKey, sourceUrl);
+    const highlights = await getSavedHighlights(bookKey);
+    const blob = await createAnnotatedEpub(sourceBlob, highlights);
+    await writeBlobToFile(fileHandle, blob);
+  } catch (error) {
+    if ((error as DOMException).name === "AbortError") return;
+    if (currentSaveHandle) {
+      await clearFileHandle(bookKey);
+      currentSaveHandle = null;
+    }
+    console.warn("Failed to save annotated EPUB.", error);
+  }
 }
 
 function clearSearchState() {
@@ -699,6 +757,7 @@ async function openBook(input: File | string, sourceLabel: string) {
   try {
     state.currentBookKey = legacyBookKey;
     state.currentSourceUrl = fileUrl ?? "";
+    currentSaveHandle = undefined;
     emitDockUpdate();
     resetTransientBookState();
     setReaderRenderPending(true);
@@ -712,6 +771,9 @@ async function openBook(input: File | string, sourceLabel: string) {
     });
     runtime.readerDocumentCache.setBook(runtime.readerView.book ?? null);
     state.currentBookKey = await deriveBookKey(runtime.readerView.book, legacyBookKey);
+    void hydrateSavedFileHandle(state.currentBookKey).catch((error) => {
+      console.warn("Failed to restore saved EPUB file handle.", error);
+    });
     await reconcileBookStorage(state.currentBookKey, [legacyBookKey]);
     applyReaderSettings(
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
@@ -940,9 +1002,6 @@ async function handleDockAction(action: DockAction) {
     return;
   }
 
-  if (action === "export") {
-    void exportCurrentBook();
-  }
 }
 
 function setupExtraUi() {
@@ -966,7 +1025,14 @@ function schedulePostLoadTasks(view: FoliateViewElement, bookKey: string) {
     runWhenIdle(() => {
       if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
       runtime.highlightController?.bindContextTargets();
-      if (bookKey) runtime.highlightController?.scheduleRestore(view, bookKey);
+      if (bookKey) {
+        void importEmbeddedHighlights(bookKey, state.currentSourceUrl, taskToken)
+          .finally(() => {
+            if (runtime.readerView === view && runtime.postLoadTaskToken === taskToken) {
+              runtime.highlightController?.scheduleRestore(view, bookKey);
+            }
+          });
+      }
     }, 1500);
 
     runWhenIdle(() => {
@@ -976,6 +1042,18 @@ function schedulePostLoadTasks(view: FoliateViewElement, bookKey: string) {
       emitTocUpdate();
     }, 2000);
   });
+}
+
+async function importEmbeddedHighlights(bookKey: string, sourceUrl: string, taskToken: number) {
+  if (!sourceUrl || runtime.postLoadTaskToken !== taskToken) return;
+
+  try {
+    const highlights = await readEmbeddedHighlights(sourceUrl);
+    if (runtime.postLoadTaskToken !== taskToken) return;
+    await mergeSavedHighlights(bookKey, highlights);
+  } catch (error) {
+    console.warn("Failed to read embedded EPUB overlays.", error);
+  }
 }
 
 async function bootstrap() {

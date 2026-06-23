@@ -81,11 +81,9 @@ export type DockAction =
   | "increase-width"
   | "toggle-search"
   | "open-info"
-  | "open-toc"
-  | "export";
+  | "open-toc";
 
 export type DockUpdateDetail = {
-  canExport: boolean;
   canSearch: boolean;
   flowActive: boolean;
   flowLabel: string;
