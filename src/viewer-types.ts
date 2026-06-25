@@ -70,6 +70,10 @@ export type FoliateViewElement = HTMLElement & {
   init: (options: { lastLocation?: string | { fraction: number }; showTextStart?: boolean }) => Promise<void>;
   open: (input: File | string) => Promise<void>;
   prev: (distance?: number) => Promise<void>;
+  resolveNavigation?: (target: string) => {
+    anchor?: (doc: Document) => Node | Range;
+    index: number;
+  } | undefined;
   next: (distance?: number) => Promise<void>;
   goLeft: () => Promise<void>;
   goRight: () => Promise<void>;

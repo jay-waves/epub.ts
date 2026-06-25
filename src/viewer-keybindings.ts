@@ -161,9 +161,14 @@ export function setupViewerKeybindings(options: {
 
     holdScrollRefreshingBounds = true;
     holdScrollFrame = undefined;
-    await metrics.renderer.scrollToAnchor(metrics.start / metrics.viewSize);
-    holdScrollRefreshingBounds = false;
-    holdScrollLastTime = 0;
+    try {
+      await metrics.renderer.scrollToAnchor(metrics.start / metrics.viewSize);
+    } catch (error) {
+      console.warn("Failed to refresh reader scroll bounds.", error);
+    } finally {
+      holdScrollRefreshingBounds = false;
+      holdScrollLastTime = 0;
+    }
 
     if (holdScrollDirection && options.getFlow() === "scrolled") {
       holdScrollFrame = window.requestAnimationFrame(stepHoldScroll);

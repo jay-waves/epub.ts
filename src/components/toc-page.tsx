@@ -4,7 +4,7 @@ import type { TocItem } from "../viewer-types";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { TocUpdateDetail } from "../viewer-events";
 import { normalizeTocHref } from "../toc-controller";
-import { Dialog } from "./ui/dialog";
+import { Dialog } from "./ui";
 
 export function TocPage() {
   const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
@@ -41,12 +41,6 @@ export function TocPage() {
       id="toc-modal"
       className="toc-modal-box"
       ref={dialogRef}
-      onClick={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
-          event.currentTarget.close();
-        }
-      }}
     >
       <div id="toc-root" className="toc-root" ref={rootRef}>
         {tocState.items.length ? (

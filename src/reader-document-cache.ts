@@ -111,7 +111,9 @@ export function createReaderDocumentCache(options: {
   const schedulePrepare = () => {
     if (scheduled || isPreparing) return;
     scheduled = true;
+    const token = generation;
     runWhenIdle(() => {
+      if (token !== generation) return;
       scheduled = false;
       void prepareNext();
     }, 1200, 120);
@@ -137,6 +139,7 @@ export function createReaderDocumentCache(options: {
     try {
       await task;
     } finally {
+      if (token !== generation) return;
       isPreparing = false;
       if (getNextPrepareIndex() != null) schedulePrepare();
     }
@@ -160,8 +163,7 @@ export function createReaderDocumentCache(options: {
 
   const reset = () => {
     generation += 1;
-    for (const index of Array.from(cache.keys())) releaseEntry(index);
-    cache.clear();
+    for (const index of cache.keys()) releaseEntry(index);
     desired.clear();
     pending.clear();
     activeBook = null;

@@ -1,6 +1,5 @@
 import type { FoliateViewElement, SearchHit } from "./viewer-types";
 import { emitViewerEvent, VIEWER_EVENTS } from "./viewer-events";
-import type { SearchUpdateDetail } from "./viewer-events";
 import { normalizeInlineText } from "./text-utils";
 import { getSavedHighlights } from "./viewer-storage";
 
@@ -17,21 +16,22 @@ export function createSearchController(options: {
   let searchHits: SearchHit[] = [];
   let searchHitIndex = -1;
 
-  const emitUpdate = (detail: SearchUpdateDetail) => {
-    emitViewerEvent(VIEWER_EVENTS.searchUpdate, detail);
-  };
-
-  const clearHighlights = () => {
-    options.getReaderView()?.clearSearch?.();
-  };
-
   const updateNav = (visible = searchHits.length > 0) => {
-    emitUpdate({
+    emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
       hitCount: searchHits.length,
       hitIndex: searchHitIndex,
       placeholder: "Search text",
       visible,
     });
+  };
+
+  const resetResults = (visible: boolean) => {
+    const runId = ++searchRunId;
+    options.getReaderView()?.clearSearch?.();
+    searchHits = [];
+    searchHitIndex = -1;
+    updateNav(visible);
+    return runId;
   };
 
   const showHit = async (index: number) => {
@@ -56,12 +56,43 @@ export function createSearchController(options: {
     }
   };
 
-  const clear = () => {
-    ++searchRunId;
-    searchHits = [];
-    searchHitIndex = -1;
-    updateNav(false);
-    clearHighlights();
+  const showClosestHit = () => {
+    const readerView = options.getReaderView();
+    const [{ doc, index: currentSection } = {}] = readerView?.renderer.getContents?.() ?? [];
+    if (!readerView || !doc || currentSection == null) return showHit(0);
+
+    const view = doc.defaultView;
+    const vertical = readerView.renderer.getAttribute("flow") === "scrolled";
+    const viewportEnd = vertical ? view?.innerHeight : view?.innerWidth;
+    if (!view || !viewportEnd) return showHit(0);
+
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+    for (const [index, hit] of searchHits.entries()) {
+      const resolved = readerView.resolveNavigation?.(hit.cfi);
+      if (!resolved) continue;
+
+      let distance = Math.abs(resolved.index - currentSection) * 1_000_000;
+      if (resolved.index === currentSection && resolved.anchor) {
+        const anchor = resolved.anchor(doc);
+        const rects = anchor instanceof view.Range
+          ? anchor.getClientRects()
+          : anchor instanceof view.Element
+            ? [anchor.getBoundingClientRect()]
+            : [];
+        distance = Math.min(...Array.from(rects ?? [], (rect) => {
+          const start = vertical ? rect.top : rect.left;
+          const end = vertical ? rect.bottom : rect.right;
+          return end < 0 ? -end : start > viewportEnd ? start - viewportEnd : 0;
+        }));
+      }
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    }
+    return showHit(closestIndex);
   };
 
   const collectHighlights = async (query: string) => {
@@ -69,13 +100,11 @@ export function createSearchController(options: {
     if (!bookKey) return;
 
     const searchOptions = getSearchOptions(query);
-    clearHighlights();
-    searchHits = [];
-    searchHitIndex = -1;
-    updateNav(true);
+    const runId = resetResults(true);
 
     const normalizedQuery = normalizeForHighlightSearch(searchOptions.query);
     const highlights = await getSavedHighlights(bookKey);
+    if (runId !== searchRunId) return;
 
     searchHits = highlights
       .filter((highlight) => {
@@ -88,11 +117,10 @@ export function createSearchController(options: {
         excerpt: highlight.text,
       }));
 
-    updateNav();
     if (searchHits.length) {
-      await showHit(0);
+      await showClosestHit();
     } else {
-      emitUpdate({
+      emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
         hitCount: 0,
         hitIndex: -1,
         placeholder: searchOptions.query ? `No highlights for: ${searchOptions.query}` : "No highlights saved",
@@ -111,14 +139,9 @@ export function createSearchController(options: {
     if (!readerView?.search) return;
 
     const searchOptions = getSearchOptions(query);
-    clearHighlights();
-    searchHits = [];
-    searchHitIndex = -1;
-    updateNav(true);
+    const runId = resetResults(true);
 
     if (!searchOptions.query) return;
-
-    const runId = ++searchRunId;
 
     try {
       searchBook:
@@ -142,11 +165,10 @@ export function createSearchController(options: {
       }
 
       if (runId !== searchRunId) return;
-      updateNav();
       if (searchHits.length) {
-        await showHit(0);
+        await showClosestHit();
       } else {
-        emitUpdate({
+        emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
           hitCount: 0,
           hitIndex: -1,
           placeholder: `No results for: ${searchOptions.query}`,
@@ -160,10 +182,12 @@ export function createSearchController(options: {
     }
   };
 
-  const showPrevious = () => showHit(searchHitIndex - 1);
-  const showNext = () => showHit(searchHitIndex + 1);
-
-  return { clear, collect, showNext, showPrevious };
+  return {
+    clear: () => { resetResults(false); },
+    collect,
+    showNext: () => showHit(searchHitIndex + 1),
+    showPrevious: () => showHit(searchHitIndex - 1),
+  };
 }
 
 function getSearchOptions(query: string) {

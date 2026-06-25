@@ -371,8 +371,6 @@ ${READER_MUTED_COLOR_CSS}
       opacity: 0.94 !important;
     }
     blockquote {
-      font-size: var(--reader-list-font-size) !important;
-      line-height: var(--reader-line-height) !important;
       margin-inline: 1.25em !important;
       padding-inline-start: 1em !important;
       border-inline-start: 0.18em solid var(--reader-border-color) !important;
@@ -412,8 +410,8 @@ ${READER_SMALL_TEXT_CSS}
       border-radius: 0 !important;
       background: transparent !important;
 ${READER_MUTED_COLOR_CSS}
-${READER_SMALL_TEXT_CSS}
       font-size: var(--reader-footnote-font-size) !important;
+      line-height: var(--reader-small-line-height) !important;
       text-align: start !important;
     }
     ${READER_FOOTNOTE_SELECTOR}::before {
@@ -467,8 +465,6 @@ ${READER_MUTED_COLOR_CSS}
       width: 80% !important;
       max-inline-size: 80% !important;
       max-width: 80% !important;
-      block-size: auto !important;
-      height: auto !important;
       border-radius: 0.5rem !important;
       cursor: zoom-in !important;
     }
@@ -541,10 +537,6 @@ ${READER_AUTO_BREAK_CSS}
     ${READER_TABLE_SELECTOR} :is(th, td) > :last-child {
       margin-block-end: 0 !important;
     }
-    ${READER_TABLE_SELECTOR} ${READER_MEDIA_SELECTOR} {
-      max-inline-size: 100% !important;
-      max-width: 100% !important;
-    }
     :is(figure, table) :is(figcaption, caption),
     ${READER_FIGURE_CAPTION_SELECTOR} {
       display: block !important;
@@ -603,7 +595,6 @@ ${READER_AUTO_BREAK_CSS}
     .hljs {
       display: block !important;
       overflow-x: visible !important;
-      padding: 0.9em 1em !important;
       -webkit-text-fill-color: currentColor !important;
     }
     .hljs * {

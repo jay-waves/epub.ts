@@ -1,4 +1,4 @@
-import { RefObject, useLayoutEffect, useMemo, useState } from "react";
+import { RefObject, useLayoutEffect, useState } from "react";
 
 type FloatingPoint = {
   x: number;
@@ -50,22 +50,17 @@ export function useFloatingPosition(
     };
   }, [open, ref]);
 
-  return useMemo(() => {
-    const width = size.width || fallbackWidth;
-    const height = size.height || fallbackHeight;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const maxLeft = Math.max(gutter, viewportWidth - width - gutter);
-    const maxTop = Math.max(gutter, viewportHeight - height - gutter);
-    const preferredBelowTop = point.y + gap;
-    const preferredAboveTop = point.y - height - gap;
-    const top = preferredBelowTop + height > viewportHeight - gutter && preferredAboveTop >= gutter
-      ? preferredAboveTop
-      : Math.min(Math.max(preferredBelowTop, gutter), maxTop);
+  const width = size.width || fallbackWidth;
+  const height = size.height || fallbackHeight;
+  const maxLeft = Math.max(gutter, window.innerWidth - width - gutter);
+  const maxTop = Math.max(gutter, window.innerHeight - height - gutter);
+  const preferredBelowTop = point.y + gap;
+  const preferredAboveTop = point.y - height - gap;
 
-    return {
-      left: Math.min(Math.max(point.x, gutter), maxLeft),
-      top,
-    };
-  }, [fallbackHeight, fallbackWidth, gap, gutter, point.x, point.y, size.height, size.width]);
+  return {
+    left: Math.min(Math.max(point.x, gutter), maxLeft),
+    top: preferredBelowTop + height > window.innerHeight - gutter && preferredAboveTop >= gutter
+      ? preferredAboveTop
+      : Math.min(Math.max(preferredBelowTop, gutter), maxTop),
+  };
 }

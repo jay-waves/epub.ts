@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { SearchUpdateDetail } from "../viewer-events";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Tooltip } from "./ui/tooltip";
+import { Button, Input, Tooltip } from "./ui";
 import { ChevronLeft, ChevronRight, X, Highlighter } from "lucide-react"
 
 export function SearchBar() {
@@ -50,8 +48,6 @@ export function SearchBar() {
         <Button
           aria-label="Previous result"
           disabled={!canNavigate}
-          variant="ghost"
-          size="icon"
           onClick={() => emitViewerEvent(VIEWER_EVENTS.searchPrevious)}
         >
           <ChevronLeft size={20} aria-hidden="true" />
@@ -64,8 +60,6 @@ export function SearchBar() {
         <Button
           aria-label="Next result"
           disabled={!canNavigate}
-          variant="ghost"
-          size="icon"
           onClick={() => emitViewerEvent(VIEWER_EVENTS.searchNext)}
         >
           <ChevronRight size={20} aria-hidden="true"/>
@@ -93,8 +87,6 @@ export function SearchBar() {
           aria-label="Search highlights only"
           aria-pressed={highlightedOnly}
           className={highlightedOnly ? "search-mode-active" : undefined}
-          variant="ghost"
-          size="icon"
           onClick={toggleHighlightedOnly}
         >
           <Highlighter size={20} aria-hidden="true"/>
@@ -103,8 +95,6 @@ export function SearchBar() {
       <Tooltip label="Close search" side="bottom">
         <Button
           aria-label="Close search"
-          variant="ghost"
-          size="icon"
           onClick={clearSearch}
         >
           <X size={20} aria-hidden="true"/>

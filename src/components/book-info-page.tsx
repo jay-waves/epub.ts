@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { BookInfoUpdateDetail } from "../viewer-events";
-import { Dialog } from "./ui/dialog";
+import { Dialog } from "./ui";
 
 const emptyBookInfo: BookInfoUpdateDetail = {
   metadataRows: [],
@@ -34,12 +34,6 @@ export function BookInfoPage() {
       id="book-info-modal"
       className="toc-modal-box book-info-modal-box"
       ref={dialogRef}
-      onClick={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
-          event.currentTarget.close();
-        }
-      }}
     >
       <div className="book-info-root">
         {hasDetails ? (

@@ -134,6 +134,7 @@ export function createHighlightController(options: {
   const contextTargets = new WeakSet<EventTarget>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
+  let translationRunId = 0;
 
   listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
     activeContext = null;
@@ -145,6 +146,10 @@ export function createHighlightController(options: {
 
   listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
     void deleteAnnotationNote(detail.value);
+  });
+
+  listenViewerEvent(VIEWER_EVENTS.translationClose, () => {
+    ++translationRunId;
   });
 
   const getContents = () => options.getReaderView()?.renderer?.getContents?.() ?? [];
@@ -179,8 +184,9 @@ export function createHighlightController(options: {
     if (!readerView) return null;
 
     const selection = getSelectedReaderRange();
-    const value = selection && readerView.getCFI?.(selection.index, selection.range);
-    if (!selection || !value) return null;
+    if (!selection) return null;
+    const value = readerView.getCFI?.(selection.index, selection.range);
+    if (!value) return null;
     return { ...selection, value };
   };
 
@@ -214,8 +220,6 @@ export function createHighlightController(options: {
     pageY: number;
     selection?: NonNullable<HighlightContext>["selection"];
   }) => {
-    activeContext = { highlight, point: { x: pageX, y: pageY }, selection };
-
     const hasSelection = Boolean(selection);
     const hasHighlight = Boolean(highlight);
     if (!hasSelection && !hasHighlight) {
@@ -223,6 +227,7 @@ export function createHighlightController(options: {
       return;
     }
 
+    activeContext = { highlight, point: { x: pageX, y: pageY }, selection };
     emitViewerEvent(VIEWER_EVENTS.highlightContextOpen, {
       canCopy: hasSelection || hasHighlight,
       canDelete: hasHighlight,
@@ -240,19 +245,11 @@ export function createHighlightController(options: {
     !highlight.color || legacyAnnotationColors.has(highlight.color) ? defaultHighlightColor : highlight.color;
 
   const removeAnnotationBadges = (value: string) => {
-    for (const { doc } of getContents()) {
-      if (!doc) continue;
-      const badges = Array.from(doc.querySelectorAll(annotationBadgeSelector))
-        .filter((item) => item.getAttribute("data-reader-annotation-badge") === value);
-      for (const badge of badges) {
-        badge.remove();
-      }
-    }
-    for (const { overlayer } of getContents()) {
-      const badges = Array.from(overlayer?.element?.querySelectorAll(annotationBadgeSelector) ?? [])
-        .filter((item) => item.getAttribute("data-reader-annotation-badge") === value);
-      for (const badge of badges) {
-        badge.remove();
+    for (const { doc, overlayer } of getContents()) {
+      for (const root of [doc, overlayer?.element]) {
+        root?.querySelectorAll(annotationBadgeSelector).forEach((badge) => {
+          if (badge.getAttribute("data-reader-annotation-badge") === value) badge.remove();
+        });
       }
     }
   };
@@ -377,12 +374,14 @@ export function createHighlightController(options: {
   };
 
   const restore = async (view: FoliateViewElement, bookKey: string) => {
-    currentHighlights = await getSavedHighlights(bookKey);
+    const savedHighlights = await getSavedHighlights(bookKey);
+    if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
+
     let shouldPersist = false;
     const sectionFractions = view.getSectionFractions?.() ?? [];
 
-    currentHighlights = await Promise.all(
-      currentHighlights.map(async (annotation) => {
+    const restoredHighlights = await Promise.all(
+      savedHighlights.map(async (annotation) => {
         const restored = await view.addAnnotation?.(annotation);
         if (typeof annotation.fraction === "number") return annotation;
 
@@ -394,7 +393,10 @@ export function createHighlightController(options: {
         return { ...annotation, index, fraction };
       }),
     );
-    if (shouldPersist) await setSavedHighlights(bookKey, currentHighlights);
+    if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
+
+    currentHighlights = restoredHighlights;
+    if (shouldPersist) await setSavedHighlights(bookKey, restoredHighlights);
     bindContextTargets();
   };
 
@@ -443,6 +445,7 @@ export function createHighlightController(options: {
     const text = getContextText();
     if (!text) return;
 
+    const runId = ++translationRunId;
     const targetLanguage = "zh";
     const point = activeContext?.point ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     const baseDetail = {
@@ -467,6 +470,7 @@ export function createHighlightController(options: {
       }
 
       const sourceLanguage = await detectLanguage(text);
+      if (runId !== translationRunId) return;
       if (sourceLanguage === targetLanguage || sourceLanguage.toLowerCase().startsWith("zh")) {
         emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
           ...baseDetail,
@@ -482,6 +486,7 @@ export function createHighlightController(options: {
         sourceLanguage,
         targetLanguage,
       });
+      if (runId !== translationRunId) return;
       if (availability === "unavailable") {
         throw new Error(`Chrome cannot translate from ${sourceLanguage} to Chinese on this device.`);
       }
@@ -491,6 +496,7 @@ export function createHighlightController(options: {
         targetLanguage,
         monitor(monitor) {
           monitor.addEventListener("downloadprogress", (event) => {
+            if (runId !== translationRunId) return;
             emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
               ...baseDetail,
               message: "Downloading Chrome translation model...",
@@ -501,8 +507,10 @@ export function createHighlightController(options: {
         },
       });
       await translator.ready;
+      if (runId !== translationRunId) return;
 
       const translatedText = await translator.translate(text);
+      if (runId !== translationRunId) return;
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
         sourceLanguage,
@@ -510,6 +518,7 @@ export function createHighlightController(options: {
         translatedText,
       });
     } catch (error) {
+      if (runId !== translationRunId) return;
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
         message: error instanceof Error ? error.message : "Translation failed.",

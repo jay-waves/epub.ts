@@ -50,7 +50,6 @@ import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
-import { runtime } from "./viewer-runtime";
 import { state } from "./viewer-state";
 import {
   getSavedPosition,
@@ -61,9 +60,41 @@ import {
   saveReaderSettings,
   saveReadingPosition,
 } from "./viewer-storage";
-import type { BookSection, FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail } from "./viewer-types";
+import type { BookSection, FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail, TocItem } from "./viewer-types";
 import type { BookInfoUpdateDetail, DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
 import "./viewer.css";
+
+const runtime: {
+  extraUiReady: boolean;
+  foliateScrollbarPatchReady: boolean;
+  foliateViewReady: Promise<unknown> | null;
+  highlightController: ReturnType<typeof createHighlightController> | null;
+  isSearchOpen: boolean;
+  keybindings: ReturnType<typeof setupViewerKeybindings> | null;
+  postLoadTaskToken: number;
+  readerFontsReady: Promise<void> | null;
+  readerDocumentCache: ReturnType<typeof createReaderDocumentCache> | null;
+  readerView: FoliateViewElement | null;
+  readingProgressController: ReturnType<typeof createReadingProgressController> | null;
+  searchController: ReturnType<typeof createSearchController> | null;
+  tocItems: TocItem[];
+  tocSectionHrefs: string[];
+} = {
+  extraUiReady: false,
+  foliateScrollbarPatchReady: false,
+  foliateViewReady: null,
+  highlightController: null,
+  isSearchOpen: false,
+  keybindings: null,
+  postLoadTaskToken: 0,
+  readerFontsReady: null,
+  readerDocumentCache: null,
+  readerView: null,
+  readingProgressController: null,
+  searchController: null,
+  tocItems: [],
+  tocSectionHrefs: [],
+};
 
 const appRoot = document.querySelector("#app");
 if (!appRoot) throw new Error("Missing required element: #app");
@@ -318,13 +349,6 @@ function ensureFoliateView() {
   return runtime.foliateViewReady;
 }
 
-function updatePageStatus(detail: RelocateDetail) {
-  runtime.readingProgressController?.handleRelocate({
-    ...detail,
-    index: resolveRelocateSectionIndex(detail),
-  });
-}
-
 function getCurrentScrolledSectionAnchor() {
   if (state.flow !== "scrolled") return null;
 
@@ -403,10 +427,6 @@ const highlightContextBindTask = createDebouncedTask((view: FoliateViewElement) 
   }, 250);
 }, 120);
 
-function queueHighlightContextBind(view: FoliateViewElement) {
-  highlightContextBindTask.schedule(view);
-}
-
 function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", (event) => {
     const { doc, index } = (event as CustomEvent<{ doc?: Document; index?: number }>).detail;
@@ -432,10 +452,13 @@ function wireReaderEvents(view: FoliateViewElement) {
       state.currentHref = currentHref;
       emitTocUpdate();
     }
-    updatePageStatus(detail);
+    runtime.readingProgressController?.handleRelocate({
+      ...detail,
+      index: sectionIndex,
+    });
     runtime.readerDocumentCache?.prepareAround(sectionIndex);
     queuePositionSave(detail);
-    queueHighlightContextBind(view);
+    highlightContextBindTask.schedule(view);
     const previousSectionIndex = currentScrollSectionIndex;
     currentScrollSectionIndex = typeof sectionIndex === "number" ? sectionIndex : null;
     if (sectionIndex !== previousSectionIndex) restoreScrolledSectionProgress(sectionIndex);
@@ -495,10 +518,6 @@ function deriveDownloadFilename(sourceUrl: string) {
   }
 }
 
-async function hydrateSavedFileHandle(bookKey: string) {
-  currentSaveHandle = await getStoredFileHandle(bookKey) ?? null;
-}
-
 async function getWritableSaveHandle(bookKey: string, sourceUrl: string) {
   if (currentSaveHandle && await verifyWritePermission(currentSaveHandle)) return currentSaveHandle;
 
@@ -538,13 +557,15 @@ async function saveAnnotatedBook() {
     const fileHandle = await getWritableSaveHandle(bookKey, sourceUrl);
     const highlights = await getSavedHighlights(bookKey);
     const blob = await createAnnotatedEpub(sourceBlob, highlights);
-    await writeBlobToFile(fileHandle, blob);
+    try {
+      await writeBlobToFile(fileHandle, blob);
+    } catch (error) {
+      await clearFileHandle(bookKey);
+      if (currentSaveHandle === fileHandle) currentSaveHandle = null;
+      throw error;
+    }
   } catch (error) {
     if ((error as DOMException).name === "AbortError") return;
-    if (currentSaveHandle) {
-      await clearFileHandle(bookKey);
-      currentSaveHandle = null;
-    }
     console.warn("Failed to save annotated EPUB.", error);
   }
 }
@@ -555,18 +576,14 @@ function clearSearchState() {
   emitDockUpdate();
 }
 
-function getCurrentReaderSettings(): ReaderSettings {
-  return {
+function saveCurrentReaderSettings() {
+  if (!state.currentBookKey) return;
+  void saveReaderSettings(state.currentBookKey, {
     flow: state.flow,
     fontSize: state.readerFontSize,
     layoutLevel: state.readerLayoutLevel,
     theme: state.readerTheme,
-  };
-}
-
-function saveCurrentReaderSettings() {
-  if (!state.currentBookKey) return;
-  void saveReaderSettings(state.currentBookKey, getCurrentReaderSettings());
+  });
 }
 
 function openSearch() {
@@ -586,10 +603,12 @@ function toggleSearch() {
 }
 
 function resetTransientBookState() {
+  ++runtime.postLoadTaskToken;
   savePositionTask.cancel();
   highlightContextBindTask.cancel();
   clearSearchState();
   runtime.readerDocumentCache?.reset();
+  state.currentHref = "";
   runtime.tocItems = [];
   runtime.tocSectionHrefs = [];
   currentScrollSectionIndex = null;
@@ -598,6 +617,7 @@ function resetTransientBookState() {
   emitTocUpdate();
   emitBookInfoUpdate();
   runtime.highlightController?.reset();
+  runtime.readingProgressController?.setProgress(0);
   runtime.readingProgressController?.setHistoryProgress(null);
 }
 
@@ -605,11 +625,10 @@ function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
   const nextSettings = { ...defaultReaderSettings, ...settings };
   const layoutLevel = resolveReaderLayoutLevel(settings);
 
-  applyReaderFlow(nextSettings.flow, runtime.readerView, readerRoot);
-  applyReaderLayoutLevel(layoutLevel, runtime.readerView, readerRoot);
-  applyReaderFontSize(nextSettings.fontSize, runtime.readerView);
   applyReaderTheme(nextSettings.theme);
-  runtime.readerView?.renderer?.setStyles?.(getBookStyles());
+  applyReaderFlow(nextSettings.flow, null, readerRoot);
+  applyReaderFontSize(nextSettings.fontSize);
+  applyReaderLayoutLevel(layoutLevel, runtime.readerView, readerRoot);
   emitDockUpdate();
 }
 
@@ -758,7 +777,6 @@ async function openBook(input: File | string, sourceLabel: string) {
     state.currentBookKey = legacyBookKey;
     state.currentSourceUrl = fileUrl ?? "";
     currentSaveHandle = undefined;
-    emitDockUpdate();
     resetTransientBookState();
     setReaderRenderPending(true);
     if (runtime.readerView.book) runtime.readerView.close();
@@ -771,9 +789,14 @@ async function openBook(input: File | string, sourceLabel: string) {
     });
     runtime.readerDocumentCache.setBook(runtime.readerView.book ?? null);
     state.currentBookKey = await deriveBookKey(runtime.readerView.book, legacyBookKey);
-    void hydrateSavedFileHandle(state.currentBookKey).catch((error) => {
-      console.warn("Failed to restore saved EPUB file handle.", error);
-    });
+    const bookKey = state.currentBookKey;
+    void getStoredFileHandle(bookKey)
+      .then((handle) => {
+        if (state.currentBookKey === bookKey) currentSaveHandle = handle ?? null;
+      })
+      .catch((error) => {
+        console.warn("Failed to restore saved EPUB file handle.", error);
+      });
     await reconcileBookStorage(state.currentBookKey, [legacyBookKey]);
     applyReaderSettings(
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
@@ -962,46 +985,27 @@ async function handleDockAction(action: DockAction) {
     return;
   }
 
-  if (action === "decrease-font") {
-    if (!canChangeReaderFontSize(-READER_FONT_SIZE_STEP)) return;
+  if (action === "decrease-font" || action === "increase-font") {
+    const delta = action === "decrease-font" ? -READER_FONT_SIZE_STEP : READER_FONT_SIZE_STEP;
+    if (!canChangeReaderFontSize(delta)) return;
     let changed = false;
     await runReaderStyleChange(() => {
-      changed = changeReaderFontSize(-READER_FONT_SIZE_STEP, runtime.readerView);
+      changed = changeReaderFontSize(delta, runtime.readerView);
     });
     if (changed) saveCurrentReaderSettings();
     return;
   }
 
-  if (action === "increase-font") {
-    if (!canChangeReaderFontSize(READER_FONT_SIZE_STEP)) return;
+  if (action === "decrease-width" || action === "increase-width") {
+    const delta = action === "decrease-width" ? -READER_LAYOUT_LEVEL_STEP : READER_LAYOUT_LEVEL_STEP;
+    if (!canChangeReaderLayoutLevel(delta)) return;
     let changed = false;
     await runReaderStyleChange(() => {
-      changed = changeReaderFontSize(READER_FONT_SIZE_STEP, runtime.readerView);
+      changed = changeReaderLayoutLevel(delta, runtime.readerView, readerRoot);
     });
     if (changed) saveCurrentReaderSettings();
     return;
   }
-
-  if (action === "decrease-width") {
-    if (!canChangeReaderLayoutLevel(-READER_LAYOUT_LEVEL_STEP)) return;
-    let changed = false;
-    await runReaderStyleChange(() => {
-      changed = changeReaderLayoutLevel(-READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
-    });
-    if (changed) saveCurrentReaderSettings();
-    return;
-  }
-
-  if (action === "increase-width") {
-    if (!canChangeReaderLayoutLevel(READER_LAYOUT_LEVEL_STEP)) return;
-    let changed = false;
-    await runReaderStyleChange(() => {
-      changed = changeReaderLayoutLevel(READER_LAYOUT_LEVEL_STEP, runtime.readerView, readerRoot);
-    });
-    if (changed) saveCurrentReaderSettings();
-    return;
-  }
-
 }
 
 function setupExtraUi() {
@@ -1058,10 +1062,8 @@ async function importEmbeddedHighlights(bookKey: string, sourceUrl: string, task
 
 async function bootstrap() {
   applyReaderSettings(undefined);
-  emitDockUpdate();
   setupCriticalInteractions();
   runtime.readingProgressController?.bind();
-  emitDockUpdate();
 
   const src = readSourceFromQuery();
   if (src) {

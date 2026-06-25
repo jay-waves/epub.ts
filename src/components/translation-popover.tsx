@@ -12,7 +12,6 @@ type TranslationState = TranslationDetail & {
 
 type AnnotationState = AnnotationDetail & {
   copied: boolean;
-  dirty: boolean;
   mode: "annotation";
   open: boolean;
 };
@@ -66,7 +65,8 @@ export function TranslationPopover() {
       }));
     };
     const openAnnotation = (detail: AnnotationDetail) => {
-      setState({ ...detail, copied: false, dirty: false, mode: "annotation", open: true });
+      deletingAnnotationRef.current = false;
+      setState({ ...detail, copied: false, mode: "annotation", open: true });
     };
     const commitAnnotation = () => {
       if (deletingAnnotationRef.current) return;
@@ -192,7 +192,7 @@ export function TranslationPopover() {
               className="reader-translation-result reader-annotation-input"
               onChange={(event) => {
                 const note = event.target.value;
-                setState((current) => current.mode === "annotation" ? { ...current, copied: false, dirty: true, note } : current);
+                setState((current) => current.mode === "annotation" ? { ...current, copied: false, note } : current);
               }}
               placeholder="Write annotation..."
               ref={annotationInputRef}

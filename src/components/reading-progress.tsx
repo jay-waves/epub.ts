@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui/slider";
+import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui";
 
 export type ReadingProgressElements = {
   currentMarker: HTMLSpanElement;

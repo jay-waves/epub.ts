@@ -40,7 +40,7 @@ export async function prepareReaderContentDocument(doc: Document, options: {
   if (!options.isCurrent()) return;
 
   labelFootnotes(doc);
-  await beautifyImages(doc);
+  beautifyImages(doc);
   await beautifyCodeBlocks(doc);
   addCjkHalfWidthSpacing(doc);
 }
@@ -158,7 +158,7 @@ async function beautifyCodeBlocks(doc: Document) {
   }
 }
 
-async function beautifyImages(doc: Document) {
+function beautifyImages(doc: Document) {
   if (imagesEnhancedDocs.has(doc)) return;
   imagesEnhancedDocs.add(doc);
 

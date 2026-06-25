@@ -7,8 +7,9 @@ import type {
   RelocateDetail,
 } from "./viewer-types";
 
-export const HISTORY_STORAGE_KEY = "reading-history";
-export const HIGHLIGHTS_STORAGE_KEY = "reading-highlights";
+const HISTORY_STORAGE_KEY = "reading-history";
+const HIGHLIGHTS_STORAGE_KEY = "reading-highlights";
+let positionWrite = Promise.resolve();
 
 function getBookPositionKey(bookKey: string) {
   return `reading-position:${bookKey}`;
@@ -18,25 +19,17 @@ function getBookHighlightsKey(bookKey: string) {
   return `reading-highlights:${bookKey}`;
 }
 
-export async function getStorage<T>(key: string, fallback: T) {
+async function getStorage<T>(key: string, fallback: T) {
   const items = await chrome.storage.local.get(key);
   return (items[key] as T | undefined) ?? fallback;
 }
 
-export async function setStorage<T>(key: string, value: T) {
+async function setStorage<T>(key: string, value: T) {
   await chrome.storage.local.set({ [key]: value });
 }
 
-export async function removeStorage(key: string) {
+async function removeStorage(key: string) {
   await chrome.storage.local.remove(key);
-}
-
-async function getLegacyReadingHistory() {
-  return getStorage<ReadingHistory>(HISTORY_STORAGE_KEY, {});
-}
-
-async function getLegacyHighlights() {
-  return getStorage<ReaderHighlights>(HIGHLIGHTS_STORAGE_KEY, {});
 }
 
 async function getBookPositionRecord(bookKey: string) {
@@ -45,7 +38,7 @@ async function getBookPositionRecord(bookKey: string) {
   const record = await getStorage<ReadingPosition | null>(getBookPositionKey(bookKey), null);
   if (record) return record;
 
-  const legacyHistory = await getLegacyReadingHistory();
+  const legacyHistory = await getStorage<ReadingHistory>(HISTORY_STORAGE_KEY, {});
   return legacyHistory[bookKey] ?? null;
 }
 
@@ -55,8 +48,27 @@ async function getBookHighlightsRecord(bookKey: string) {
   const highlights = await getStorage<ReaderHighlight[] | null>(getBookHighlightsKey(bookKey), null);
   if (highlights) return highlights;
 
-  const legacyHighlights = await getLegacyHighlights();
+  const legacyHighlights = await getStorage<ReaderHighlights>(HIGHLIGHTS_STORAGE_KEY, {});
   return legacyHighlights[bookKey] ?? [];
+}
+
+function updateBookPosition(
+  bookKey: string,
+  update: (previous: ReadingPosition | null) => ReadingPosition,
+) {
+  const write = positionWrite.then(async () => {
+    await setStorage(getBookPositionKey(bookKey), update(await getBookPositionRecord(bookKey)));
+  });
+  positionWrite = write.catch(() => {});
+  return write;
+}
+
+function mergeHighlights(...groups: ReaderHighlight[][]) {
+  const highlights = new Map<string, ReaderHighlight>();
+  for (const highlight of groups.flat()) {
+    if (!highlights.has(highlight.value)) highlights.set(highlight.value, highlight);
+  }
+  return [...highlights.values()].sort((left, right) => left.createdAt - right.createdAt);
 }
 
 export async function getSavedPosition(bookKey: string) {
@@ -71,27 +83,23 @@ export async function getSavedReaderSettings(bookKey: string) {
 export async function saveReadingPosition(bookKey: string, detail: RelocateDetail) {
   if (!bookKey || (!detail.cfi && typeof detail.fraction !== "number")) return;
 
-  const previous = await getBookPositionRecord(bookKey);
-  const next: ReadingPosition = {
+  await updateBookPosition(bookKey, (previous) => ({
     cfi: detail.cfi,
     fraction: detail.fraction,
     settings: previous?.settings,
     updatedAt: Date.now(),
-  };
-  await setStorage(getBookPositionKey(bookKey), next);
+  }));
 }
 
 export async function saveReaderSettings(bookKey: string, settings: ReaderSettings) {
   if (!bookKey) return;
 
-  const previous = await getBookPositionRecord(bookKey);
-  const next: ReadingPosition = {
+  await updateBookPosition(bookKey, (previous) => ({
     cfi: previous?.cfi,
     fraction: previous?.fraction,
     settings,
     updatedAt: Date.now(),
-  };
-  await setStorage(getBookPositionKey(bookKey), next);
+  }));
 }
 
 export async function getSavedHighlights(bookKey: string) {
@@ -115,17 +123,9 @@ export async function setSavedHighlights(bookKey: string, bookHighlights: Reader
 export async function mergeSavedHighlights(bookKey: string, highlights: ReaderHighlight[]) {
   if (!bookKey || highlights.length === 0) return;
 
-  const mergedHighlights = new Map<string, ReaderHighlight>();
-  for (const highlight of await getBookHighlightsRecord(bookKey)) {
-    mergedHighlights.set(highlight.value, highlight);
-  }
-  for (const highlight of highlights) {
-    if (!mergedHighlights.has(highlight.value)) mergedHighlights.set(highlight.value, highlight);
-  }
-
   await setSavedHighlights(
     bookKey,
-    Array.from(mergedHighlights.values()).sort((left, right) => left.createdAt - right.createdAt),
+    mergeHighlights(await getBookHighlightsRecord(bookKey), highlights),
   );
 }
 
@@ -135,11 +135,10 @@ export async function reconcileBookStorage(primaryKey: string, aliasKeys: string
   const fallbackKeys = aliasKeys.filter((key) => key && key !== primaryKey);
   if (!fallbackKeys.length) return;
 
-  const positionEntries = await Promise.all(
-    [primaryKey, ...fallbackKeys].map(async (key) => ({ key, value: await getBookPositionRecord(key) })),
+  const positions = await Promise.all(
+    [primaryKey, ...fallbackKeys].map(getBookPositionRecord),
   );
-  const latestPosition = positionEntries
-    .map(({ value }) => value)
+  const latestPosition = positions
     .filter((entry): entry is ReadingPosition => Boolean(entry))
     .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))[0];
 
@@ -148,20 +147,11 @@ export async function reconcileBookStorage(primaryKey: string, aliasKeys: string
   }
 
   const highlightEntries = await Promise.all(
-    [primaryKey, ...fallbackKeys].map(async (key) => await getBookHighlightsRecord(key)),
+    [primaryKey, ...fallbackKeys].map(getBookHighlightsRecord),
   );
 
-  const mergedHighlights = new Map<string, ReaderHighlight>();
-  for (const bookHighlights of highlightEntries) {
-    for (const highlight of bookHighlights) {
-      if (!mergedHighlights.has(highlight.value)) mergedHighlights.set(highlight.value, highlight);
-    }
-  }
-
-  if (mergedHighlights.size > 0) {
-    const merged = Array.from(mergedHighlights.values()).sort((left, right) => left.createdAt - right.createdAt);
-    await setStorage(getBookHighlightsKey(primaryKey), merged);
-  }
+  const highlights = mergeHighlights(...highlightEntries);
+  if (highlights.length) await setStorage(getBookHighlightsKey(primaryKey), highlights);
 
   await Promise.all([
     ...fallbackKeys.map((key) => removeStorage(getBookPositionKey(key))),

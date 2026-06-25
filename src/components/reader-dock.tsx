@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { DockAction, DockUpdateDetail } from "../viewer-events";
-import { Button } from "./ui/button";
-import { Tooltip } from "./ui/tooltip";
+import { Button, Tooltip } from "./ui";
 
 import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, Info, ListTree } from "lucide-react";
 
@@ -51,12 +50,9 @@ export function ReaderDock() {
             <Tooltip key={item.id} label={label} side="right">
               <Button
                 id={item.id}
-                aria-disabled={disabled ? "true" : undefined}
                 aria-label={label}
                 className={active ? "dock-active" : undefined}
                 disabled={disabled}
-                variant="ghost"
-                size="icon"
                 onClick={() => emitViewerEvent(VIEWER_EVENTS.dockAction, item.action)}
               >
                 <span className="dock-button-content">

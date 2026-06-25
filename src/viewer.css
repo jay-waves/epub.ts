@@ -2,15 +2,9 @@
 
 @layer base {
   :root {
-    --background: 40 33% 98%;
-    --foreground: 213 24% 16%;
     --muted-foreground: 215 16% 47%;
     --popover: 40 33% 98%;
     --popover-foreground: 213 24% 16%;
-    --primary: 198 93% 39%;
-    --primary-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --ring: 198 93% 48%;
     --radius: 0.5rem;
     --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, transparent);
     --reader-glass-border: rgb(255 255 255 / 45%);
@@ -132,37 +126,20 @@
   }
 
   .ui-button {
-    @apply inline-flex shrink-0 items-center justify-center rounded-md text-sm font-medium outline-none transition-colors duration-150;
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-sm font-medium text-current outline-none transition-colors duration-150;
   }
 
   .ui-button:focus-visible {
     @apply outline outline-2 outline-offset-2 outline-sky-500/45;
   }
 
-  .ui-button:disabled,
-  .ui-button[aria-disabled="true"] {
+  .ui-button:disabled {
     @apply pointer-events-none opacity-40;
   }
 
-  .ui-button-ghost {
-    @apply bg-transparent text-current;
-  }
-
-  .ui-button-ghost:hover {
+  .ui-button:hover {
     background-color: var(--reader-control-hover-bg);
     color: var(--reader-control-hover-fg);
-  }
-
-  .ui-button-icon {
-    @apply h-10 w-10 p-0;
-  }
-
-  .ui-input {
-    @apply flex min-w-0 rounded-md border border-transparent bg-white/72 px-3 py-1 text-sm outline-none transition-colors duration-150;
-  }
-
-  .ui-input:focus {
-    @apply bg-white/92 shadow-[0_0_0_2px_rgba(14,165,233,0.18)];
   }
 
   .reader-app {
@@ -177,7 +154,6 @@
   .reader-dock,
   .search-nav,
   .toc-modal-box,
-  .book-info-modal-box,
   .reader-context-menu,
   .reader-translation-popover {
     border-color: var(--reader-glass-border);
@@ -188,7 +164,7 @@
   }
 
   .reader-dock {
-    @apply pointer-events-auto static flex h-auto flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
+    @apply pointer-events-auto flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
     opacity: 0;
     transform: translateX(calc(-100% + 0.5rem));
     transition:
@@ -203,16 +179,12 @@
   }
 
   .reader-dock button {
-    @apply relative grid h-10 w-10 place-items-center rounded-lg transition-all duration-200;
+    @apply relative grid place-items-center rounded-lg transition-all duration-200;
     color: var(--reader-control-fg);
   }
 
   .dock-button-content {
     @apply pointer-events-none absolute inset-0 grid place-items-center;
-  }
-
-  .reader-dock svg {
-    @apply size-5;
   }
 
   .reader-dock button.dock-active {
@@ -224,7 +196,7 @@
   }
 
   .reader-stage {
-    @apply flex min-h-screen p-0;
+    @apply flex min-h-screen;
   }
 
   .reader-frame {
@@ -530,7 +502,7 @@
   }
 
   .search-nav button {
-    @apply grid h-9 min-h-9 w-9 place-items-center rounded-lg p-0 transition-colors duration-150;
+    @apply grid h-9 min-h-9 w-9 place-items-center rounded-lg;
     color: var(--reader-control-fg);
     line-height: 1;
   }
@@ -538,10 +510,6 @@
   .search-nav button.search-mode-active,
   .search-nav button.search-mode-active:hover {
     @apply bg-sky-600 text-white shadow-md;
-  }
-
-  .search-nav button:disabled {
-    @apply cursor-not-allowed opacity-40;
   }
 
   .search-nav svg {
@@ -558,7 +526,7 @@
   }
 
   .search-input {
-    @apply h-9 min-w-0 flex-1 rounded-lg border-0 px-3 text-[13px] outline-none transition-colors duration-150;
+    @apply h-9 min-w-0 flex-1 rounded-lg border-0 px-3 py-1 text-[13px] outline-none transition-colors duration-150;
     background-color: var(--reader-field-bg);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
     color: var(--reader-chrome-fg, #1f2933);
@@ -569,8 +537,6 @@
   }
 
   .search-input:focus {
-    background-color: var(--reader-field-bg);
-    color: var(--reader-chrome-fg, #1f2933);
     box-shadow:
       inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent),
       0 0 0 2px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
@@ -587,7 +553,7 @@
   }
 
   .toc-menu {
-    @apply w-max min-w-full gap-0.5 p-0;
+    @apply w-max min-w-full p-0;
     color: var(--reader-control-fg);
   }
 
@@ -637,7 +603,7 @@
   }
 
   .toc-link-label {
-    @apply flex-1 whitespace-nowrap rounded px-1 py-0.5 transition-all duration-150;
+    @apply flex-1 whitespace-nowrap px-1 py-0.5;
   }
 
   .toc-link-primary {
@@ -649,28 +615,15 @@
     color: var(--reader-control-strong-fg);
   }
 
-  #toc-modal.reader-modal {
-    width: fit-content;
-    height: fit-content;
-    max-height: calc(100vh - 2rem);
-  }
-
-  #toc-modal::backdrop {
-    background: transparent;
-  }
-
-  .book-info-modal-box {
-    @apply w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)];
-  }
-
+  #toc-modal.reader-modal,
   #book-info-modal.reader-modal {
     width: fit-content;
     height: fit-content;
     max-height: calc(100vh - 2rem);
   }
 
-  #book-info-modal::backdrop {
-    background: transparent;
+  .book-info-modal-box {
+    @apply w-[min(44rem,calc(100vw-2rem))];
   }
 
   .book-info-root {
