@@ -527,6 +527,10 @@ export function createHighlightController(options: {
     }
   };
 
+  const markUnsaved = () => {
+    emitViewerEvent(VIEWER_EVENTS.unsavedChange);
+  };
+
   const deleteHighlight = async (highlight: ReaderHighlight) => {
     const readerView = options.getReaderView();
     const bookKey = options.getBookKey();
@@ -536,6 +540,7 @@ export function createHighlightController(options: {
     removeAnnotationBadges(highlight.value);
     currentHighlights = currentHighlights.filter((item) => item.value !== highlight.value);
     await setSavedHighlights(bookKey, currentHighlights);
+    markUnsaved();
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
     close();
   };
@@ -558,6 +563,7 @@ export function createHighlightController(options: {
     removeAnnotationBadges(value);
     await readerView.addAnnotation?.(highlight);
     await setSavedHighlights(bookKey, currentHighlights);
+    markUnsaved();
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
   };
 
@@ -584,6 +590,7 @@ export function createHighlightController(options: {
     currentHighlights = currentHighlights.map((item) => (item.value === value ? annotation : item));
     await readerView.addAnnotation?.(annotation);
     await setSavedHighlights(bookKey, currentHighlights);
+    markUnsaved();
   };
 
   const highlightSelectedText = async () => {
@@ -612,6 +619,7 @@ export function createHighlightController(options: {
     currentHighlights = [...currentHighlights, annotation];
     await readerView.addAnnotation?.(annotation);
     await saveHighlight(bookKey, annotation);
+    markUnsaved();
     readerView.deselect?.();
     close();
     return annotation;
@@ -634,6 +642,7 @@ export function createHighlightController(options: {
       currentHighlights = currentHighlights.map((item) => (item.value === annotation.value ? annotation : item));
       await readerView.addAnnotation?.(annotation);
       await setSavedHighlights(bookKey, currentHighlights);
+      markUnsaved();
       openAnnotationPopover(annotation, point);
       close();
       return;
@@ -661,6 +670,7 @@ export function createHighlightController(options: {
       : [...currentHighlights, annotation];
     await readerView.addAnnotation?.(annotation);
     await setSavedHighlights(bookKey, currentHighlights);
+    markUnsaved();
     readerView.deselect?.();
     openAnnotationPopover(annotation, point);
     close();

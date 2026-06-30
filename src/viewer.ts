@@ -144,6 +144,10 @@ function queryRequired<T extends Element>(selector: string) {
   return node;
 }
 
+function setHasUnsavedChanges(dirty: boolean) {
+  document.title = dirty ? `*${document.title.replace(/^\*/, "")}` : document.title.replace(/^\*/, "");
+}
+
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
   fontSize: 18,
@@ -564,6 +568,7 @@ async function saveAnnotatedBook() {
       if (currentSaveHandle === fileHandle) currentSaveHandle = null;
       throw error;
     }
+    setHasUnsavedChanges(false);
   } catch (error) {
     if ((error as DOMException).name === "AbortError") return;
     console.warn("Failed to save annotated EPUB.", error);
@@ -806,6 +811,7 @@ async function openBook(input: File | string, sourceLabel: string) {
     const title = formatLocalized(metadata?.title) || "Untitled Book";
 
     document.title = `${title} · EPUB Viewer`;
+    setHasUnsavedChanges(false);
     emitBookInfoUpdate();
     await restoreSavedPosition(
       runtime.readerView,
@@ -918,6 +924,9 @@ function setupExtraInteractions() {
   });
   listenViewerEvent(VIEWER_EVENTS.highlightContextAction, (action) => {
     runtime.highlightController?.handleContextAction(action);
+  });
+  listenViewerEvent(VIEWER_EVENTS.unsavedChange, () => {
+    setHasUnsavedChanges(true);
   });
 
   listenViewerEvent(VIEWER_EVENTS.dockAction, (action) => {

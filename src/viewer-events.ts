@@ -9,6 +9,7 @@ export const VIEWER_EVENTS = {
   annotationDelete: "reader:annotation-delete",
   annotationOpen: "reader:annotation-open",
   annotationSave: "reader:annotation-save",
+  unsavedChange: "reader:unsaved-change",
   translationClose: "reader:translation-close",
   translationOpen: "reader:translation-open",
   translationUpdate: "reader:translation-update",
@@ -130,6 +131,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.annotationDelete]: AnnotationDeleteDetail;
   [VIEWER_EVENTS.annotationOpen]: AnnotationDetail;
   [VIEWER_EVENTS.annotationSave]: AnnotationSaveDetail;
+  [VIEWER_EVENTS.unsavedChange]: void;
   [VIEWER_EVENTS.translationClose]: void;
   [VIEWER_EVENTS.translationOpen]: TranslationDetail;
   [VIEWER_EVENTS.translationUpdate]: TranslationDetail;
