@@ -24,10 +24,8 @@ import {
 import {
   applyReaderTheme,
   getNextReaderTheme,
-  getReaderTheme,
-  getReaderThemeIndex,
 } from "./reader-themes";
-import { deriveBookKey, formatLocalized } from "./book-key";
+import { deriveBookKey } from "./book-key";
 import {
   clearFileHandle,
   createAnnotatedEpub,
@@ -136,6 +134,8 @@ let lastScrollEdgeFeedbackAt = 0;
 let currentScrollSectionIndex: number | null = null;
 let shouldRestoreScrolledSectionProgress = false;
 let currentSaveHandle: FileSystemFileHandle | null | undefined;
+let cleanDocumentTitle = document.title;
+let hasUnsavedChanges = false;
 const scrolledSectionProgress = new Map<number, number>();
 
 function queryRequired<T extends Element>(selector: string) {
@@ -145,8 +145,22 @@ function queryRequired<T extends Element>(selector: string) {
 }
 
 function setHasUnsavedChanges(dirty: boolean) {
-  document.title = dirty ? `*${document.title.replace(/^\*/, "")}` : document.title.replace(/^\*/, "");
+  hasUnsavedChanges = dirty;
+  emitDockUpdate();
 }
+
+function renderDocumentTitle() {
+  document.title = cleanDocumentTitle;
+  document.querySelector("title")?.replaceChildren(cleanDocumentTitle);
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!hasUnsavedChanges) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+window.addEventListener("beforeunload", handleBeforeUnload);
 
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
@@ -495,17 +509,14 @@ async function ensureFileSchemeAccess(fileUrl?: string) {
 }
 
 function getDockUpdateDetail(): DockUpdateDetail {
-  const theme = getReaderTheme();
-  const themeIndex = getReaderThemeIndex();
   const isPaginated = state.flow === "paginated";
 
   return {
     canSearch: Boolean(runtime.readerView?.search),
     flowActive: !isPaginated,
-    flowLabel: isPaginated ? "Switch to scrolling mode" : "Switch to paginated mode",
+    flowLabel: isPaginated ? "Switch to scrolling" : "Switch to paginated",
+    hasUnsavedChanges,
     searchActive: runtime.isSearchOpen,
-    themeActive: theme.mode === "dark",
-    themeCount: String(themeIndex + 1),
   };
 }
 
@@ -520,6 +531,10 @@ function deriveDownloadFilename(sourceUrl: string) {
   } catch {
     return "book.epub";
   }
+}
+
+function getOpenedFilename(input: File | string, sourceUrl?: string) {
+  return input instanceof File ? input.name : deriveDownloadFilename(sourceUrl ?? input);
 }
 
 async function getWritableSaveHandle(bookKey: string, sourceUrl: string) {
@@ -557,8 +572,10 @@ async function saveAnnotatedBook() {
   if (!bookKey || !sourceUrl) return;
 
   try {
-    const sourceBlob = await getEpubBlob(sourceUrl);
     const fileHandle = await getWritableSaveHandle(bookKey, sourceUrl);
+    emitViewerEvent(VIEWER_EVENTS.annotationClose);
+    await runtime.highlightController?.flushPendingAnnotationSave();
+    const sourceBlob = await getEpubBlob(sourceUrl);
     const highlights = await getSavedHighlights(bookKey);
     const blob = await createAnnotatedEpub(sourceBlob, highlights);
     try {
@@ -807,10 +824,8 @@ async function openBook(input: File | string, sourceLabel: string) {
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
     );
 
-    const metadata = runtime.readerView.book?.metadata;
-    const title = formatLocalized(metadata?.title) || "Untitled Book";
-
-    document.title = `${title} · EPUB Viewer`;
+    cleanDocumentTitle = getOpenedFilename(input, fileUrl);
+    renderDocumentTitle();
     setHasUnsavedChanges(false);
     emitBookInfoUpdate();
     await restoreSavedPosition(
@@ -971,6 +986,11 @@ async function handleDockAction(action: DockAction) {
 
   if (action === "toggle-search") {
     toggleSearch();
+    return;
+  }
+
+  if (action === "save-book") {
+    await saveAnnotatedBook();
     return;
   }
 

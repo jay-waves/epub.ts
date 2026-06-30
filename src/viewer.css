@@ -187,12 +187,8 @@
     @apply pointer-events-none absolute inset-0 grid place-items-center;
   }
 
-  .reader-dock button.dock-active {
-    @apply bg-sky-600 text-white shadow-md;
-  }
-
-  .dock-button-count {
-    @apply absolute bottom-1 right-1 min-w-4 rounded-full bg-black/8 px-1 text-[10px] font-semibold leading-4 text-current;
+  .dock-unsaved-dot {
+    @apply absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full bg-sky-600;
   }
 
   .reader-stage {

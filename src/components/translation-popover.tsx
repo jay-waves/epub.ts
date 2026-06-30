@@ -81,6 +81,7 @@ export function TranslationPopover() {
     };
     const closeTranslation = () => setState((current) => ({ ...current, open: false }));
     const requestClose = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
       const target = event.target;
       if (target instanceof Element && target.closest(".reader-translation-popover")) return;
       const current = stateRef.current;

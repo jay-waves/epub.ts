@@ -3,7 +3,7 @@ import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-eve
 import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button, Tooltip } from "./ui";
 
-import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Search, Info, ListTree } from "lucide-react";
+import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Save, Scroll, Search, Info, ListTree } from "lucide-react";
 
 const dockItems = [
   {
@@ -17,25 +17,27 @@ const dockItems = [
     id: "toggle-theme-button",
     label: "Change theme",
     icon: Palette,
-    countId: "theme-count",
   },
   { action: "decrease-font", id: "decrease-font-button", label: "Decrease font size", icon: Minus },
   { action: "increase-font", id: "increase-font-button", label: "Increase font size", icon: Plus },
-  { action: "decrease-width", id: "decrease-width-button", label: "Tighter layout", icon: Minimize2 },
-  { action: "increase-width", id: "increase-width-button", label: "Looser layout", icon: Maximize2 },
+  { action: "increase-width", id: "increase-width-button", label: "Zoom in", icon: Maximize2 },
+  { action: "decrease-width", id: "decrease-width-button", label: "Zoom out", icon: Minimize2 },
   { action: "toggle-search", id: "open-search-button", label: "Search", icon: Search },
-  { action: "open-info", id: "open-info-button", label: "Book information", icon: Info },
   { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: ListTree },
+  { action: "save-book", id: "save-book-button", label: "Save", icon: Save },
+  { action: "open-info", id: "open-info-button", label: "Book information", icon: Info },
 ] as const;
 
 export function ReaderDock() {
   const [dockState, setDockState] = useState<DockUpdateDetail>({
-    canSearch: false, flowActive: false, flowLabel: "Switch to scrolling mode", searchActive: false, themeActive: false, themeCount: "1",
+    canSearch: false, flowActive: false, flowLabel: "Switch to scrolling mode", hasUnsavedChanges: false, searchActive: false,
   });
 
   useEffect(() => {
     return listenViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);
   }, []);
+
+  if (dockState.searchActive) return null;
 
   return (
     <aside className="reader-dock-shell">
@@ -43,24 +45,20 @@ export function ReaderDock() {
         {dockItems.map((item) => {
           const label = getDockItemLabel(item.action, item.label, dockState);
           const disabled = isDockItemDisabled(item.action, dockState);
-          const active = isDockItemActive(item.action, dockState);
-          const Icon = item.icon;
+          const Icon = getDockItemIcon(item.action, item.icon, dockState);
 
           return (
             <Tooltip key={item.id} label={label} side="right">
               <Button
                 id={item.id}
                 aria-label={label}
-                className={active ? "dock-active" : undefined}
                 disabled={disabled}
                 onClick={() => emitViewerEvent(VIEWER_EVENTS.dockAction, item.action)}
               >
                 <span className="dock-button-content">
                   <Icon size={20} aria-hidden="true" />
-                  {"countId" in item ? (
-                    <span id={item.countId} className="dock-button-count">
-                      {dockState.themeCount}
-                    </span>
+                  {item.action === "save-book" && dockState.hasUnsavedChanges ? (
+                    <span className="dock-unsaved-dot" aria-hidden="true" />
                   ) : null}
                 </span>
               </Button>
@@ -74,17 +72,16 @@ export function ReaderDock() {
 
 function getDockItemLabel(action: DockAction, fallback: string, dockState: DockUpdateDetail) {
   if (action === "toggle-flow") return dockState.flowLabel;
+  if (action === "save-book" && dockState.hasUnsavedChanges) return "Save changes";
+  return fallback;
+}
+
+function getDockItemIcon(action: DockAction, fallback: typeof BookOpen, dockState: DockUpdateDetail) {
+  if (action === "toggle-flow") return dockState.flowActive ? BookOpen : Scroll;
   return fallback;
 }
 
 function isDockItemDisabled(action: DockAction, dockState: DockUpdateDetail) {
   if (action === "toggle-search") return !dockState.canSearch;
-  return false;
-}
-
-function isDockItemActive(action: DockAction, dockState: DockUpdateDetail) {
-  if (action === "toggle-flow") return dockState.flowActive;
-  if (action === "toggle-search") return dockState.searchActive;
-  if (action === "toggle-theme") return dockState.themeActive;
   return false;
 }

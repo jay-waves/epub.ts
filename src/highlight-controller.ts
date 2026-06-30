@@ -134,6 +134,7 @@ export function createHighlightController(options: {
   const contextTargets = new WeakSet<EventTarget>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
+  let pendingAnnotationSave: Promise<void> = Promise.resolve();
   let translationRunId = 0;
 
   listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
@@ -141,7 +142,9 @@ export function createHighlightController(options: {
   });
 
   listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
-    void saveAnnotationNote(detail.value, detail.note);
+    pendingAnnotationSave = saveAnnotationNote(detail.value, detail.note).catch((error) => {
+      console.warn("Failed to save annotation note.", error);
+    });
   });
 
   listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
@@ -576,6 +579,8 @@ export function createHighlightController(options: {
     if (!existing) return;
 
     const cleanNote = note.trim();
+    if (cleanNote === (existing.note?.trim() ?? "")) return;
+
     if (!cleanNote) {
       await deleteAnnotationNote(value);
       return;
@@ -716,6 +721,7 @@ export function createHighlightController(options: {
     bindContextTargets,
     close,
     drawAnnotation,
+    flushPendingAnnotationSave: () => pendingAnnotationSave,
     handleContextAction,
     openFromAnnotation,
     reset,

@@ -80,6 +80,7 @@ export type DockAction =
   | "increase-font"
   | "decrease-width"
   | "increase-width"
+  | "save-book"
   | "toggle-search"
   | "open-info"
   | "open-toc";
@@ -88,9 +89,8 @@ export type DockUpdateDetail = {
   canSearch: boolean;
   flowActive: boolean;
   flowLabel: string;
+  hasUnsavedChanges: boolean;
   searchActive: boolean;
-  themeActive: boolean;
-  themeCount: string;
 };
 
 export type SearchCollectDetail = {
