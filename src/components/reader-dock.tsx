@@ -3,7 +3,7 @@ import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-eve
 import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button, Tooltip } from "./ui";
 
-import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Save, Scroll, Search, Info, ListTree } from "lucide-react";
+import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Save, Scroll, Search, Info, TableOfContents } from "lucide-react";
 
 const dockItems = [
   {
@@ -23,7 +23,7 @@ const dockItems = [
   { action: "increase-width", id: "increase-width-button", label: "Zoom in", icon: Maximize2 },
   { action: "decrease-width", id: "decrease-width-button", label: "Zoom out", icon: Minimize2 },
   { action: "toggle-search", id: "open-search-button", label: "Search", icon: Search },
-  { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: ListTree },
+  { action: "open-toc", id: "open-toc-button", label: "Table of contents", icon: TableOfContents },
   { action: "save-book", id: "save-book-button", label: "Save", icon: Save },
   { action: "open-info", id: "open-info-button", label: "Book information", icon: Info },
 ] as const;

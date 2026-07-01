@@ -166,7 +166,7 @@
   .reader-dock {
     @apply pointer-events-auto flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
     opacity: 0;
-    transform: translateX(calc(-100% + 0.5rem));
+    transform: translateX(calc(-100% + 0.5rem)) translateY(-4vh);
     transition:
       opacity 200ms ease,
       transform 200ms ease;
@@ -175,7 +175,7 @@
   .reader-dock-shell:hover .reader-dock,
   .reader-dock-shell:focus-within .reader-dock {
     opacity: 1;
-    transform: translateX(0.75rem);
+    transform: translateX(0.75rem) translateY(-4vh);
   }
 
   .reader-dock button {
@@ -609,6 +609,7 @@
   .toc-modal-box {
     @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5;
     color: var(--reader-control-strong-fg);
+    transform: translateY(-4vh);
   }
 
   #toc-modal.reader-modal,
