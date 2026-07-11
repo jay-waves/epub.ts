@@ -4,9 +4,7 @@
 	"version": "0.2.8",
 	"type": "module",
 	"scripts": {
-		"prebuild": "node scripts/sync-manifest-version.mjs",
 		"build": "vite build",
-		"release:prepare": "pnpm build && pwsh -NoProfile -File ./scripts/package-extension.ps1",
 		"typecheck": "tsgo --noEmit"
 	},
 	"devDependencies": {
