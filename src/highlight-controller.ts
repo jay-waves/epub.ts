@@ -1,4 +1,4 @@
-import { Overlayer } from "foliate-js/overlayer.js";
+import { Overlayer } from "../foliate-js/overlayer.js";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import {
   getSavedHighlights,
@@ -6,7 +6,8 @@ import {
   setSavedHighlights,
 } from "./viewer-storage";
 import type { HighlightContextAction } from "./viewer-events";
-import type { FoliateViewElement, ReaderHighlight } from "./viewer-types";
+import type { ReaderHighlight } from "./viewer-types";
+import type { FoliateViewElement } from "../foliate-js/view.js";
 
 type ReaderContent = {
   doc?: Document;

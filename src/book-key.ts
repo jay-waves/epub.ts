@@ -1,8 +1,8 @@
 import { normalizeTocHref } from "./toc-controller";
 import { normalizeInlineText } from "./text-utils";
-import type { FoliateViewElement } from "./viewer-types";
+import type { FoliateViewElement } from "../foliate-js/view.js";
 
-export function formatLocalized(value?: string | Record<string, string>) {
+function formatLocalized(value?: string | Record<string, string>) {
   if (!value) return "";
   if (typeof value === "string") return value;
   const [firstKey] = Object.keys(value);

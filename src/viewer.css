@@ -187,10 +187,6 @@
     @apply pointer-events-none absolute inset-0 grid place-items-center;
   }
 
-  .dock-unsaved-dot {
-    @apply absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full bg-sky-600;
-  }
-
   .reader-stage {
     @apply flex min-h-screen;
   }

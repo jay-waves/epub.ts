@@ -57,9 +57,6 @@ export function ReaderDock() {
               >
                 <span className="dock-button-content">
                   <Icon size={20} aria-hidden="true" />
-                  {item.action === "save-book" && dockState.hasUnsavedChanges ? (
-                    <span className="dock-unsaved-dot" aria-hidden="true" />
-                  ) : null}
                 </span>
               </Button>
             </Tooltip>

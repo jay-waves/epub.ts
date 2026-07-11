@@ -4,7 +4,8 @@ import {
   getReaderMediaFilter,
   getReaderTheme,
 } from "./reader-themes";
-import type { FoliateViewElement, ReaderFlow, ReaderSettings } from "./viewer-types";
+import type { ReaderFlow, ReaderSettings } from "./viewer-types";
+import type { FoliateViewElement } from "../foliate-js/view.js";
 
 export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
@@ -141,19 +142,13 @@ const READER_LAYOUT_PRESETS = [
 
 const MAX_READER_LAYOUT_LEVEL = READER_LAYOUT_PRESETS.length - 1;
 const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[3];
+let cachedDynamicBookStyles: { key: string; value: string } | null = null;
 
 function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {
   return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
 }
 
-export function getBookStyles(themeId = state.readerTheme) {
-  const theme = getReaderTheme(themeId);
-  const layout = getLayoutPreset();
-  const { background, foreground, link } = theme;
-  const mediaFilter = getReaderMediaFilter(theme.id);
-  const highlightThemeCss = getReaderCodeHighlightTheme(theme.id);
-
-  return `
+export const READER_STATIC_BOOK_STYLES = `
     @namespace epub "http://www.idpf.org/2007/ops";
     @font-face {
       font-family: "${READER_FONT_FAMILY}";
@@ -179,17 +174,6 @@ export function getBookStyles(themeId = state.readerTheme) {
     }
     html,
     body {
-      --theme-bg-color: ${background} !important;
-      --reader-fg-color: ${foreground};
-      --reader-link-color: ${link};
-      --reader-muted-color: color-mix(in srgb, ${foreground} 72%, ${background});
-      --reader-border-color: color-mix(in srgb, ${foreground} 18%, ${background});
-      --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, ${background});
-      --reader-font-size: ${state.readerFontSize}px;
-      --reader-line-height: ${layout.lineHeight};
-      --reader-letter-spacing: ${layout.letterSpacing};
-      --reader-word-spacing: ${layout.wordSpacing};
-      --reader-paragraph-spacing: ${layout.paragraphSpacing};
       --reader-list-font-size: calc(var(--reader-font-size) * 0.9);
       --reader-list-paragraph-spacing: calc(var(--reader-paragraph-spacing) * 0.72);
       --reader-media-spacing: max(1em, calc(var(--reader-paragraph-spacing) * 1.15));
@@ -199,10 +183,10 @@ export function getBookStyles(themeId = state.readerTheme) {
       --reader-font-serif: ${READER_SERIF_STACK};
       --reader-font-sans: ${READER_SANS_STACK};
       --reader-font-mono: ${READER_MONO_STACK};
-      color-scheme: ${theme.mode};
+      color-scheme: var(--reader-color-scheme);
       font-size: var(--reader-font-size) !important;
-      background: ${background} !important;
-      color: ${foreground} !important;
+      background: var(--theme-bg-color) !important;
+      color: var(--reader-fg-color) !important;
       margin: 0 !important;
       padding: 0 !important;
       max-inline-size: none !important;
@@ -454,7 +438,7 @@ ${READER_MUTED_COLOR_CSS}
       max-width: 100% !important;
       block-size: auto !important;
       height: auto !important;
-      filter: ${mediaFilter} !important;
+      filter: var(--reader-media-filter) !important;
     }
     img {
       display: block !important;
@@ -591,6 +575,47 @@ ${READER_AUTO_BREAK_CSS}
       background: transparent !important;
       padding: 0 !important;
     }
+    blockquote :is(code, kbd, samp):not(.hljs),
+    blockquote pre,
+    blockquote pre code,
+    blockquote pre .hljs,
+    blockquote .hljs,
+    blockquote .hljs * {
+      font-size: var(--reader-list-font-size) !important;
+      line-height: var(--reader-line-height) !important;
+    }
+  `;
+
+export function getBookDynamicStyles(themeId = state.readerTheme) {
+  const cacheKey = `${themeId}|${state.readerFontSize}|${state.readerLayoutLevel}`;
+  if (cachedDynamicBookStyles?.key === cacheKey) return cachedDynamicBookStyles.value;
+
+  const theme = getReaderTheme(themeId);
+  const layout = getLayoutPreset();
+  const { background, foreground, link } = theme;
+  const mediaFilter = getReaderMediaFilter(theme.id);
+  const highlightThemeCss = getReaderCodeHighlightTheme(theme.id);
+
+  const styles = `
+    html,
+    body {
+      --theme-bg-color: ${background} !important;
+      --reader-fg-color: ${foreground};
+      --reader-link-color: ${link};
+      --reader-muted-color: color-mix(in srgb, ${foreground} 72%, ${background});
+      --reader-border-color: color-mix(in srgb, ${foreground} 18%, ${background});
+      --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, ${background});
+      --reader-font-size: ${state.readerFontSize}px;
+      --reader-line-height: ${layout.lineHeight};
+      --reader-letter-spacing: ${layout.letterSpacing};
+      --reader-word-spacing: ${layout.wordSpacing};
+      --reader-paragraph-spacing: ${layout.paragraphSpacing};
+      --reader-media-filter: ${mediaFilter};
+      --reader-color-scheme: ${theme.mode};
+      color-scheme: ${theme.mode};
+      background: ${background} !important;
+      color: ${foreground} !important;
+    }
     ${highlightThemeCss}
     .hljs {
       display: block !important;
@@ -603,16 +628,13 @@ ${READER_AUTO_BREAK_CSS}
       line-height: inherit !important;
       -webkit-text-fill-color: currentColor !important;
     }
-    blockquote :is(code, kbd, samp):not(.hljs),
-    blockquote pre,
-    blockquote pre code,
-    blockquote pre .hljs,
-    blockquote .hljs,
-    blockquote .hljs * {
-      font-size: var(--reader-list-font-size) !important;
-      line-height: var(--reader-line-height) !important;
-    }
   `;
+  cachedDynamicBookStyles = { key: cacheKey, value: styles };
+  return styles;
+}
+
+export function getBookStyles(themeId = state.readerTheme): [string, string] {
+  return [READER_STATIC_BOOK_STYLES, getBookDynamicStyles(themeId)];
 }
 
 export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElement) {

@@ -1,7 +1,5 @@
 import type { HighlightJs } from "./code-highlighter";
-import { emitViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { normalizeInlineText } from "./text-utils";
-import type { ReaderFlow } from "./viewer-types";
 
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;
@@ -14,10 +12,7 @@ const codeEnhancedDocs = new WeakSet<Document>();
 const footnotesLabeledDocs = new WeakSet<Document>();
 const imagesEnhancedDocs = new WeakSet<Document>();
 const cjkSpacingEnhancedDocs = new WeakSet<Document>();
-const pageTurnEnhancedDocs = new WeakSet<Document>();
 const MIN_ZOOMABLE_IMAGE_SIZE = 160;
-const PAGE_TURN_EDGE_RATIO = 0.22;
-const PAGE_TURN_CLICK_MAX_DISTANCE = 4;
 const CJK_CHAR_PATTERN = "[\\u2E80-\\u2EFF\\u3040-\\u30FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]";
 const HALF_WIDTH_WORD_PATTERN = "[A-Za-z0-9]";
 const HALF_WIDTH_TRAILING_PATTERN = String.raw`[A-Za-z0-9.,:;!?%\)\]\}]`;
@@ -27,87 +22,23 @@ const CJK_SPACING_SKIP_SELECTOR = "script, style";
 const MEDIA_SPACING_PARENT_TAGS = new Set(["A", "DIV", "P", "FIGURE", "SECTION", "ARTICLE", "ASIDE", "LI"]);
 
 export function enhanceReaderContent(doc: Document, options: {
-  getFlow: () => ReaderFlow;
   isCurrent: () => boolean;
 }) {
-  bindInlinePageTurn(doc, options);
   void prepareReaderContentDocument(doc, options);
 }
 
 export async function prepareReaderContentDocument(doc: Document, options: {
   isCurrent: () => boolean;
+  interactive?: boolean;
 }) {
   if (!options.isCurrent()) return;
 
   labelFootnotes(doc);
+  addCjkHalfWidthSpacing(doc);
+
+  if (options.interactive === false) return;
   beautifyImages(doc);
   await beautifyCodeBlocks(doc);
-  addCjkHalfWidthSpacing(doc);
-}
-
-function bindInlinePageTurn(doc: Document, options: {
-  getFlow: () => ReaderFlow;
-  isCurrent: () => boolean;
-}) {
-  if (pageTurnEnhancedDocs.has(doc)) return;
-  pageTurnEnhancedDocs.add(doc);
-
-  let clickStart: { x: number; y: number } | null = null;
-
-  doc.addEventListener("pointerdown", (event) => {
-    clickStart = null;
-    if (!options.isCurrent()) return;
-    if (!event.isPrimary || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-
-    clickStart = { x: event.clientX, y: event.clientY };
-  }, true);
-
-  doc.addEventListener("click", (event) => {
-    const start = clickStart;
-    clickStart = null;
-    if (!options.isCurrent()) return;
-    if (event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    if (!start || !isClickDistance(start.x, start.y, event.clientX, event.clientY)) return;
-
-    const absoluteX = resolveAbsoluteClientX(doc, event.clientX);
-    if (absoluteX == null) return;
-    if (!isEdgeClick(doc, absoluteX)) return;
-
-    if (options.getFlow() === "paginated") {
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-    }
-
-    emitViewerEvent(VIEWER_EVENTS.contentEdgeClick, { x: absoluteX });
-  }, true);
-}
-
-function isClickDistance(startX: number, startY: number, endX: number, endY: number) {
-  return Math.abs(endX - startX) <= PAGE_TURN_CLICK_MAX_DISTANCE
-    && Math.abs(endY - startY) <= PAGE_TURN_CLICK_MAX_DISTANCE;
-}
-
-function resolveAbsoluteClientX(doc: Document, clientX: number) {
-  const frameElement = doc.defaultView?.frameElement;
-  if (frameElement instanceof Element) {
-    return frameElement.getBoundingClientRect().left + clientX;
-  }
-
-  return clientX;
-}
-
-function isEdgeClick(doc: Document, absoluteX: number) {
-  const viewportWidth = doc.defaultView?.top?.innerWidth
-    || doc.defaultView?.parent?.innerWidth
-    || doc.defaultView?.innerWidth
-    || doc.documentElement.clientWidth;
-  if (!viewportWidth) return false;
-
-  const edgeWidth = viewportWidth * PAGE_TURN_EDGE_RATIO;
-  return absoluteX <= edgeWidth || absoluteX >= viewportWidth - edgeWidth;
 }
 
 function ensureHighlightJs() {

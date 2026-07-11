@@ -1,4 +1,4 @@
-import type { FoliateViewElement, SearchHit } from "./viewer-types";
+import type { FoliateViewElement, SearchHit } from "../foliate-js/view.js";
 import { emitViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { normalizeInlineText } from "./text-utils";
 import { getSavedHighlights } from "./viewer-storage";

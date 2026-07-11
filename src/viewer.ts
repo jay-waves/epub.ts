@@ -38,11 +38,9 @@ import {
   writeBlobToFile,
 } from "./epub-overlays";
 import { createHighlightController } from "./highlight-controller";
-import { createReaderDocumentCache } from "./reader-document-cache";
 import { enhanceReaderContent, prepareReaderContentDocument } from "./reader-content-enhancers";
 import { createSearchController } from "./search-controller";
 import { createDebouncedTask, runWhenIdle } from "./scheduler";
-import { collectSectionHrefs, normalizeTocHref, normalizeTocItems } from "./toc-controller";
 import { App } from "./App";
 import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
@@ -58,40 +56,35 @@ import {
   saveReaderSettings,
   saveReadingPosition,
 } from "./viewer-storage";
-import type { BookSection, FoliateViewElement, ReaderSettings, ReadingPosition, RelocateDetail, TocItem } from "./viewer-types";
+import type { ReaderSettings, ReadingPosition } from "./viewer-types";
+import type { BookSection, FoliateViewElement, RelocateDetail, TocItem } from "../foliate-js/view.js";
 import type { BookInfoUpdateDetail, DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
 import "./viewer.css";
 
 const runtime: {
   extraUiReady: boolean;
-  foliateScrollbarPatchReady: boolean;
   foliateViewReady: Promise<unknown> | null;
   highlightController: ReturnType<typeof createHighlightController> | null;
   isSearchOpen: boolean;
   keybindings: ReturnType<typeof setupViewerKeybindings> | null;
   postLoadTaskToken: number;
   readerFontsReady: Promise<void> | null;
-  readerDocumentCache: ReturnType<typeof createReaderDocumentCache> | null;
   readerView: FoliateViewElement | null;
   readingProgressController: ReturnType<typeof createReadingProgressController> | null;
   searchController: ReturnType<typeof createSearchController> | null;
   tocItems: TocItem[];
-  tocSectionHrefs: string[];
 } = {
   extraUiReady: false,
-  foliateScrollbarPatchReady: false,
   foliateViewReady: null,
   highlightController: null,
   isSearchOpen: false,
   keybindings: null,
   postLoadTaskToken: 0,
   readerFontsReady: null,
-  readerDocumentCache: null,
   readerView: null,
   readingProgressController: null,
   searchController: null,
   tocItems: [],
-  tocSectionHrefs: [],
 };
 
 const appRoot = document.querySelector("#app");
@@ -146,21 +139,13 @@ function queryRequired<T extends Element>(selector: string) {
 
 function setHasUnsavedChanges(dirty: boolean) {
   hasUnsavedChanges = dirty;
+  renderDocumentTitle();
   emitDockUpdate();
 }
 
 function renderDocumentTitle() {
-  document.title = cleanDocumentTitle;
-  document.querySelector("title")?.replaceChildren(cleanDocumentTitle);
+  document.title = `${hasUnsavedChanges ? "*" : ""}${cleanDocumentTitle}`;
 }
-
-function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (!hasUnsavedChanges) return;
-  event.preventDefault();
-  event.returnValue = "";
-}
-
-window.addEventListener("beforeunload", handleBeforeUnload);
 
 const defaultReaderSettings: ReaderSettings = {
   flow: "paginated",
@@ -328,42 +313,8 @@ function preloadReaderFonts() {
   return runtime.readerFontsReady;
 }
 
-function installFoliateScrollbarPatch() {
-  if (runtime.foliateScrollbarPatchReady) return;
-  runtime.foliateScrollbarPatchReady = true;
-
-  const descriptor = Object.getOwnPropertyDescriptor(ShadowRoot.prototype, "innerHTML");
-  if (!descriptor?.set || !descriptor.get) return;
-
-  Object.defineProperty(ShadowRoot.prototype, "innerHTML", {
-    configurable: true,
-    enumerable: descriptor.enumerable,
-    get: descriptor.get,
-    set(value: string) {
-      descriptor.set!.call(this, value);
-      const hostName = this.host?.localName;
-      if (hostName !== "foliate-paginator" && hostName !== "foliate-fxl") return;
-
-      const style = document.createElement("style");
-      style.textContent = `
-        #container {
-          scrollbar-width: none !important;
-          -ms-overflow-style: none !important;
-        }
-        #container::-webkit-scrollbar {
-          width: 0 !important;
-          height: 0 !important;
-          display: none !important;
-        }
-      `;
-      this.append(style);
-    },
-  });
-}
-
 function ensureFoliateView() {
-  installFoliateScrollbarPatch();
-  runtime.foliateViewReady ??= import("foliate-js/view.js");
+  runtime.foliateViewReady ??= import("../foliate-js/view.js");
   return runtime.foliateViewReady;
 }
 
@@ -415,19 +366,6 @@ function restoreScrolledSectionProgress(sectionIndex: number | undefined) {
   });
 }
 
-function resolveRelocateSectionIndex(detail: RelocateDetail) {
-  if (typeof detail.index === "number") return detail.index;
-
-  const href = detail.tocItem?.href;
-  if (!href || !runtime.tocSectionHrefs.length) return undefined;
-
-  const currentHref = normalizeTocHref(href);
-  if (!currentHref) return undefined;
-
-  const index = runtime.tocSectionHrefs.findIndex((item) => item === currentHref);
-  return index >= 0 ? index : undefined;
-}
-
 const savePositionTask = createDebouncedTask((detail: RelocateDetail) => {
   if (state.currentBookKey) {
     void saveReadingPosition(state.currentBookKey, detail);
@@ -455,15 +393,17 @@ function wireReaderEvents(view: FoliateViewElement) {
     }
 
     enhanceReaderContent(doc, {
-      getFlow: () => state.flow,
       isCurrent: () => runtime.readerView === view,
     });
-    if (runtime.readerView === view) runtime.readerDocumentCache?.prepareAround(index);
+  });
+  view.addEventListener("edge-click", (event) => {
+    const { x } = (event as CustomEvent<{ x: number }>).detail;
+    emitPageTurnFromEdgeClick(x);
   });
 
   view.addEventListener("relocate", (event) => {
     const detail = (event as CustomEvent<RelocateDetail>).detail;
-    const sectionIndex = resolveRelocateSectionIndex(detail);
+    const sectionIndex = detail.index;
 
     const currentHref = detail.tocItem?.href ?? "";
     if (currentHref !== state.currentHref) {
@@ -474,7 +414,6 @@ function wireReaderEvents(view: FoliateViewElement) {
       ...detail,
       index: sectionIndex,
     });
-    runtime.readerDocumentCache?.prepareAround(sectionIndex);
     queuePositionSave(detail);
     highlightContextBindTask.schedule(view);
     const previousSectionIndex = currentScrollSectionIndex;
@@ -629,10 +568,8 @@ function resetTransientBookState() {
   savePositionTask.cancel();
   highlightContextBindTask.cancel();
   clearSearchState();
-  runtime.readerDocumentCache?.reset();
   state.currentHref = "";
   runtime.tocItems = [];
-  runtime.tocSectionHrefs = [];
   currentScrollSectionIndex = null;
   shouldRestoreScrolledSectionProgress = false;
   scrolledSectionProgress.clear();
@@ -656,11 +593,35 @@ function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
 
 function createView() {
   const view = document.createElement("foliate-view") as FoliateViewElement;
+  view.enhanceDocument = (doc) => enhanceCachedReaderDocument(doc, view);
   setReaderRenderPending(true);
   readerRoot.replaceChildren(view);
   wireReaderEvents(view);
   runtime.keybindings?.bindReaderView(view);
   return view;
+}
+
+async function enhanceCachedReaderDocument(doc: Document, view: FoliateViewElement) {
+  applyReaderDocumentTheme(doc);
+  await prepareReaderContentDocument(doc, {
+    interactive: false,
+    isCurrent: () => runtime.readerView === view,
+  });
+}
+
+function applyReaderDocumentTheme(doc: Document) {
+  const head = doc.head ?? doc.documentElement.insertBefore(doc.createElement("head"), doc.documentElement.firstChild);
+  const [staticStyles, dynamicStyles] = getBookStyles();
+  upsertReaderDocumentStyle(doc, head, "static", staticStyles);
+  upsertReaderDocumentStyle(doc, head, "dynamic", dynamicStyles);
+}
+
+function upsertReaderDocumentStyle(doc: Document, head: HTMLHeadElement, name: string, cssText: string) {
+  const style = head.querySelector<HTMLStyleElement>(`style[data-reader-cached-styles="${name}"]`)
+    ?? doc.createElement("style");
+  style.dataset.readerCachedStyles = name;
+  if (style.textContent !== cssText) style.textContent = cssText;
+  if (!style.isConnected) head.append(style);
 }
 
 function setReaderRenderPending(isPending: boolean) {
@@ -729,7 +690,7 @@ async function waitForReaderDocumentsReady(documents: Array<Document | undefined
 }
 
 async function waitForReaderDocumentFonts(doc: Document) {
-  if (doc.documentElement.dataset.readerCachedDocument === "true") return;
+  if (doc.documentElement.dataset.foliateCachedDocument === "true") return;
 
   const fonts = doc.fonts;
   if (!fonts) return;
@@ -804,12 +765,6 @@ async function openBook(input: File | string, sourceLabel: string) {
     if (runtime.readerView.book) runtime.readerView.close();
     await preloadReaderFonts();
     await runtime.readerView.open(normalizedInput);
-    runtime.readerDocumentCache = createReaderDocumentCache({
-      enhanceDocument: (doc) => prepareReaderContentDocument(doc, {
-        isCurrent: () => true,
-      }),
-    });
-    runtime.readerDocumentCache.setBook(runtime.readerView.book ?? null);
     state.currentBookKey = await deriveBookKey(runtime.readerView.book, legacyBookKey);
     const bookKey = state.currentBookKey;
     void getStoredFileHandle(bookKey)
@@ -905,7 +860,7 @@ function setupCriticalInteractions() {
     if (!(event.target instanceof Node) || !readerRoot.contains(event.target)) return;
     if (!start || !isClickDistance(start.x, start.y, event.clientX, event.clientY)) return;
 
-    emitViewerEvent(VIEWER_EVENTS.contentEdgeClick, { x: event.clientX });
+    emitPageTurnFromEdgeClick(event.clientX);
   });
 
   window.addEventListener("contextmenu", (event) => {
@@ -916,10 +871,6 @@ function setupCriticalInteractions() {
 }
 
 function setupExtraInteractions() {
-  listenViewerEvent(VIEWER_EVENTS.contentEdgeClick, (detail) => {
-    const direction = resolveEdgeClickDirection(detail.x);
-    if (direction) emitViewerEvent(VIEWER_EVENTS.pageTurn, direction);
-  });
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
     if (!href) return;
     if (isReaderRenderPending()) return;
@@ -948,6 +899,11 @@ function setupExtraInteractions() {
     void handleDockAction(action);
   });
 
+}
+
+function emitPageTurnFromEdgeClick(clientX: number) {
+  const direction = resolveEdgeClickDirection(clientX);
+  if (direction) emitViewerEvent(VIEWER_EVENTS.pageTurn, direction);
 }
 
 function resolveEdgeClickDirection(clientX: number): PageTurnDirection | null {
@@ -1070,8 +1026,7 @@ function schedulePostLoadTasks(view: FoliateViewElement, bookKey: string) {
 
     runWhenIdle(() => {
       if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
-      runtime.tocItems = normalizeTocItems(view.book?.toc);
-      runtime.tocSectionHrefs = collectSectionHrefs(runtime.tocItems);
+      runtime.tocItems = view.book?.toc ?? [];
       emitTocUpdate();
     }, 2000);
   });

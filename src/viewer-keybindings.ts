@@ -1,7 +1,7 @@
 import { WheelGestures } from "wheel-gestures";
 import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import type { PageTurnDirection } from "./viewer-events";
-import type { FoliateViewElement } from "./viewer-types";
+import type { FoliateViewElement } from "../foliate-js/view.js";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const HOLD_SCROLL_SPEED_RATIO = 1.75;

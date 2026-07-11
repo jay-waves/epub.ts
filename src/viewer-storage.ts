@@ -4,8 +4,8 @@ import type {
   ReaderHighlights,
   ReadingHistory,
   ReadingPosition,
-  RelocateDetail,
 } from "./viewer-types";
+import type { RelocateDetail } from "../foliate-js/view.js";
 
 const HISTORY_STORAGE_KEY = "reading-history";
 const HIGHLIGHTS_STORAGE_KEY = "reading-highlights";

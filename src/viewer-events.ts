@@ -1,7 +1,6 @@
-import type { TocItem } from "./viewer-types";
+import type { TocItem } from "../foliate-js/view.js";
 
 export const VIEWER_EVENTS = {
-  contentEdgeClick: "reader:content-edge-click",
   highlightContextAction: "reader:highlight-context-action",
   highlightContextClose: "reader:highlight-context-close",
   highlightContextOpen: "reader:highlight-context-open",
@@ -32,9 +31,6 @@ export const VIEWER_EVENTS = {
 export type HighlightContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
 export type TranslationStatus = "error" | "loading" | "success";
 export type PageTurnDirection = "left" | "right";
-export type ContentEdgeClickDetail = {
-  x: number;
-};
 
 export type HighlightContextOpenDetail = {
   canCopy: boolean;
@@ -123,7 +119,6 @@ export type BookInfoUpdateDetail = {
 };
 
 export type ViewerEventDetailMap = {
-  [VIEWER_EVENTS.contentEdgeClick]: ContentEdgeClickDetail;
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
   [VIEWER_EVENTS.highlightContextClose]: void;
   [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;
