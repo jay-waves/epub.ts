@@ -41,13 +41,3 @@ Dock 工具栏：（自动隐藏）
 
 <img src="assets/dock.png" width=800>
 
-## FAQ
-
-#### 冷启动打开 epub 文件时，如何避免触发下载
-
-插件会通过 `declarativeNetRequest` 注册一条持久重定向规则，把 `file://*.epub` 的主页面导航重定向到扩展阅读页。
-这条规则会在浏览器侧持久化，Chrome 冷启动时也不依赖 background service worker 先启动。下载监听只作为兜底恢复逻辑。
-
-#### 翻页模式加载新章节比滚动模式慢
-
-因为渲染步骤比滚动模式复杂。这个通过缓存也无法解决。

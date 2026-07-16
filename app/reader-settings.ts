@@ -84,6 +84,8 @@ export const READER_MONO_FONT_URL = isWebViewer
 export const READER_LATIN_FONT_FORMAT = isWebViewer ? "woff2-variations" : "truetype";
 export const READER_MONO_FONT_FORMAT = isWebViewer ? "woff2" : "truetype";
 export const READER_MONO_FONT_WEIGHT = isWebViewer ? "400" : "100 900";
+const READER_FONT_SIZE_ADJUST = isWebViewer ? "none" : "0.54";
+const READER_LINE_HEIGHT_OFFSET = isWebViewer ? 0.1 : 0;
 
 const MIN_READER_FONT_SIZE = 14;
 const MAX_READER_FONT_SIZE = 22;
@@ -271,7 +273,7 @@ export const READER_STATIC_BOOK_STYLES = `
     }
     body {
       font-family: var(--reader-font-serif) !important;
-      font-size-adjust: 0.54;
+      font-size-adjust: ${READER_FONT_SIZE_ADJUST};
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
       text-autospace: ideograph-alpha ideograph-numeric;
@@ -665,6 +667,7 @@ export function getBookDynamicStyles(themeId = state.readerTheme) {
 
   const theme = getReaderTheme(themeId);
   const layout = getLayoutPreset();
+  const lineHeight = layout.lineHeight + READER_LINE_HEIGHT_OFFSET;
   const { background, foreground, link } = theme;
   const mediaFilter = getReaderMediaFilter(theme.id);
   const highlightThemeCss = getReaderCodeHighlightTheme(theme.id);
@@ -679,7 +682,7 @@ export function getBookDynamicStyles(themeId = state.readerTheme) {
       --reader-border-color: color-mix(in srgb, ${foreground} 18%, ${background});
       --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, ${background});
       --reader-font-size: ${state.readerFontSize}px;
-      --reader-line-height: ${layout.lineHeight};
+      --reader-line-height: ${lineHeight};
       --reader-letter-spacing: ${layout.letterSpacing};
       --reader-word-spacing: ${layout.wordSpacing};
       --reader-paragraph-spacing: ${layout.paragraphSpacing};

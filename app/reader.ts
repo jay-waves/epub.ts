@@ -38,7 +38,7 @@ export type ReaderHighlight = {
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   flow: "paginated",
-  fontSize: 16,
+  fontSize: __VIEWER_PLATFORM__ === "web" ? 15 : 16,
   layoutLevel: 4,
   theme: "light",
 };
