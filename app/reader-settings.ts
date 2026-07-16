@@ -1,18 +1,89 @@
-import { state } from "./viewer-state";
-import {
-  getReaderCodeHighlightTheme,
-  getReaderMediaFilter,
-  getReaderTheme,
-} from "./reader-themes";
-import type { ReaderFlow, ReaderSettings } from "./viewer-types";
-import type { FoliateViewElement } from "../foliate-js/view.js";
+import atomOneLightHighlightTheme from "highlight.js/styles/atom-one-light.css?raw";
+import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
+import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
+import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
+import { getViewerAssetUrl, isWebViewer } from "./platform";
+import { state } from "./reader";
+import type { ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./reader";
+import type { FoliateViewElement } from "./foliate";
 
-export const READER_FONT_FAMILY = "LXGW WenKai EPUB";
+const READER_THEMES: ReaderTheme[] = [
+  { id: "light", label: "Light", bodyTheme: "lofi", mode: "light", background: "#fffefd", foreground: "#1f2933", link: "#1f5f8f" },
+  { id: "grey", label: "Grey", bodyTheme: "corporate", mode: "light", background: "#f1f1ee", foreground: "#2f3438", link: "#4c6a7f" },
+  { id: "dark", label: "Dark", bodyTheme: "nord", mode: "dark", background: "#212830", foreground: "#e5e9f0", link: "#88c0d0" },
+  { id: "one-dark", label: "One Dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
+];
+
+function normalizeHighlightThemeCss(themeCss: string) {
+  return themeCss
+    .replaceAll("pre code.hljs", "pre.hljs")
+    .replaceAll("code.hljs", "pre.hljs")
+    .replaceAll("code .", "pre.hljs .")
+    .replace(
+      /\b(color|background|background-color|font-style|font-weight):\s*([^;!}{]+)(?:\s*!important)?/gu,
+      "$1: $2 !important",
+    );
+}
+
+const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
+  light: normalizeHighlightThemeCss(githubLightHighlightTheme),
+  grey: normalizeHighlightThemeCss(atomOneLightHighlightTheme),
+  dark: normalizeHighlightThemeCss(nordHighlightTheme),
+  "one-dark": normalizeHighlightThemeCss(githubDarkHighlightTheme),
+};
+
+function getReaderTheme(themeId = state.readerTheme) {
+  return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
+}
+
+export function getNextReaderTheme(themeId = state.readerTheme) {
+  const currentIndex = READER_THEMES.findIndex((theme) => theme.id === getReaderTheme(themeId).id);
+  return READER_THEMES[(currentIndex + 1) % READER_THEMES.length] ?? READER_THEMES[0];
+}
+
+function getReaderCodeHighlightTheme(themeId = state.readerTheme) {
+  return READER_CODE_HIGHLIGHT_THEMES[getReaderTheme(themeId).id];
+}
+
+function getReaderMediaFilter(themeId = state.readerTheme) {
+  return getReaderTheme(themeId).mode === "dark"
+    ? "brightness(0.72) contrast(0.92) saturate(0.88)"
+    : "none";
+}
+
+export function applyReaderTheme(themeId: ReaderThemeId) {
+  const theme = getReaderTheme(themeId);
+  const scrollbarThumb = theme.mode === "dark"
+    ? "rgba(191, 205, 219, 0.28)"
+    : "rgba(82, 94, 110, 0.35)";
+  const scrollbarTrack = theme.mode === "dark"
+    ? "rgba(22, 29, 37, 0.45)"
+    : "rgba(255, 255, 255, 0.18)";
+
+  state.readerTheme = theme.id;
+  document.body.dataset.theme = theme.bodyTheme;
+  document.documentElement.dataset.readerTheme = theme.id;
+  document.documentElement.dataset.readerMode = theme.mode;
+  document.documentElement.style.setProperty("--reader-chrome-bg", theme.background);
+  document.documentElement.style.setProperty("--reader-chrome-fg", theme.foreground);
+  document.documentElement.style.setProperty("--reader-color-scheme", theme.mode);
+  document.documentElement.style.setProperty("--reader-scrollbar-thumb", scrollbarThumb);
+  document.documentElement.style.setProperty("--reader-scrollbar-track", scrollbarTrack);
+}
+
+export const READER_FONT_FAMILY = isWebViewer ? "system-ui" : "LXGW WenKai EPUB";
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
-export const READER_FONT_URL = chrome.runtime.getURL("LXGWWenKai-Regular.ttf");
-export const READER_LATIN_FONT_URL = chrome.runtime.getURL("EBGaramond-VariableFont_wght.ttf");
-export const READER_MONO_FONT_URL = chrome.runtime.getURL("Monaspace Argon Var.ttf");
+export const READER_FONT_URL = isWebViewer ? null : getViewerAssetUrl("LXGWWenKaiLite-Regular.ttf");
+export const READER_LATIN_FONT_URL = isWebViewer
+  ? "https://cdn.jsdelivr.net/fontsource/fonts/eb-garamond:vf@5.2.7/latin-wght-normal.woff2"
+  : getViewerAssetUrl("EBGaramond-VariableFont_wght.ttf");
+export const READER_MONO_FONT_URL = isWebViewer
+  ? "https://cdn.jsdelivr.net/fontsource/fonts/monaspace-argon@5.2.5/latin-400-normal.woff2"
+  : getViewerAssetUrl("Monaspace Argon Var.ttf");
+export const READER_LATIN_FONT_FORMAT = isWebViewer ? "woff2-variations" : "truetype";
+export const READER_MONO_FONT_FORMAT = isWebViewer ? "woff2" : "truetype";
+export const READER_MONO_FONT_WEIGHT = isWebViewer ? "400" : "100 900";
 
 const MIN_READER_FONT_SIZE = 14;
 const MAX_READER_FONT_SIZE = 22;
@@ -85,58 +156,58 @@ const READER_AUTO_BREAK_CSS = `
 
 const READER_LAYOUT_PRESETS = [
   {
-    margin: 14,
-    singleColumnMaxInlineSize: 960,
-    multiColumnMaxInlineSize: 780,
-    lineHeight: 1.64,
+    margin: 24,
+    singleColumnMaxInlineSize: 760,
+    multiColumnMaxInlineSize: 680,
+    lineHeight: 1.62,
     letterSpacing: "-0.01em",
-    wordSpacing: "-0.01em",
+    wordSpacing: "0em",
     paragraphSpacing: "0.65em",
   },
   {
-    margin: 8,
-    singleColumnMaxInlineSize: 1040,
-    multiColumnMaxInlineSize: 840,
-    lineHeight: 1.7,
+    margin: 20,
+    singleColumnMaxInlineSize: 840,
+    multiColumnMaxInlineSize: 740,
+    lineHeight: 1.68,
     letterSpacing: "0em",
     wordSpacing: "0.01em",
     paragraphSpacing: "0.75em",
   },
   {
-    margin: 4,
-    singleColumnMaxInlineSize: 1120,
-    multiColumnMaxInlineSize: 900,
-    lineHeight: 1.77,
+    margin: 16,
+    singleColumnMaxInlineSize: 920,
+    multiColumnMaxInlineSize: 800,
+    lineHeight: 1.74,
     letterSpacing: "0.005em",
     wordSpacing: "0.015em",
     paragraphSpacing: "0.85em",
   },
   {
-    margin: 4,
-    singleColumnMaxInlineSize: 1200,
-    multiColumnMaxInlineSize: 960,
-    lineHeight: 1.84,
+    margin: 12,
+    singleColumnMaxInlineSize: 1000,
+    multiColumnMaxInlineSize: 860,
+    lineHeight: 1.82,
     letterSpacing: "0.008em",
     wordSpacing: "0.02em",
     paragraphSpacing: "0.95em",
   },
   {
-    margin: 4,
-    singleColumnMaxInlineSize: 1280,
-    multiColumnMaxInlineSize: 1020,
-    lineHeight: 1.94,
+    margin: 10,
+    singleColumnMaxInlineSize: 1080,
+    multiColumnMaxInlineSize: 920,
+    lineHeight: 1.9,
     letterSpacing: "0.01em",
     wordSpacing: "0.025em",
-    paragraphSpacing: "1.15em",
+    paragraphSpacing: "1.05em",
   },
   {
-    margin: 4,
-    singleColumnMaxInlineSize: 1360,
-    multiColumnMaxInlineSize: 1080,
-    lineHeight: 2.05,
-    letterSpacing: "0.02em",
+    margin: 8,
+    singleColumnMaxInlineSize: 1160,
+    multiColumnMaxInlineSize: 980,
+    lineHeight: 1.98,
+    letterSpacing: "0.015em",
     wordSpacing: "0.03em",
-    paragraphSpacing: "1.25em",
+    paragraphSpacing: "1.15em",
   },
 ] as const;
 
@@ -150,6 +221,7 @@ function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {
 
 export const READER_STATIC_BOOK_STYLES = `
     @namespace epub "http://www.idpf.org/2007/ops";
+    ${READER_FONT_URL ? `
     @font-face {
       font-family: "${READER_FONT_FAMILY}";
       src: url("${READER_FONT_URL}") format("truetype");
@@ -157,9 +229,10 @@ export const READER_STATIC_BOOK_STYLES = `
       font-style: normal;
       font-display: swap;
     }
+    ` : ""}
     @font-face {
       font-family: "${READER_LATIN_FONT_FAMILY}";
-      src: url("${READER_LATIN_FONT_URL}") format("truetype");
+      src: url("${READER_LATIN_FONT_URL}") format("${READER_LATIN_FONT_FORMAT}");
       font-weight: 400 800;
       font-style: normal;
       font-display: swap;
@@ -167,8 +240,8 @@ export const READER_STATIC_BOOK_STYLES = `
     }
     @font-face {
       font-family: "${READER_MONO_FONT_FAMILY}";
-      src: url("${READER_MONO_FONT_URL}") format("truetype");
-      font-weight: 100 900;
+      src: url("${READER_MONO_FONT_URL}") format("${READER_MONO_FONT_FORMAT}");
+      font-weight: ${READER_MONO_FONT_WEIGHT};
       font-style: normal;
       font-display: swap;
     }
@@ -670,25 +743,6 @@ function clampReaderFontSize(fontSize: number) {
 
 function clampLayoutLevel(layoutLevel: number) {
   return clamp(Math.round(layoutLevel), MIN_READER_LAYOUT_LEVEL, MAX_READER_LAYOUT_LEVEL);
-}
-
-function getLegacyLayoutLevel(settings: Partial<ReaderSettings>) {
-  const spacingScore = typeof settings.spacing === "number" ? settings.spacing : 0;
-  const marginScore = typeof settings.margin === "number" ? (8 - settings.margin) / 8 : 0;
-  const legacyScore = spacingScore + marginScore;
-  return clampLayoutLevel(Math.round(legacyScore / 2) + 2);
-}
-
-export function resolveReaderLayoutLevel(settings?: Partial<ReaderSettings>) {
-  if (typeof settings?.layoutLevel === "number") {
-    return clampLayoutLevel(settings.layoutLevel);
-  }
-
-  if (typeof settings?.spacing === "number" || typeof settings?.margin === "number") {
-    return getLegacyLayoutLevel(settings);
-  }
-
-  return 2;
 }
 
 export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement | null) {

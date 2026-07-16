@@ -1,4 +1,4 @@
-import type { TocItem } from "../foliate-js/view.js";
+import type { TocItem } from "./foliate";
 
 export const VIEWER_EVENTS = {
   highlightContextAction: "reader:highlight-context-action",

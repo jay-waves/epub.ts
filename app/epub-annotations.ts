@@ -7,8 +7,7 @@ import {
   ZipReader,
   ZipWriter,
 } from "@zip.js/zip.js";
-import { del, get, set } from "idb-keyval";
-import type { ReaderHighlight } from "./viewer-types";
+import type { ReaderHighlight } from "./reader";
 import type { Entry, FileEntry } from "@zip.js/zip.js";
 
 export const EPUB_MIME_TYPE = "application/epub+zip";
@@ -24,10 +23,6 @@ type OverlayFile = {
 };
 
 configure({ useWebWorkers: false });
-
-function getHandleKey(bookKey: string) {
-  return `epub-file-handle:${bookKey}`;
-}
 
 function createOverlayFile(highlights: ReaderHighlight[]): OverlayFile {
   const now = new Date().toISOString();
@@ -112,37 +107,5 @@ export async function createAnnotatedEpub(sourceBlob: Blob, highlights: ReaderHi
     return await writer.close();
   } finally {
     await reader.close();
-  }
-}
-
-export async function getStoredFileHandle(bookKey: string) {
-  if (!bookKey) return undefined;
-  return get<FileSystemFileHandle>(getHandleKey(bookKey));
-}
-
-export async function saveFileHandle(bookKey: string, handle: FileSystemFileHandle) {
-  if (!bookKey) return;
-  await set(getHandleKey(bookKey), handle);
-}
-
-export async function clearFileHandle(bookKey: string) {
-  if (!bookKey) return;
-  await del(getHandleKey(bookKey));
-}
-
-export async function verifyWritePermission(handle: FileSystemFileHandle) {
-  const descriptor: FileSystemHandlePermissionDescriptor = { mode: "readwrite" };
-  if (await handle.queryPermission(descriptor) === "granted") return true;
-  return await handle.requestPermission(descriptor) === "granted";
-}
-
-export async function writeBlobToFile(handle: FileSystemFileHandle, blob: Blob) {
-  const writable = await handle.createWritable();
-  try {
-    await writable.write(blob);
-    await writable.close();
-  } catch (error) {
-    await writable.abort().catch(() => {});
-    throw error;
   }
 }

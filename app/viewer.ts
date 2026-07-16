@@ -1,3 +1,4 @@
+import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
@@ -5,65 +6,72 @@ import {
   applyReaderFontSize,
   applyReaderLayoutLevel,
   applyReaderLayout,
+  applyReaderTheme,
   canChangeReaderFontSize,
   canChangeReaderLayoutLevel,
   changeReaderFontSize,
   changeReaderFlow,
   changeReaderLayoutLevel,
   getBookStyles,
+  getNextReaderTheme,
   READER_FONT_FAMILY,
   READER_FONT_SIZE_STEP,
   READER_FONT_URL,
   READER_LATIN_FONT_FAMILY,
+  READER_LATIN_FONT_FORMAT,
   READER_LATIN_FONT_URL,
   READER_MONO_FONT_FAMILY,
+  READER_MONO_FONT_FORMAT,
+  READER_MONO_FONT_WEIGHT,
   READER_MONO_FONT_URL,
   READER_LAYOUT_LEVEL_STEP,
-  resolveReaderLayoutLevel,
 } from "./reader-settings";
 import {
-  applyReaderTheme,
-  getNextReaderTheme,
-} from "./reader-themes";
-import { deriveBookKey } from "./book-key";
-import {
-  clearFileHandle,
   createAnnotatedEpub,
   EPUB_MIME_TYPE,
   getEpubBlob,
-  getStoredFileHandle,
   readEmbeddedHighlights,
-  saveFileHandle,
-  verifyWritePermission,
-  writeBlobToFile,
-} from "./epub-overlays";
+} from "./epub-annotations";
+import {
+  createFoliateView,
+  deriveBookKey,
+} from "./foliate";
 import { createHighlightController } from "./highlight-controller";
-import { enhanceReaderContent, prepareReaderContentDocument } from "./reader-content-enhancers";
+import { enhanceReaderContent, prepareReaderContentDocument } from "./foliate/content";
 import { createSearchController } from "./search-controller";
-import { createDebouncedTask, runWhenIdle } from "./scheduler";
 import { App } from "./App";
 import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
-import { state } from "./viewer-state";
 import {
   getSavedPosition,
   getSavedReaderSettings,
   getSavedHighlights,
-  mergeSavedHighlights,
-  reconcileBookStorage,
   saveReaderSettings,
   saveReadingPosition,
+  setSavedHighlights,
 } from "./viewer-storage";
-import type { ReaderSettings, ReadingPosition } from "./viewer-types";
-import type { BookSection, FoliateViewElement, RelocateDetail, TocItem } from "../foliate-js/view.js";
+import type { ReaderSettings, ReadingPosition } from "./reader";
+import type { BookSection, FoliateViewElement, RelocateDetail, TocItem } from "./foliate";
 import type { BookInfoUpdateDetail, DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
+import { createDebouncedTask, DEFAULT_READER_SETTINGS, runWhenIdle, state } from "./reader";
+import {
+  clearFileHandle,
+  ensureSourceAccess,
+  getInitialSourceUrl,
+  getStoredFileHandle,
+  isWebViewer,
+  normalizeSourceUrl,
+  saveFileHandle,
+  verifyWritePermission,
+  writeBlobToFile,
+} from "./platform";
+import type { WritableFileHandle } from "./platform";
 import "./viewer.css";
 
 const runtime: {
   extraUiReady: boolean;
-  foliateViewReady: Promise<unknown> | null;
   highlightController: ReturnType<typeof createHighlightController> | null;
   isSearchOpen: boolean;
   keybindings: ReturnType<typeof setupViewerKeybindings> | null;
@@ -75,7 +83,6 @@ const runtime: {
   tocItems: TocItem[];
 } = {
   extraUiReady: false,
-  foliateViewReady: null,
   highlightController: null,
   isSearchOpen: false,
   keybindings: null,
@@ -117,7 +124,11 @@ function mountReadingProgressController(elements: ReadingProgressElements | null
 }
 
 flushSync(() => {
-  createRoot(appRoot).render(App({ onReadingProgressReady: mountReadingProgressController }));
+  createRoot(appRoot).render(createElement(App, {
+    allowLocalFileOpen: isWebViewer,
+    onOpenLocalFile: (file) => { void openBook(file, file.name); },
+    onReadingProgressReady: mountReadingProgressController,
+  }));
 });
 
 const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
@@ -126,8 +137,10 @@ let scrollEdgeFeedbackTimer: number | undefined;
 let lastScrollEdgeFeedbackAt = 0;
 let currentScrollSectionIndex: number | null = null;
 let shouldRestoreScrolledSectionProgress = false;
-let currentSaveHandle: FileSystemFileHandle | null | undefined;
+let currentSaveHandle: WritableFileHandle | null | undefined;
 let cleanDocumentTitle = document.title;
+let currentLocalSourceUrl: string | null = null;
+let currentSourceLabel = "";
 let hasUnsavedChanges = false;
 const scrolledSectionProgress = new Map<number, number>();
 
@@ -147,12 +160,6 @@ function renderDocumentTitle() {
   document.title = `${hasUnsavedChanges ? "*" : ""}${cleanDocumentTitle}`;
 }
 
-const defaultReaderSettings: ReaderSettings = {
-  flow: "paginated",
-  fontSize: 18,
-  layoutLevel: 2,
-  theme: "light",
-};
 const READER_DOCUMENT_FONT_TIMEOUT_MS = 2500;
 const SCROLL_EDGE_FEEDBACK_COOLDOWN_MS = 900;
 
@@ -215,7 +222,7 @@ function getBookInfoUpdateDetail(): BookInfoUpdateDetail {
   const sectionCount = book?.sections?.length ?? 0;
   const estimatedWords = estimateBookWords(book?.sections);
   const estimatedMinutes = estimatedWords ? Math.max(1, Math.ceil(estimatedWords / ESTIMATED_READING_WORDS_PER_MINUTE)) : null;
-  const sourcePath = formatSourcePath(state.currentSourceUrl);
+  const sourcePath = currentSourceLabel || formatSourcePath(state.currentSourceUrl);
 
   return {
     title,
@@ -289,20 +296,22 @@ function formatMetadataValue(value: unknown): string {
 function preloadReaderFonts() {
   if (runtime.readerFontsReady) return runtime.readerFontsReady;
 
-  runtime.readerFontsReady = Promise.all([
-    new FontFace(READER_FONT_FAMILY, `url("${READER_FONT_URL}") format("truetype")`, {
+  const fontLoads = [
+    ...(READER_FONT_URL ? [new FontFace(READER_FONT_FAMILY, `url("${READER_FONT_URL}") format("truetype")`, {
       style: "normal",
       weight: "400",
-    }).load(),
-    new FontFace(READER_LATIN_FONT_FAMILY, `url("${READER_LATIN_FONT_URL}") format("truetype")`, {
+    }).load()] : []),
+    new FontFace(READER_LATIN_FONT_FAMILY, `url("${READER_LATIN_FONT_URL}") format("${READER_LATIN_FONT_FORMAT}")`, {
       style: "normal",
       weight: "400 800",
     }).load(),
-    new FontFace(READER_MONO_FONT_FAMILY, `url("${READER_MONO_FONT_URL}") format("truetype")`, {
+    new FontFace(READER_MONO_FONT_FAMILY, `url("${READER_MONO_FONT_URL}") format("${READER_MONO_FONT_FORMAT}")`, {
       style: "normal",
-      weight: "100 900",
+      weight: READER_MONO_FONT_WEIGHT,
     }).load(),
-  ])
+  ];
+
+  runtime.readerFontsReady = Promise.all(fontLoads)
     .then((fonts) => {
       fonts.forEach((font) => document.fonts.add(font));
     })
@@ -311,11 +320,6 @@ function preloadReaderFonts() {
     });
 
   return runtime.readerFontsReady;
-}
-
-function ensureFoliateView() {
-  runtime.foliateViewReady ??= import("../foliate-js/view.js");
-  return runtime.foliateViewReady;
 }
 
 function getCurrentScrolledSectionAnchor() {
@@ -435,18 +439,6 @@ function wireReaderEvents(view: FoliateViewElement) {
   });
 }
 
-async function ensureFileSchemeAccess(fileUrl?: string) {
-  if (!fileUrl?.startsWith("file://")) return true;
-
-  const allowed = await chrome.extension.isAllowedFileSchemeAccess();
-  if (!allowed) {
-    console.warn(
-      "File URL access is disabled. Enable 'Allow access to file URLs' for this extension.",
-    );
-  }
-  return allowed;
-}
-
 function getDockUpdateDetail(): DockUpdateDetail {
   const isPaginated = state.flow === "paginated";
 
@@ -491,7 +483,7 @@ async function getWritableSaveHandle(bookKey: string, sourceUrl: string) {
 
   const fileHandle = await window.showSaveFilePicker({
     id: "epub-overlay-save-file",
-    suggestedName: deriveDownloadFilename(sourceUrl),
+    suggestedName: cleanDocumentTitle || deriveDownloadFilename(sourceUrl),
     startIn: "documents",
     types: [{
       description: "EPUB files",
@@ -581,18 +573,17 @@ function resetTransientBookState() {
 }
 
 function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
-  const nextSettings = { ...defaultReaderSettings, ...settings };
-  const layoutLevel = resolveReaderLayoutLevel(settings);
+  const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings };
 
   applyReaderTheme(nextSettings.theme);
   applyReaderFlow(nextSettings.flow, null, readerRoot);
   applyReaderFontSize(nextSettings.fontSize);
-  applyReaderLayoutLevel(layoutLevel, runtime.readerView, readerRoot);
+  applyReaderLayoutLevel(nextSettings.layoutLevel, runtime.readerView, readerRoot);
   emitDockUpdate();
 }
 
-function createView() {
-  const view = document.createElement("foliate-view") as FoliateViewElement;
+async function createView() {
+  const view = await createFoliateView();
   view.enhanceDocument = (doc) => enhanceCachedReaderDocument(doc, view);
   setReaderRenderPending(true);
   readerRoot.replaceChildren(view);
@@ -744,28 +735,35 @@ async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: Re
 }
 
 async function openBook(input: File | string, sourceLabel: string) {
-  const normalizedInput = typeof input === "string" ? normalizeSourceUrlForOpen(input) : input;
-  const fileUrl = typeof normalizedInput === "string" ? normalizedInput : undefined;
-  const legacyBookKey = fileUrl ?? "";
-  const canRead = await ensureFileSchemeAccess(fileUrl);
+  const normalizedInput = typeof input === "string" ? normalizeSourceUrl(input) : input;
+  if (currentLocalSourceUrl) {
+    URL.revokeObjectURL(currentLocalSourceUrl);
+    currentLocalSourceUrl = null;
+  }
+  const fileUrl = typeof normalizedInput === "string"
+    ? normalizedInput
+    : (currentLocalSourceUrl = URL.createObjectURL(normalizedInput));
+  const fallbackBookKey = normalizedInput instanceof File
+    ? `local:${normalizedInput.name}:${normalizedInput.size}:${normalizedInput.lastModified}`
+    : fileUrl;
+  const canRead = await ensureSourceAccess(fileUrl);
   if (!canRead) return;
 
-  await ensureFoliateView();
-
   if (!runtime.readerView) {
-    runtime.readerView = createView();
+    runtime.readerView = await createView();
   }
 
   try {
-    state.currentBookKey = legacyBookKey;
-    state.currentSourceUrl = fileUrl ?? "";
+    state.currentBookKey = fallbackBookKey;
+    state.currentSourceUrl = fileUrl;
+    currentSourceLabel = sourceLabel;
     currentSaveHandle = undefined;
     resetTransientBookState();
     setReaderRenderPending(true);
     if (runtime.readerView.book) runtime.readerView.close();
     await preloadReaderFonts();
     await runtime.readerView.open(normalizedInput);
-    state.currentBookKey = await deriveBookKey(runtime.readerView.book, legacyBookKey);
+    state.currentBookKey = await deriveBookKey(runtime.readerView.book, fallbackBookKey);
     const bookKey = state.currentBookKey;
     void getStoredFileHandle(bookKey)
       .then((handle) => {
@@ -774,7 +772,6 @@ async function openBook(input: File | string, sourceLabel: string) {
       .catch((error) => {
         console.warn("Failed to restore saved EPUB file handle.", error);
       });
-    await reconcileBookStorage(state.currentBookKey, [legacyBookKey]);
     applyReaderSettings(
       state.currentBookKey ? await getSavedReaderSettings(state.currentBookKey) : undefined,
     );
@@ -792,44 +789,6 @@ async function openBook(input: File | string, sourceLabel: string) {
   } catch (error) {
     setReaderRenderPending(false);
     console.error(`Failed to open ${sourceLabel}`, error);
-  }
-}
-
-function readSourceFromQuery() {
-  const query = window.location.search;
-  if (!query) return null;
-
-  const rawSource = readRawQueryValue(query, "src");
-  if (rawSource) return decodeQueryValue(rawSource);
-
-  return new URLSearchParams(query).get("src");
-}
-
-function readRawQueryValue(query: string, key: string) {
-  const prefix = `${key}=`;
-  const parts = query.startsWith("?") ? query.slice(1).split("&") : query.split("&");
-  const partIndex = parts.findIndex((part) => part.startsWith(prefix));
-  if (partIndex < 0) return null;
-
-  // src is the only viewer query value today; keeping the tail preserves unescaped
-  // ampersands in local file names from older or manually opened URLs.
-  return parts.slice(partIndex).join("&").slice(prefix.length);
-}
-
-function decodeQueryValue(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function normalizeSourceUrlForOpen(sourceUrl: string) {
-  if (!sourceUrl.startsWith("file://")) return sourceUrl;
-  try {
-    return new URL(sourceUrl).href;
-  } catch {
-    return sourceUrl;
   }
 }
 
@@ -1038,7 +997,7 @@ async function importEmbeddedHighlights(bookKey: string, sourceUrl: string, task
   try {
     const highlights = await readEmbeddedHighlights(sourceUrl);
     if (runtime.postLoadTaskToken !== taskToken) return;
-    await mergeSavedHighlights(bookKey, highlights);
+    await setSavedHighlights(bookKey, highlights);
   } catch (error) {
     console.warn("Failed to read embedded EPUB overlays.", error);
   }
@@ -1048,8 +1007,7 @@ async function bootstrap() {
   applyReaderSettings(undefined);
   setupCriticalInteractions();
   runtime.readingProgressController?.bind();
-
-  const src = readSourceFromQuery();
+  const src = getInitialSourceUrl();
   if (src) {
     void openBook(src, formatSourcePath(src) || src);
   } else {

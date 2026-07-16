@@ -706,3 +706,76 @@
   }
 
 }
+/* Standalone web entry */
+.web-welcome {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f7f8fa;
+  color: #0f172a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.web-welcome-card {
+  width: min(520px, 100%);
+  padding: 42px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 8px 30px rgb(15 23 42 / 5%);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.web-welcome-card.is-dragging {
+  border-color: #2563eb;
+  transform: translateY(-2px);
+}
+
+.web-welcome-logo {
+  display: block;
+  width: 54px;
+  height: 54px;
+  margin-inline: auto;
+}
+.web-welcome h1 { margin: 18px 0 26px; font-size: 25px; }
+
+.web-file-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22px;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.web-file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.web-drop-hint {
+  display: block;
+  margin: 10px 0 26px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.web-selection-error { margin: 0 0 12px; color: #dc2626; font-size: 12px; }
+.web-welcome small { display: block; color: #64748b; line-height: 1.6; }
+
+@media (max-width: 540px) {
+  .web-welcome-card { padding: 30px 20px; }
+}

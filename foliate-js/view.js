@@ -2,6 +2,7 @@ import * as CFI from './epubcfi.js'
 import { TOCProgress, SectionProgress } from './progress.js'
 import { Overlayer } from './overlayer.js'
 import { textWalker } from './text-walker.js'
+import { BlobReader, BlobWriter, configure, TextWriter, ZipReader } from '@zip.js/zip.js'
 
 const SEARCH_PREFIX = 'foliate-search:'
 const CACHE_OFFSETS = [0, 1, -1, 2]
@@ -20,8 +21,6 @@ const isZip = async file => {
 }
 
 const makeZipLoader = async file => {
-    const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } =
-        await import('@zip.js/zip.js')
     configure({ useWebWorkers: false })
     const reader = new ZipReader(new BlobReader(file))
     const entries = await reader.getEntries()

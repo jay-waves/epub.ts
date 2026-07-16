@@ -1,6 +1,33 @@
-import { normalizeTocHref } from "./toc-controller";
-import { normalizeInlineText } from "./text-utils";
-import type { FoliateViewElement } from "../foliate-js/view.js";
+import type { FoliateViewElement } from "../../foliate-js/view.js";
+import { normalizeInlineText } from "../reader";
+
+export { Overlayer } from "../../foliate-js/overlayer.js";
+export type {
+  BookSection,
+  FoliateViewElement,
+  RelocateDetail,
+  SearchHit,
+  TocItem,
+} from "../../foliate-js/view.js";
+
+let viewModuleReady: Promise<unknown> | null = null;
+
+export async function createFoliateView() {
+  viewModuleReady ??= import("../../foliate-js/view.js");
+  await viewModuleReady;
+  return document.createElement("foliate-view") as FoliateViewElement;
+}
+
+export function normalizeTocHref(href?: string) {
+  if (!href) return "";
+
+  try {
+    const url = new URL(href, "https://reader.local/");
+    return `${url.pathname}${url.hash}`;
+  } catch {
+    return href.trim();
+  }
+}
 
 function formatLocalized(value?: string | Record<string, string>) {
   if (!value) return "";
@@ -23,66 +50,42 @@ function collectIdentifierCandidates(value: unknown, candidates: string[] = []) 
   if (typeof value === "string") {
     const normalized = value.trim();
     if (normalized) candidates.push(normalized);
-    return candidates;
-  }
-  if (Array.isArray(value)) {
+  } else if (Array.isArray(value)) {
     value.forEach((item) => collectIdentifierCandidates(item, candidates));
-    return candidates;
-  }
-  if (typeof value === "object") {
+  } else if (typeof value === "object") {
     Object.values(value as Record<string, unknown>).forEach((item) => collectIdentifierCandidates(item, candidates));
   }
   return candidates;
 }
 
-async function sha256Hex(value: string): Promise<string> {
+async function sha256Hex(value: string) {
   const data = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function deriveBookKey(book: FoliateViewElement["book"], legacyKey: string): Promise<string> {
+export async function deriveBookKey(book: FoliateViewElement["book"], fallbackKey: string) {
   const metadata = book?.metadata;
-  const identifiers = [
+  const stableIdentifier = [
     ...collectIdentifierCandidates(metadata?.identifier),
     ...collectIdentifierCandidates(metadata?.altIdentifier),
-  ];
-  const stableIdentifier = identifiers
-    .map(normalizeInlineText)
-    .find(Boolean);
+  ].map(normalizeInlineText).find(Boolean);
 
-  if (stableIdentifier) {
-    return `book:id:${stableIdentifier.toLocaleLowerCase()}`;
-  }
+  if (stableIdentifier) return `book:id:${stableIdentifier.toLocaleLowerCase()}`;
 
   const sections = book?.sections ?? [];
-  const sectionSignature = sections
-    .slice(0, 4)
-    .map((section) => `${String(section.id ?? "")}:${section.size ?? 0}:${section.cfi ?? ""}`)
-    .join("|");
-  const tocSignature = (book?.toc ?? [])
-    .slice(0, 4)
-    .map((item) => normalizeTocHref(item.href) || item.label || "")
-    .join("|");
   const fingerprintParts = {
     author: formatContributor(metadata?.author),
     sectionCount: sections.length,
-    sectionSignature,
+    sectionSignature: sections.slice(0, 4)
+      .map((section) => `${String(section.id ?? "")}:${section.size ?? 0}:${section.cfi ?? ""}`)
+      .join("|"),
     title: formatLocalized(metadata?.title),
-    tocSignature,
+    tocSignature: (book?.toc ?? []).slice(0, 4)
+      .map((item) => normalizeTocHref(item.href) || item.label || "")
+      .join("|"),
   };
-  const hasFingerprintData = Boolean(
-    fingerprintParts.title
-      || fingerprintParts.author
-      || fingerprintParts.sectionCount
-      || fingerprintParts.sectionSignature
-      || fingerprintParts.tocSignature,
-  );
+  if (!Object.values(fingerprintParts).some(Boolean)) return fallbackKey;
 
-  if (hasFingerprintData) {
-    const fingerprintSource = JSON.stringify(fingerprintParts);
-    return `book:fingerprint:${(await sha256Hex(fingerprintSource)).slice(0, 24)}`;
-  }
-
-  return legacyKey;
+  return `book:fingerprint:${(await sha256Hex(JSON.stringify(fingerprintParts))).slice(0, 24)}`;
 }

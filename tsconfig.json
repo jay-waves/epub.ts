@@ -11,5 +11,5 @@
     "noEmit": true,
     "types": ["chrome"]
   },
-  "include": ["src"]
+  "include": ["app"]
 }

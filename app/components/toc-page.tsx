@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import type { TocItem } from "../../foliate-js/view.js";
+import type { TocItem } from "../foliate";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { TocUpdateDetail } from "../viewer-events";
-import { normalizeTocHref } from "../toc-controller";
+import { normalizeTocHref } from "../foliate";
 import { Dialog } from "./ui";
 
 export function TocPage() {

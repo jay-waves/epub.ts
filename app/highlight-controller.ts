@@ -1,4 +1,4 @@
-import { Overlayer } from "../foliate-js/overlayer.js";
+import { Overlayer } from "./foliate";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import {
   getSavedHighlights,
@@ -6,8 +6,8 @@ import {
   setSavedHighlights,
 } from "./viewer-storage";
 import type { HighlightContextAction } from "./viewer-events";
-import type { ReaderHighlight } from "./viewer-types";
-import type { FoliateViewElement } from "../foliate-js/view.js";
+import type { ReaderHighlight } from "./reader";
+import type { FoliateViewElement } from "./foliate";
 
 type ReaderContent = {
   doc?: Document;
@@ -131,7 +131,6 @@ export function createHighlightController(options: {
   runWhenIdle: (callback: () => void, timeout?: number) => void;
 }) {
   const defaultHighlightColor = "#f4c430";
-  const legacyAnnotationColors = new Set(["#0ea5e9", "#4f8f9f", "#8b9098"]);
   const contextTargets = new WeakSet<EventTarget>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
@@ -245,8 +244,7 @@ export function createHighlightController(options: {
 
   const hasAnnotationNote = (highlight: ReaderHighlight) => Boolean(highlight.note?.trim());
 
-  const getHighlightColor = (highlight: ReaderHighlight) =>
-    !highlight.color || legacyAnnotationColors.has(highlight.color) ? defaultHighlightColor : highlight.color;
+  const getHighlightColor = (highlight: ReaderHighlight) => highlight.color || defaultHighlightColor;
 
   const removeAnnotationBadges = (value: string) => {
     for (const { doc, overlayer } of getContents()) {

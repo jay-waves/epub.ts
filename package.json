@@ -4,7 +4,9 @@
 	"version": "0.2.8",
 	"type": "module",
 	"scripts": {
-		"build": "vite build",
+		"build": "pnpm typecheck && vite build",
+		"build:web": "pnpm typecheck && VIEWER_PLATFORM=web vite build",
+		"deploy:web": "bash scripts/deploy-web.sh",
 		"typecheck": "tsgo --noEmit"
 	},
 	"devDependencies": {

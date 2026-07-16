@@ -1,6 +1,6 @@
-import type { FoliateViewElement, SearchHit } from "../foliate-js/view.js";
+import type { FoliateViewElement, SearchHit } from "./foliate";
 import { emitViewerEvent, VIEWER_EVENTS } from "./viewer-events";
-import { normalizeInlineText } from "./text-utils";
+import { normalizeInlineText } from "./reader";
 import { getSavedHighlights } from "./viewer-storage";
 
 const LONG_SEARCH_QUERY_THRESHOLD = 24;

@@ -1,5 +1,5 @@
-import type { HighlightJs } from "./code-highlighter";
-import { normalizeInlineText } from "./text-utils";
+import type { HighlightJs } from "./highlighter";
+import { normalizeInlineText } from "../reader";
 
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;
@@ -42,7 +42,7 @@ export async function prepareReaderContentDocument(doc: Document, options: {
 }
 
 function ensureHighlightJs() {
-  highlightJsReady ??= import("./code-highlighter").then((module) => module.ensureHighlightJs());
+  highlightJsReady ??= import("./highlighter").then((module) => module.ensureHighlightJs());
   return highlightJsReady;
 }
 

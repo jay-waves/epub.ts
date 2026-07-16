@@ -1,3 +1,5 @@
+import { get, set } from "idb-keyval";
+
 const REDIRECT_RULE_ID = 1;
 const EPUB_URL_REGEX = "^file:///.+\\.epub(?:[?#].*)?$";
 const EPUB_URL_PATTERN = new RegExp(EPUB_URL_REGEX, "i");
@@ -42,13 +44,12 @@ async function installEpubRedirectRule() {
 }
 
 async function getRecoveredDownloadIds() {
-  const stored = await chrome.storage.session.get(RECOVERED_DOWNLOAD_IDS_KEY);
-  const ids = stored[RECOVERED_DOWNLOAD_IDS_KEY];
+  const ids = await get<unknown>(RECOVERED_DOWNLOAD_IDS_KEY);
   return new Set(Array.isArray(ids) ? ids.filter(item => typeof item === "number") : []);
 }
 
 async function saveRecoveredDownloadIds(values: Set<number>) {
-  await chrome.storage.session.set({ [RECOVERED_DOWNLOAD_IDS_KEY]: Array.from(values).slice(-20) });
+  await set(RECOVERED_DOWNLOAD_IDS_KEY, Array.from(values).slice(-20));
 }
 
 async function recoverEpubDownload(item: chrome.downloads.DownloadItem | undefined) {
@@ -62,7 +63,7 @@ async function recoverEpubDownload(item: chrome.downloads.DownloadItem | undefin
   recoveredIds.add(item.id);
   await saveRecoveredDownloadIds(recoveredIds);
 
-  // 打开 viewer 页面
+  // Open the viewer before removing the intercepted download.
   await chrome.tabs.create({ url: getViewerUrl(sourceUrl) });
 
   try { await chrome.downloads.cancel(item.id); } catch {}
