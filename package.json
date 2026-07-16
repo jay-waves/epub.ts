@@ -1,7 +1,7 @@
 {
 	"name": "epub-viewer-extension",
 	"private": true,
-	"version": "0.2.8",
+	"version": "0.2.9",
 	"type": "module",
 	"scripts": {
 		"build": "pnpm typecheck && vite build",
