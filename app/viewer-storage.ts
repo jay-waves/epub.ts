@@ -6,15 +6,11 @@ import type {
 import type { RelocateDetail } from "./foliate";
 import { get, set } from "idb-keyval";
 
-let positionWrite = Promise.resolve();
+const queuePositionWrite = createWriteQueue();
+const queueHighlightWrite = createWriteQueue();
 
-function getBookPositionKey(bookKey: string) {
-  return `reading-position:${bookKey}`;
-}
-
-function getBookHighlightsKey(bookKey: string) {
-  return `reading-highlights:${bookKey}`;
-}
+const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
+const getBookHighlightsKey = (bookKey: string) => `reading-highlights:${bookKey}`;
 
 async function getBookPositionRecord(bookKey: string) {
   if (!bookKey) return null;
@@ -30,20 +26,13 @@ function updateBookPosition(
   bookKey: string,
   update: (previous: ReadingPosition | null) => ReadingPosition,
 ) {
-  const write = positionWrite.then(async () => {
+  return queuePositionWrite(async () => {
     await set(getBookPositionKey(bookKey), update(await getBookPositionRecord(bookKey)));
   });
-  positionWrite = write.catch(() => {});
-  return write;
 }
 
 export async function getSavedPosition(bookKey: string) {
   return (await getBookPositionRecord(bookKey)) ?? undefined;
-}
-
-export async function getSavedReaderSettings(bookKey: string) {
-  const position = await getBookPositionRecord(bookKey);
-  return position?.settings;
 }
 
 export async function saveReadingPosition(bookKey: string, detail: RelocateDetail) {
@@ -70,16 +59,17 @@ export async function getSavedHighlights(bookKey: string) {
   return getBookHighlightsRecord(bookKey);
 }
 
-export async function saveHighlight(bookKey: string, highlight: ReaderHighlight) {
-  if (!bookKey) return;
-
-  const bookHighlights = await getBookHighlightsRecord(bookKey);
-  if (bookHighlights.some((item) => item.value === highlight.value)) return;
-
-  await set(getBookHighlightsKey(bookKey), [...bookHighlights, highlight]);
-}
-
 export async function setSavedHighlights(bookKey: string, bookHighlights: ReaderHighlight[]) {
   if (!bookKey) return;
-  await set(getBookHighlightsKey(bookKey), bookHighlights);
+  await queueHighlightWrite(() => set(getBookHighlightsKey(bookKey), bookHighlights));
+}
+
+function createWriteQueue() {
+  let pending = Promise.resolve();
+
+  return <Result>(write: () => Promise<Result>) => {
+    const result = pending.then(write);
+    pending = result.then(() => undefined, () => undefined);
+    return result;
+  };
 }

@@ -3,15 +3,15 @@ import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
 import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
 import { getViewerAssetUrl, isWebViewer } from "./platform";
-import { state } from "./reader";
+import { readerSettings } from "./reader";
 import type { ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./reader";
 import type { FoliateViewElement } from "./foliate";
 
 const READER_THEMES: ReaderTheme[] = [
-  { id: "light", label: "Light", bodyTheme: "lofi", mode: "light", background: "#fffefd", foreground: "#1f2933", link: "#1f5f8f" },
-  { id: "grey", label: "Grey", bodyTheme: "corporate", mode: "light", background: "#f1f1ee", foreground: "#2f3438", link: "#4c6a7f" },
-  { id: "dark", label: "Dark", bodyTheme: "nord", mode: "dark", background: "#212830", foreground: "#e5e9f0", link: "#88c0d0" },
-  { id: "one-dark", label: "One Dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
+  { id: "light", bodyTheme: "lofi", mode: "light", background: "#fffefd", foreground: "#1f2933", link: "#1f5f8f" },
+  { id: "grey", bodyTheme: "corporate", mode: "light", background: "#f1f1ee", foreground: "#2f3438", link: "#4c6a7f" },
+  { id: "dark", bodyTheme: "nord", mode: "dark", background: "#212830", foreground: "#e5e9f0", link: "#88c0d0" },
+  { id: "one-dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
 ];
 
 function normalizeHighlightThemeCss(themeCss: string) {
@@ -32,20 +32,20 @@ const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
   "one-dark": normalizeHighlightThemeCss(githubDarkHighlightTheme),
 };
 
-function getReaderTheme(themeId = state.readerTheme) {
+function getReaderTheme(themeId = readerSettings.theme) {
   return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
 }
 
-export function getNextReaderTheme(themeId = state.readerTheme) {
+export function getNextReaderThemeId(themeId = readerSettings.theme) {
   const currentIndex = READER_THEMES.findIndex((theme) => theme.id === getReaderTheme(themeId).id);
-  return READER_THEMES[(currentIndex + 1) % READER_THEMES.length] ?? READER_THEMES[0];
+  return (READER_THEMES[(currentIndex + 1) % READER_THEMES.length] ?? READER_THEMES[0]).id;
 }
 
-function getReaderCodeHighlightTheme(themeId = state.readerTheme) {
+function getReaderCodeHighlightTheme(themeId = readerSettings.theme) {
   return READER_CODE_HIGHLIGHT_THEMES[getReaderTheme(themeId).id];
 }
 
-function getReaderMediaFilter(themeId = state.readerTheme) {
+function getReaderMediaFilter(themeId = readerSettings.theme) {
   return getReaderTheme(themeId).mode === "dark"
     ? "brightness(0.72) contrast(0.92) saturate(0.88)"
     : "none";
@@ -60,7 +60,7 @@ export function applyReaderTheme(themeId: ReaderThemeId) {
     ? "rgba(22, 29, 37, 0.45)"
     : "rgba(255, 255, 255, 0.18)";
 
-  state.readerTheme = theme.id;
+  readerSettings.theme = theme.id;
   document.body.dataset.theme = theme.bodyTheme;
   document.documentElement.dataset.readerTheme = theme.id;
   document.documentElement.dataset.readerMode = theme.mode;
@@ -217,7 +217,7 @@ const MAX_READER_LAYOUT_LEVEL = READER_LAYOUT_PRESETS.length - 1;
 const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[3];
 let cachedDynamicBookStyles: { key: string; value: string } | null = null;
 
-function getLayoutPreset(layoutLevel = state.readerLayoutLevel) {
+function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
   return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
 }
 
@@ -519,7 +519,7 @@ ${READER_MUTED_COLOR_CSS}
       display: block !important;
       margin-inline: auto !important;
     }
-    img[data-reader-zoomable="true"] {
+    img.reader-zoomable-image {
       inline-size: 80% !important;
       width: 80% !important;
       max-inline-size: 80% !important;
@@ -527,16 +527,8 @@ ${READER_MUTED_COLOR_CSS}
       border-radius: 0.5rem !important;
       cursor: zoom-in !important;
     }
-    figure img[data-reader-zoomable="true"] {
+    figure img.reader-zoomable-image {
       margin-block-end: 0.75em !important;
-    }
-    .medium-zoom-overlay {
-      backdrop-filter: blur(10px) saturate(115%);
-      -webkit-backdrop-filter: blur(10px) saturate(115%);
-    }
-    .medium-zoom-image--opened {
-      border-radius: 0.95rem !important;
-      box-shadow: 0 24px 60px color-mix(in srgb, var(--reader-fg-color) 18%, transparent) !important;
     }
     ${READER_TABLE_SELECTOR} {
       max-inline-size: 100% !important;
@@ -661,8 +653,8 @@ ${READER_AUTO_BREAK_CSS}
     }
   `;
 
-export function getBookDynamicStyles(themeId = state.readerTheme) {
-  const cacheKey = `${themeId}|${state.readerFontSize}|${state.readerLayoutLevel}`;
+export function getBookDynamicStyles(themeId = readerSettings.theme) {
+  const cacheKey = `${themeId}|${readerSettings.fontSize}|${readerSettings.layoutLevel}`;
   if (cachedDynamicBookStyles?.key === cacheKey) return cachedDynamicBookStyles.value;
 
   const theme = getReaderTheme(themeId);
@@ -681,7 +673,7 @@ export function getBookDynamicStyles(themeId = state.readerTheme) {
       --reader-muted-color: color-mix(in srgb, ${foreground} 72%, ${background});
       --reader-border-color: color-mix(in srgb, ${foreground} 18%, ${background});
       --reader-panel-bg: color-mix(in srgb, ${foreground} 7%, ${background});
-      --reader-font-size: ${state.readerFontSize}px;
+      --reader-font-size: ${readerSettings.fontSize}px;
       --reader-line-height: ${lineHeight};
       --reader-letter-spacing: ${layout.letterSpacing};
       --reader-word-spacing: ${layout.wordSpacing};
@@ -709,7 +701,7 @@ export function getBookDynamicStyles(themeId = state.readerTheme) {
   return styles;
 }
 
-export function getBookStyles(themeId = state.readerTheme): [string, string] {
+export function getBookStyles(themeId = readerSettings.theme): [string, string] {
   return [READER_STATIC_BOOK_STYLES, getBookDynamicStyles(themeId)];
 }
 
@@ -717,17 +709,17 @@ export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElem
   const layout = getLayoutPreset();
   const readerWidth = readerRoot.getBoundingClientRect().width;
   const allowMultipleColumns =
-    state.flow === "paginated" && readerWidth >= PAGINATED_TWO_COLUMN_MIN_WIDTH;
+    readerSettings.flow === "paginated" && readerWidth >= PAGINATED_TWO_COLUMN_MIN_WIDTH;
   const allowThreeColumns =
-    state.flow === "paginated" && readerWidth >= PAGINATED_THREE_COLUMN_MIN_WIDTH;
+    readerSettings.flow === "paginated" && readerWidth >= PAGINATED_THREE_COLUMN_MIN_WIDTH;
   const maxInlineSize = allowMultipleColumns
     ? layout.multiColumnMaxInlineSize
     : layout.singleColumnMaxInlineSize;
 
-  view.renderer?.setAttribute("flow", state.flow);
-  view.renderer?.setAttribute("gap", state.flow === "paginated" ? PAGINATED_GAP : "1.5%");
+  view.renderer?.setAttribute("flow", readerSettings.flow);
+  view.renderer?.setAttribute("gap", readerSettings.flow === "paginated" ? PAGINATED_GAP : "1.5%");
   view.renderer?.setAttribute("animated", "");
-  if (state.flow === "paginated") {
+  if (readerSettings.flow === "paginated") {
     view.renderer?.setAttribute("margin", `${layout.margin}px`);
     view.renderer?.setAttribute("max-inline-size", `${maxInlineSize}px`);
     view.renderer?.setAttribute("max-column-count", allowThreeColumns ? "3" : "2");
@@ -749,26 +741,26 @@ function clampLayoutLevel(layoutLevel: number) {
 }
 
 export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement | null) {
-  state.readerFontSize = clampReaderFontSize(fontSize);
+  readerSettings.fontSize = clampReaderFontSize(fontSize);
   view?.renderer?.setStyles?.(getBookStyles());
 }
 
 export function applyReaderLayoutLevel(layoutLevel: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  state.readerLayoutLevel = clampLayoutLevel(layoutLevel);
+  readerSettings.layoutLevel = clampLayoutLevel(layoutLevel);
   view?.renderer?.setStyles?.(getBookStyles());
   if (view) applyReaderLayout(view, readerRoot);
 }
 
 export function canChangeReaderFontSize(delta: number) {
-  const currentSize = clampReaderFontSize(state.readerFontSize);
+  const currentSize = clampReaderFontSize(readerSettings.fontSize);
   return clampReaderFontSize(currentSize + delta) !== currentSize;
 }
 
 export function changeReaderFontSize(delta: number, view?: FoliateViewElement | null) {
-  const currentSize = clampReaderFontSize(state.readerFontSize);
+  const currentSize = clampReaderFontSize(readerSettings.fontSize);
   const nextSize = clampReaderFontSize(currentSize + delta);
   if (nextSize === currentSize) {
-    state.readerFontSize = currentSize;
+    readerSettings.fontSize = currentSize;
     return false;
   }
   applyReaderFontSize(nextSize, view);
@@ -776,15 +768,15 @@ export function changeReaderFontSize(delta: number, view?: FoliateViewElement | 
 }
 
 export function canChangeReaderLayoutLevel(delta: number) {
-  const currentLevel = clampLayoutLevel(state.readerLayoutLevel);
+  const currentLevel = clampLayoutLevel(readerSettings.layoutLevel);
   return clampLayoutLevel(currentLevel + delta) !== currentLevel;
 }
 
 export function changeReaderLayoutLevel(delta: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  const currentLevel = clampLayoutLevel(state.readerLayoutLevel);
+  const currentLevel = clampLayoutLevel(readerSettings.layoutLevel);
   const nextLevel = clampLayoutLevel(currentLevel + delta);
   if (nextLevel === currentLevel) {
-    state.readerLayoutLevel = currentLevel;
+    readerSettings.layoutLevel = currentLevel;
     return false;
   }
   applyReaderLayoutLevel(nextLevel, view, readerRoot);
@@ -792,12 +784,12 @@ export function changeReaderLayoutLevel(delta: number, view: FoliateViewElement 
 }
 
 export function applyReaderFlow(flow: ReaderFlow, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  state.flow = flow;
+  readerSettings.flow = flow;
   if (view) applyReaderLayout(view, readerRoot);
 }
 
 export function changeReaderFlow(view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  const nextFlow = state.flow === "paginated" ? "scrolled" : "paginated";
+  const nextFlow = readerSettings.flow === "paginated" ? "scrolled" : "paginated";
   applyReaderFlow(nextFlow, view, readerRoot);
 }
 

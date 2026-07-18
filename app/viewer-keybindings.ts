@@ -34,16 +34,16 @@ function isScrollDownKey(key: string) {
 export function setupViewerKeybindings(options: {
   getReaderView: () => FoliateViewElement | null;
   getFlow: () => "paginated" | "scrolled";
-  canTurnPage?: () => boolean;
-  beforeSectionTurn?: () => void;
-  afterSectionTurn?: () => void;
-  onScrollEdge?: (direction: number) => void;
+  canTurnPage: () => boolean;
+  beforeSectionTurn: () => void;
+  afterSectionTurn: () => void;
+  onScrollEdge: (direction: number) => void;
   openSearch: () => void;
   closeSearch: () => void;
   saveBook: () => void;
 }) {
-  const keyTargets = new WeakSet<Document>();
-  const boundReaderViews = new WeakSet<FoliateViewElement>();
+  const keyTargets = new Map<Document, () => void>();
+  const boundReaderViews = new Map<FoliateViewElement, { documents: Set<Document>; onLoad: EventListener }>();
   let pressedScrollKey: string | null = null;
   let holdScrollDelayTimer: number | undefined;
   let holdScrollDirection = 0;
@@ -86,22 +86,16 @@ export function setupViewerKeybindings(options: {
     return { end, renderer, start, viewSize };
   };
 
-  const getRemainingSectionDistance = (direction: number) => {
-    const metrics = getSectionScrollMetrics();
-    if (!metrics) return 0;
-    return direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
-  };
-
   const signalScrollEdge = (direction: number) => {
     if (isWheelScrollSuppressed()) return;
-    if (options.getFlow() === "scrolled") options.onScrollEdge?.(direction);
+    if (options.getFlow() === "scrolled") options.onScrollEdge(direction);
   };
 
   const scrollCurrentSectionWithBounds = (direction: number, distance: number) => {
     const metrics = getSectionScrollMetrics();
     if (!metrics) return;
 
-    const remaining = getRemainingSectionDistance(direction);
+    const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) {
       signalScrollEdge(direction);
       return;
@@ -117,7 +111,7 @@ export function setupViewerKeybindings(options: {
     const renderer = readerView?.renderer;
     if (!renderer) return;
 
-    const isRtl = readerView?.book?.dir === "rtl";
+    const isRtl = readerView.book?.dir === "rtl";
     const shouldGoNext = direction === "left" ? isRtl : !isRtl;
     const isBookEdge = shouldGoNext ? renderer.atEnd : renderer.atStart;
     if (isBookEdge) {
@@ -126,7 +120,7 @@ export function setupViewerKeybindings(options: {
     }
 
     suppressWheelScroll();
-    options.beforeSectionTurn?.();
+    options.beforeSectionTurn();
     sectionTurnInFlight = true;
     const turn = shouldGoNext ? renderer.nextSection?.() : renderer.prevSection?.();
     void Promise.resolve(turn)
@@ -135,19 +129,19 @@ export function setupViewerKeybindings(options: {
       })
       .finally(() => {
         sectionTurnInFlight = false;
-        options.afterSectionTurn?.();
+        options.afterSectionTurn();
       });
   };
 
   const turnPage = (direction: PageTurnDirection) => {
-    if (options.canTurnPage && !options.canTurnPage()) return;
+    if (!options.canTurnPage()) return;
 
     const readerView = options.getReaderView();
     if (options.getFlow() === "paginated") {
       const isRtl = readerView?.book?.dir === "rtl";
       const shouldGoNext = direction === "left" ? isRtl : !isRtl;
       const isSectionEdge = shouldGoNext ? readerView?.renderer?.atEnd : readerView?.renderer?.atStart;
-      if (isSectionEdge) options.beforeSectionTurn?.();
+      if (isSectionEdge) options.beforeSectionTurn();
       void (direction === "left" ? readerView?.goLeft?.() : readerView?.goRight?.());
       return;
     }
@@ -244,6 +238,7 @@ export function setupViewerKeybindings(options: {
   const handleKeyDown = (event: KeyboardEvent) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
+      if (event.repeat) return;
       options.saveBook();
       return;
     }
@@ -296,11 +291,13 @@ export function setupViewerKeybindings(options: {
       : Math.sign(event.deltaX);
     if (!direction) return;
 
-    const remaining = getRemainingSectionDistance(direction);
+    const metrics = getSectionScrollMetrics();
+    if (!metrics) return;
+    const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) signalScrollEdge(direction);
   };
 
-  wheelGestures.on("wheel", (state) => {
+  const stopWheelListener = wheelGestures.on("wheel", (state) => {
     if (state.isStart || state.isEnding || state.isMomentumCancel) resetWheelSwipe();
     if (state.isEnding || state.isMomentum || wheelSwipeConsumed) return;
 
@@ -329,28 +326,63 @@ export function setupViewerKeybindings(options: {
 
   const bindKeyTarget = (targetDocument: Document) => {
     if (keyTargets.has(targetDocument)) return;
-    keyTargets.add(targetDocument);
     targetDocument.addEventListener("keydown", handleKeyDown);
     targetDocument.addEventListener("keyup", handleKeyUp);
     targetDocument.addEventListener("wheel", handleWheel, { passive: true });
     targetDocument.defaultView?.addEventListener("blur", handleBlur);
-    wheelGestures.observe(targetDocument);
+    const stopObservingWheel = wheelGestures.observe(targetDocument);
+    keyTargets.set(targetDocument, () => {
+      stopObservingWheel();
+      targetDocument.removeEventListener("keydown", handleKeyDown);
+      targetDocument.removeEventListener("keyup", handleKeyUp);
+      targetDocument.removeEventListener("wheel", handleWheel);
+      targetDocument.defaultView?.removeEventListener("blur", handleBlur);
+    });
   };
 
   const bindReaderView = (view: FoliateViewElement) => {
     if (boundReaderViews.has(view)) return;
-    boundReaderViews.add(view);
+    const documents = new Set<Document>();
+    const bindDocument = (doc: Document) => {
+      documents.add(doc);
+      bindKeyTarget(doc);
+    };
     view.renderer?.getContents?.().forEach((content) => {
-      if (content.doc) bindKeyTarget(content.doc);
+      if (content.doc) bindDocument(content.doc);
     });
-    view.addEventListener("load", (event) => {
+    const onLoad: EventListener = (event) => {
       const detail = (event as CustomEvent<{ doc?: Document }>).detail;
-      if (detail?.doc) bindKeyTarget(detail.doc);
+      if (detail?.doc) bindDocument(detail.doc);
+    };
+    view.addEventListener("load", onLoad);
+    boundReaderViews.set(view, { documents, onLoad });
+  };
+
+  const unbindReaderView = (view: FoliateViewElement) => {
+    const binding = boundReaderViews.get(view);
+    if (!binding) return;
+    view.removeEventListener("load", binding.onLoad);
+    binding.documents.forEach((doc) => {
+      keyTargets.get(doc)?.();
+      keyTargets.delete(doc);
     });
+    boundReaderViews.delete(view);
   };
 
   bindKeyTarget(document);
-  listenViewerEvent(VIEWER_EVENTS.pageTurn, turnPage);
+  const stopPageTurnListener = listenViewerEvent(VIEWER_EVENTS.pageTurn, turnPage);
 
-  return { bindReaderView };
+  return {
+    bindReaderView,
+    destroy: () => {
+      stopHoldScroll();
+      boundReaderViews.forEach((_, view) => unbindReaderView(view));
+      keyTargets.forEach((dispose) => dispose());
+      keyTargets.clear();
+      stopPageTurnListener();
+      stopWheelListener();
+      wheelGestures.disconnect();
+    },
+    unbindReaderView,
+  };
 }

@@ -10,7 +10,7 @@ const MAX_SEARCH_RESULTS = 200;
 export function createSearchController(options: {
   getBookKey: () => string;
   getReaderView: () => FoliateViewElement | null;
-  runWithReaderRenderPending?: (action: () => Promise<unknown> | undefined) => Promise<void>;
+  runWithReaderRenderPending: (action: () => Promise<unknown> | undefined) => Promise<void>;
 }) {
   let searchRunId = 0;
   let searchHits: SearchHit[] = [];
@@ -34,6 +34,15 @@ export function createSearchController(options: {
     return runId;
   };
 
+  const showEmptyResults = (placeholder: string) => {
+    emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
+      hitCount: 0,
+      hitIndex: -1,
+      placeholder,
+      visible: true,
+    });
+  };
+
   const showHit = async (index: number) => {
     const readerView = options.getReaderView();
     if (!readerView || !searchHits.length) return;
@@ -46,11 +55,7 @@ export function createSearchController(options: {
 
     try {
       const navigate = () => readerView.select?.(hit.cfi) ?? readerView.goTo(hit.cfi);
-      if (options.runWithReaderRenderPending) {
-        await options.runWithReaderRenderPending(navigate);
-      } else {
-        await navigate();
-      }
+      await options.runWithReaderRenderPending(navigate);
     } catch (error) {
       console.warn("Failed to navigate to search hit.", error);
     }
@@ -120,12 +125,7 @@ export function createSearchController(options: {
     if (searchHits.length) {
       await showClosestHit();
     } else {
-      emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
-        hitCount: 0,
-        hitIndex: -1,
-        placeholder: searchOptions.query ? `No highlights for: ${searchOptions.query}` : "No highlights saved",
-        visible: true,
-      });
+      showEmptyResults(searchOptions.query ? `No highlights for: ${searchOptions.query}` : "No highlights saved");
     }
   };
 
@@ -168,12 +168,7 @@ export function createSearchController(options: {
       if (searchHits.length) {
         await showClosestHit();
       } else {
-        emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
-          hitCount: 0,
-          hitIndex: -1,
-          placeholder: `No results for: ${searchOptions.query}`,
-          visible: true,
-        });
+        showEmptyResults(`No results for: ${searchOptions.query}`);
       }
     } catch (error) {
       if (runId !== searchRunId) return;

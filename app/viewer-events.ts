@@ -1,4 +1,5 @@
 import type { TocItem } from "./foliate";
+import type { BookInfo } from "./book-info";
 
 export const VIEWER_EVENTS = {
   highlightContextAction: "reader:highlight-context-action",
@@ -60,15 +61,6 @@ export type AnnotationDetail = {
   y: number;
 };
 
-export type AnnotationSaveDetail = {
-  note: string;
-  value: string;
-};
-
-export type AnnotationDeleteDetail = {
-  value: string;
-};
-
 export type DockAction =
   | "toggle-flow"
   | "toggle-theme"
@@ -106,26 +98,14 @@ export type TocUpdateDetail = {
   items: TocItem[];
 };
 
-export type BookInfoRow = {
-  label: string;
-  value: string;
-};
-
-export type BookInfoUpdateDetail = {
-  metadataRows: BookInfoRow[];
-  statsRows: BookInfoRow[];
-  subtitle?: string;
-  title: string;
-};
-
 export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
   [VIEWER_EVENTS.highlightContextClose]: void;
   [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;
   [VIEWER_EVENTS.annotationClose]: void;
-  [VIEWER_EVENTS.annotationDelete]: AnnotationDeleteDetail;
+  [VIEWER_EVENTS.annotationDelete]: { value: string };
   [VIEWER_EVENTS.annotationOpen]: AnnotationDetail;
-  [VIEWER_EVENTS.annotationSave]: AnnotationSaveDetail;
+  [VIEWER_EVENTS.annotationSave]: { note: string; value: string };
   [VIEWER_EVENTS.unsavedChange]: void;
   [VIEWER_EVENTS.translationClose]: void;
   [VIEWER_EVENTS.translationOpen]: TranslationDetail;
@@ -140,7 +120,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.searchPrevious]: void;
   [VIEWER_EVENTS.searchUpdate]: SearchUpdateDetail;
   [VIEWER_EVENTS.bookInfoOpen]: void;
-  [VIEWER_EVENTS.bookInfoUpdate]: BookInfoUpdateDetail;
+  [VIEWER_EVENTS.bookInfoUpdate]: BookInfo;
   [VIEWER_EVENTS.tocOpen]: void;
   [VIEWER_EVENTS.tocNavigate]: string;
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;

@@ -10,8 +10,8 @@ export function getViewerAssetUrl(filename: string) {
     : chrome.runtime.getURL(filename);
 }
 
-export async function ensureSourceAccess(sourceUrl?: string) {
-  if (isWebViewer || !sourceUrl?.startsWith("file://")) return true;
+export async function ensureSourceAccess(sourceUrl: string) {
+  if (isWebViewer || !sourceUrl.startsWith("file://")) return true;
 
   const allowed = await chrome.extension.isAllowedFileSchemeAccess();
   if (!allowed) {
@@ -51,32 +51,39 @@ function getFileHandleKey(bookKey: string) {
   return `epub-file-handle:${bookKey}`;
 }
 
-export async function getStoredFileHandle(bookKey: string) {
-  if (!bookKey) return undefined;
+export function getStoredFileHandle(bookKey: string) {
   return get<FileSystemFileHandle>(getFileHandleKey(bookKey));
 }
 
-export async function saveFileHandle(bookKey: string, handle: WritableFileHandle) {
-  if (bookKey) await set(getFileHandleKey(bookKey), handle);
+export function saveFileHandle(bookKey: string, handle: WritableFileHandle) {
+  return set(getFileHandleKey(bookKey), handle);
 }
 
-export async function clearFileHandle(bookKey: string) {
-  if (bookKey) await del(getFileHandleKey(bookKey));
+export function clearFileHandle(bookKey: string) {
+  return del(getFileHandleKey(bookKey));
 }
 
 export async function verifyWritePermission(handle: WritableFileHandle) {
   const descriptor: FileSystemHandlePermissionDescriptor = { mode: "readwrite" };
   if (await handle.queryPermission(descriptor) === "granted") return true;
-  return await handle.requestPermission(descriptor) === "granted";
+  return (await handle.requestPermission(descriptor)) === "granted";
 }
 
 export async function writeBlobToFile(handle: WritableFileHandle, blob: Blob) {
-  const writable = await handle.createWritable();
+  if (blob.size === 0) throw new Error("Refusing to write an empty file.");
+
+  const writable = await handle.createWritable({ keepExistingData: true });
   try {
-    await writable.write(blob);
+    await writable.write({ type: "write", position: 0, data: blob });
+    await writable.truncate(blob.size);
     await writable.close();
   } catch (error) {
     await writable.abort().catch(() => {});
     throw error;
+  }
+
+  const savedFile = await handle.getFile();
+  if (savedFile.size !== blob.size) {
+    throw new Error(`Saved file size mismatch: expected ${blob.size}, received ${savedFile.size}.`);
   }
 }

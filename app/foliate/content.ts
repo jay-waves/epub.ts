@@ -8,6 +8,8 @@ let highlightJsReady: Promise<HighlightJs> | null = null;
 let mediumZoomReady: Promise<MediumZoomFactory> | null = null;
 let readerImageZoom: MediumZoomInstance | null = null;
 let activeZoomProxy: HTMLImageElement | null = null;
+let imageZoomRunId = 0;
+let readerContentDisposed = false;
 const codeEnhancedDocs = new WeakSet<Document>();
 const footnotesLabeledDocs = new WeakSet<Document>();
 const imagesEnhancedDocs = new WeakSet<Document>();
@@ -20,12 +22,6 @@ const CJK_TO_HALF_WIDTH_RE = new RegExp(`(${CJK_CHAR_PATTERN})(${HALF_WIDTH_WORD
 const HALF_WIDTH_TO_CJK_RE = new RegExp(`(${HALF_WIDTH_TRAILING_PATTERN})(${CJK_CHAR_PATTERN})`, "gu");
 const CJK_SPACING_SKIP_SELECTOR = "script, style";
 const MEDIA_SPACING_PARENT_TAGS = new Set(["A", "DIV", "P", "FIGURE", "SECTION", "ARTICLE", "ASIDE", "LI"]);
-
-export function enhanceReaderContent(doc: Document, options: {
-  isCurrent: () => boolean;
-}) {
-  void prepareReaderContentDocument(doc, options);
-}
 
 export async function prepareReaderContentDocument(doc: Document, options: {
   isCurrent: () => boolean;
@@ -42,7 +38,7 @@ export async function prepareReaderContentDocument(doc: Document, options: {
 }
 
 function ensureHighlightJs() {
-  highlightJsReady ??= import("./highlighter").then((module) => module.ensureHighlightJs());
+  highlightJsReady ??= import("./highlighter").then((module) => module.default);
   return highlightJsReady;
 }
 
@@ -52,24 +48,61 @@ function ensureMediumZoom() {
 }
 
 async function ensureReaderImageZoom() {
+  if (readerContentDisposed) return null;
   if (readerImageZoom) return readerImageZoom;
 
   const mediumZoom = await ensureMediumZoom();
+  if (readerContentDisposed) return null;
   readerImageZoom = mediumZoom({
     background: "color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, rgb(15 23 42) 28%)",
     margin: 28,
     scrollOffset: 24,
   });
-  readerImageZoom.on("open", () => {
-    document.body.classList.add("reader-image-zoom-open");
-  });
-  readerImageZoom.on("closed", () => {
-    document.body.classList.remove("reader-image-zoom-open");
-    activeZoomProxy?.remove();
-    activeZoomProxy = null;
-  });
+  readerImageZoom.on("open", handleImageZoomOpen);
+  readerImageZoom.on("closed", handleImageZoomClosed);
 
   return readerImageZoom;
+}
+
+function handleImageZoomOpen() {
+  document.body.classList.add("reader-image-zoom-open");
+}
+
+function handleImageZoomClosed(event: Event) {
+  const proxy = event.target;
+  if (proxy instanceof HTMLImageElement) {
+    readerImageZoom?.detach(proxy);
+    proxy.remove();
+    if (activeZoomProxy === proxy) activeZoomProxy = null;
+  }
+  document.body.classList.remove("reader-image-zoom-open");
+}
+
+export async function closeReaderContentOverlays() {
+  ++imageZoomRunId;
+  const zoom = readerImageZoom;
+  const proxy = activeZoomProxy;
+  activeZoomProxy = null;
+  document.body.classList.remove("reader-image-zoom-open");
+  if (!zoom || !proxy) return;
+
+  try {
+    await zoom.close();
+  } catch {
+    // The proxy may already be detached while its document is closing.
+  } finally {
+    zoom.detach(proxy);
+    proxy.remove();
+  }
+}
+
+export async function disposeReaderContent() {
+  readerContentDisposed = true;
+  await closeReaderContentOverlays();
+  readerImageZoom?.off("open", handleImageZoomOpen);
+  readerImageZoom?.off("closed", handleImageZoomClosed);
+  readerImageZoom?.detach();
+  readerImageZoom = null;
 }
 
 async function beautifyCodeBlocks(doc: Document) {
@@ -97,8 +130,7 @@ function beautifyImages(doc: Document) {
   if (!images.length) return;
 
   for (const image of images) {
-    image.dataset.readerZoomEnhanced = "true";
-    image.dataset.readerZoomable = "true";
+    image.classList.add("reader-zoomable-image");
     markMediaSpacingBlock(image);
     image.addEventListener("click", handleReaderImageClick, { passive: false });
   }
@@ -117,13 +149,8 @@ function markMediaSpacingBlock(image: HTMLImageElement) {
 }
 
 function beautifyCodeBlock(block: HTMLElement, hljs: HighlightJs) {
-  if (block.dataset.readerCodeEnhanced === "true") return;
-
   const source = extractCodeBlockText(block);
-  if (!source.trim()) {
-    block.dataset.readerCodeEnhanced = "true";
-    return;
-  }
+  if (!source.trim()) return;
 
   const target = resolveCodeBlockTrimTarget(block);
   const language = resolveHighlightLanguage(block, target, hljs);
@@ -133,8 +160,6 @@ function beautifyCodeBlock(block: HTMLElement, hljs: HighlightJs) {
 
   block.innerHTML = result.value;
   block.classList.add("hljs");
-  if (result.language) block.dataset.highlightLanguage = result.language;
-  block.dataset.readerCodeEnhanced = "true";
 }
 
 function extractCodeBlockText(block: HTMLElement) {
@@ -165,7 +190,6 @@ function countLineBreaks(value: string) {
 
 function trimTrailingWhitespaceFromCodeBlock(block: HTMLElement) {
   const target = resolveCodeBlockTrimTarget(block);
-  if (!target) return;
 
   while (target.lastChild?.nodeType === Node.TEXT_NODE) {
     const lastTextNode = target.lastChild as Text;
@@ -225,7 +249,6 @@ function extractLanguageCandidate(value: string, hljs: HighlightJs) {
 }
 
 function isZoomableImage(image: HTMLImageElement) {
-  if (image.dataset.readerZoomEnhanced === "true") return false;
   if (image.closest("[data-reader-footnote-target='true']")) return false;
   if (image.closest("a[role~='doc-noteref'], a[epub\\:type~='noteref']")) return false;
   if (image.closest("button, input, label, summary")) return false;
@@ -244,7 +267,9 @@ function handleReaderImageClick(event: MouseEvent) {
 }
 
 async function openReaderImageZoom(image: HTMLImageElement) {
+  const runId = ++imageZoomRunId;
   const zoom = await ensureReaderImageZoom();
+  if (!zoom || runId !== imageZoomRunId || !image.isConnected) return;
   const proxy = createReaderImageZoomProxy(image);
   if (!proxy) return;
 
@@ -261,6 +286,12 @@ async function openReaderImageZoom(image: HTMLImageElement) {
   document.body.appendChild(proxy);
   zoom.attach(proxy);
   await ensureImageReady(proxy);
+  if (runId !== imageZoomRunId) {
+    zoom.detach(proxy);
+    proxy.remove();
+    if (activeZoomProxy === proxy) activeZoomProxy = null;
+    return;
+  }
   await zoom.open({ target: proxy });
 }
 
@@ -271,9 +302,7 @@ function createReaderImageZoomProxy(image: HTMLImageElement) {
   const imageRect = image.getBoundingClientRect();
   const frameRect = frameElement.getBoundingClientRect();
   const proxy = document.createElement("img");
-  const source = image.currentSrc || image.src;
-
-  proxy.src = source;
+  proxy.src = image.currentSrc || image.src;
   proxy.alt = image.alt;
   proxy.decoding = "async";
   proxy.className = "reader-image-zoom-proxy";
@@ -353,21 +382,16 @@ function isNoteref(anchor: HTMLAnchorElement) {
     || false;
 }
 
-function getFootnoteReferenceAnchors(doc: Document) {
-  return Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]")).filter(isNoteref);
-}
-
 function normalizeFootnoteLabel(value: string | undefined, fallbackIndex: number) {
   const marker = value ? normalizeInlineText(value).match(/^\[?(\d+)\]?/)?.[1] : undefined;
-  const label = marker || String(fallbackIndex);
-  return /^\[.*\]$/.test(label) ? label : `[${label}]`;
+  return `[${marker || fallbackIndex}]`;
 }
 
 function labelFootnotes(doc: Document) {
   if (footnotesLabeledDocs.has(doc)) return;
 
   const labelsByTargetId = new Map<string, string>();
-  getFootnoteReferenceAnchors(doc).forEach((anchor, index) => {
+  Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href]")).filter(isNoteref).forEach((anchor, index) => {
     const href = anchor.getAttribute("href")?.trim();
     if (!href?.startsWith("#")) return;
 

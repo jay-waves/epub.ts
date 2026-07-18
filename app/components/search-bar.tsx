@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import { useRef, useState } from "react";
+import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { SearchUpdateDetail } from "../viewer-events";
-import { Button, Input, Tooltip } from "./ui";
-import { ChevronLeft, ChevronRight, X, Highlighter } from "lucide-react"
+import { Button, Tooltip } from "./ui";
+import { useViewerEvent } from "./use-viewer-event";
+import { ChevronLeft, ChevronRight, Highlighter, X } from "lucide-react";
 
 export function SearchBar() {
   const [highlightedOnly, setHighlightedOnly] = useState(false);
@@ -11,18 +12,11 @@ export function SearchBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const canNavigate = searchState.hitCount > 0;
 
-  useEffect(() => {
-    const handleOpen = () => {
-      setSearchState((current) => ({ ...current, placeholder: "Search text", visible: true }));
-      window.setTimeout(() => inputRef.current?.focus(), 0);
-    };
-    const stopOpen = listenViewerEvent(VIEWER_EVENTS.searchOpen, handleOpen);
-    const stopUpdate = listenViewerEvent(VIEWER_EVENTS.searchUpdate, setSearchState);
-    return () => {
-      stopOpen();
-      stopUpdate();
-    };
-  }, []);
+  useViewerEvent(VIEWER_EVENTS.searchOpen, () => {
+    setSearchState((current) => ({ ...current, placeholder: "Search text", visible: true }));
+    window.setTimeout(() => inputRef.current?.focus());
+  });
+  useViewerEvent(VIEWER_EVENTS.searchUpdate, setSearchState);
 
   const submitSearch = () => {
     emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly, query });
@@ -72,7 +66,7 @@ export function SearchBar() {
           submitSearch();
         }}
       >
-        <Input
+        <input
           className="search-input"
           type="search"
           placeholder={searchState.placeholder}

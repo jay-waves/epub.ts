@@ -3,7 +3,6 @@ import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui";
 
 export type ReadingProgressElements = {
   currentMarker: HTMLSpanElement;
-  fill: HTMLSpanElement;
   historyMarker: HTMLButtonElement;
   root: HTMLSpanElement;
   track: HTMLSpanElement;
@@ -12,40 +11,34 @@ export type ReadingProgressElements = {
 export function ReadingProgress({
   onReady,
 }: {
-  onReady?: (elements: ReadingProgressElements | null) => void;
+  onReady: (elements: ReadingProgressElements | null) => void;
 }) {
   const rootRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLSpanElement>(null);
-  const fillRef = useRef<HTMLSpanElement>(null);
   const thumbRef = useRef<HTMLSpanElement>(null);
   const historyMarkerRef = useRef<HTMLButtonElement>(null);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
     const track = trackRef.current;
-    const fill = fillRef.current;
     const currentMarker = thumbRef.current;
     const historyMarker = historyMarkerRef.current;
-    if (!root || !track || !fill || !currentMarker || !historyMarker) return;
+    if (!root || !track || !currentMarker || !historyMarker) return;
 
-    onReady?.({
+    onReady({
       currentMarker,
-      fill,
       historyMarker,
       root,
       track,
     });
 
-    return () => {
-      onReady?.(null);
-    };
+    return () => onReady(null);
   }, [onReady]);
 
   return (
     <div className="reader-progress-shell">
       <div className="reader-progress-float">
         <Slider
-          id="reading-progress"
           className="reader-progress"
           aria-label="Reading progress"
           defaultValue={[0]}
@@ -56,7 +49,7 @@ export function ReadingProgress({
         >
           <div className="reader-progress-join">
             <SliderTrack className="reader-progress-track" ref={trackRef}>
-              <SliderRange id="reading-progress-fill" className="reader-progress-fill" ref={fillRef} />
+              <SliderRange className="reader-progress-fill" />
             </SliderTrack>
             <SliderThumb className="reader-progress-thumb" ref={thumbRef} />
           </div>
@@ -78,7 +71,6 @@ const HISTORY_SECTION_JUMP_THRESHOLD = 2;
 
 export function createReadingProgressController(options: {
   currentMarker: HTMLElement;
-  fill: HTMLElement;
   historyMarker: HTMLButtonElement;
   root: HTMLElement;
   track: HTMLElement;
@@ -111,8 +103,6 @@ export function createReadingProgressController(options: {
     const percentage = currentProgress * 100;
     options.root.style.setProperty("--reader-progress", `${percentage}%`);
     options.currentMarker.setAttribute("aria-valuenow", String(Math.round(percentage)));
-    options.fill.style.setProperty("--reader-progress", `${percentage}%`);
-    options.fill.style.right = `${100 - percentage}%`;
     options.root.setAttribute("aria-valuenow", String(Math.round(currentProgress * 100)));
   };
 
@@ -207,7 +197,7 @@ export function createReadingProgressController(options: {
       if (shell && activeElement instanceof HTMLElement && shell.contains(activeElement)) {
         activeElement.blur();
       }
-      if (options.root instanceof HTMLElement) options.root.blur();
+      options.root.blur();
       options.historyMarker.blur();
     };
 
@@ -221,7 +211,6 @@ export function createReadingProgressController(options: {
       dragStartProgress = currentProgress;
       isDragging = true;
       options.root.classList.add("is-dragging");
-      options.fill.style.transitionDuration = "0ms";
       options.root.setPointerCapture(event.pointerId);
       setProgress(getProgressFromPointer(event));
     };
@@ -240,7 +229,6 @@ export function createReadingProgressController(options: {
       options.root.releasePointerCapture(event.pointerId);
       isDragging = false;
       options.root.classList.remove("is-dragging");
-      options.fill.style.transitionDuration = "";
       seek(progress, { historyOriginProgress: originProgress ?? currentProgress });
     };
 

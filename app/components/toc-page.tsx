@@ -1,30 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import type { TocItem } from "../foliate";
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { TocUpdateDetail } from "../viewer-events";
 import { normalizeTocHref } from "../foliate";
 import { Dialog } from "./ui";
+import { useViewerEvent } from "./use-viewer-event";
 
 export function TocPage() {
   const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const open = () => {
-      const dialog = dialogRef.current;
-      if (dialog && !dialog.open) dialog.showModal();
-      scrollCurrentItemIntoView(rootRef.current);
-    };
-
-    const stopOpen = listenViewerEvent(VIEWER_EVENTS.tocOpen, open);
-    const stopUpdate = listenViewerEvent(VIEWER_EVENTS.tocUpdate, setTocState);
-    return () => {
-      stopOpen();
-      stopUpdate();
-    };
-  }, []);
+  useViewerEvent(VIEWER_EVENTS.tocOpen, () => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    scrollCurrentItemIntoView(rootRef.current);
+  });
+  useViewerEvent(VIEWER_EVENTS.tocUpdate, setTocState);
 
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
@@ -42,7 +35,7 @@ export function TocPage() {
       className="toc-modal-box"
       ref={dialogRef}
     >
-      <div id="toc-root" className="toc-root" ref={rootRef}>
+      <div className="toc-root" ref={rootRef}>
         {tocState.items.length ? (
           <ul className="toc-menu" key={tocState.currentHref}>
             {tocState.items.map((item, index) => (
@@ -86,8 +79,6 @@ function TocTreeItem({
           <summary
             aria-current={isCurrent ? "page" : undefined}
             className={`${className} toc-summary`}
-            data-current={isCurrent ? "true" : undefined}
-            data-href={item.href ?? ""}
             onClick={(event) => handleSummaryClick(event, item.href, onNavigate)}
           >
             <span className="toc-link-label">{item.label ?? "Untitled section"}</span>
@@ -113,8 +104,6 @@ function TocTreeItem({
       <button
         aria-current={isCurrent ? "page" : undefined}
         className={className}
-        data-current={isCurrent ? "true" : undefined}
-        data-href={item.href ?? ""}
         type="button"
         onClick={() => onNavigate(item.href)}
       >
@@ -145,7 +134,7 @@ function scrollCurrentItemIntoView(root: HTMLElement | null) {
   if (!root) return;
 
   const scrollToCurrent = () => {
-    const currentLink = root.querySelector<HTMLElement>(".toc-link[data-current=\"true\"], .toc-summary[data-current=\"true\"]");
+    const currentLink = root.querySelector<HTMLElement>('.toc-link[aria-current="page"]');
     if (!currentLink) {
       root.scrollTop = 0;
       return;

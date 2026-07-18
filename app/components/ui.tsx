@@ -5,7 +5,6 @@ import type {
   ComponentPropsWithoutRef,
   DialogHTMLAttributes,
   ElementRef,
-  InputHTMLAttributes,
   ReactNode,
 } from "react";
 
@@ -51,19 +50,13 @@ export const Dialog = forwardRef<
   );
 });
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  function Input(props, ref) {
-    return <input ref={ref} {...props} />;
-  },
-);
-
 type SliderProps = ComponentPropsWithoutRef<typeof SliderPrimitive.Root>;
 
 export const Slider = forwardRef<
   ElementRef<typeof SliderPrimitive.Root>,
   SliderProps
 >(function Slider({ className, ...props }, ref) {
-  return <SliderPrimitive.Root className={cn("ui-slider", className)} ref={ref} {...props} />;
+  return <SliderPrimitive.Root className={className} ref={ref} {...props} />;
 });
 
 export const SliderTrack = SliderPrimitive.Track;

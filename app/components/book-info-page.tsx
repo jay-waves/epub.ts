@@ -1,31 +1,24 @@
-import { useEffect, useRef, useState } from "react";
-import { listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type { BookInfoUpdateDetail } from "../viewer-events";
+import { useRef, useState } from "react";
+import { VIEWER_EVENTS } from "../viewer-events";
+import type { BookInfo } from "../book-info";
 import { Dialog } from "./ui";
+import { useViewerEvent } from "./use-viewer-event";
 
-const emptyBookInfo: BookInfoUpdateDetail = {
+const emptyBookInfo: BookInfo = {
   metadataRows: [],
   statsRows: [],
   title: "Book information",
 };
 
 export function BookInfoPage() {
-  const [bookInfo, setBookInfo] = useState<BookInfoUpdateDetail>(emptyBookInfo);
+  const [bookInfo, setBookInfo] = useState<BookInfo>(emptyBookInfo);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
-    const open = () => {
-      const dialog = dialogRef.current;
-      if (dialog && !dialog.open) dialog.showModal();
-    };
-
-    const stopOpen = listenViewerEvent(VIEWER_EVENTS.bookInfoOpen, open);
-    const stopUpdate = listenViewerEvent(VIEWER_EVENTS.bookInfoUpdate, setBookInfo);
-    return () => {
-      stopOpen();
-      stopUpdate();
-    };
-  }, []);
+  useViewerEvent(VIEWER_EVENTS.bookInfoOpen, () => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  });
+  useViewerEvent(VIEWER_EVENTS.bookInfoUpdate, setBookInfo);
 
   const hasDetails = bookInfo.metadataRows.length || bookInfo.statsRows.length;
 

@@ -20,6 +20,7 @@ type LanguageDetectionResult = {
 };
 
 interface LanguageDetectorInstance {
+  destroy?(): void;
   detect(text: string): Promise<LanguageDetectionResult[]>;
 }
 
@@ -29,6 +30,7 @@ interface LanguageDetectorConstructor {
 }
 
 interface TranslatorInstance {
+  destroy?(): void;
   ready?: Promise<void>;
   translate(text: string): Promise<string>;
 }

@@ -20,34 +20,15 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
-let initialized = false;
-
 export type HighlightJs = typeof hljs;
 
-export function ensureHighlightJs() {
-  if (!initialized) {
-    hljs.registerLanguage("bash", bash);
-    hljs.registerLanguage("c", c);
-    hljs.registerLanguage("cpp", cpp);
-    hljs.registerLanguage("csharp", csharp);
-    hljs.registerLanguage("css", css);
-    hljs.registerLanguage("diff", diff);
-    hljs.registerLanguage("go", go);
-    hljs.registerLanguage("ini", ini);
-    hljs.registerLanguage("java", java);
-    hljs.registerLanguage("javascript", javascript);
-    hljs.registerLanguage("json", json);
-    hljs.registerLanguage("kotlin", kotlin);
-    hljs.registerLanguage("markdown", markdown);
-    hljs.registerLanguage("plaintext", plaintext);
-    hljs.registerLanguage("python", python);
-    hljs.registerLanguage("rust", rust);
-    hljs.registerLanguage("sql", sql);
-    hljs.registerLanguage("typescript", typescript);
-    hljs.registerLanguage("xml", xml);
-    hljs.registerLanguage("yaml", yaml);
-    initialized = true;
-  }
+const languages = {
+  bash, c, cpp, csharp, css, diff, go, ini, java, javascript, json, kotlin,
+  markdown, plaintext, python, rust, sql, typescript, xml, yaml,
+};
 
-  return hljs;
+for (const [name, language] of Object.entries(languages)) {
+  hljs.registerLanguage(name, language);
 }
+
+export default hljs;

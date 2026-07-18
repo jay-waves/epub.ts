@@ -2,12 +2,12 @@ import { Overlayer } from "./foliate";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import {
   getSavedHighlights,
-  saveHighlight,
   setSavedHighlights,
 } from "./viewer-storage";
 import type { HighlightContextAction } from "./viewer-events";
 import type { ReaderHighlight } from "./reader";
 import type { FoliateViewElement } from "./foliate";
+import { createTranslationController } from "./translation-controller";
 
 type ReaderContent = {
   doc?: Document;
@@ -16,11 +16,6 @@ type ReaderContent = {
     element?: SVGSVGElement;
     hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
   };
-};
-
-type BuiltInAiGlobals = typeof globalThis & {
-  LanguageDetector?: LanguageDetectorConstructor;
-  Translator?: TranslatorConstructor;
 };
 
 type HighlightContext = {
@@ -125,35 +120,35 @@ function drawHighlightWithAnnotationBadge(rects: DOMRectList, options: Annotatio
 }
 
 export function createHighlightController(options: {
+  allowTranslationModelDownload: boolean;
   getBookKey: () => string;
   getProgress: () => number;
   getReaderView: () => FoliateViewElement | null;
   runWhenIdle: (callback: () => void, timeout?: number) => void;
 }) {
   const defaultHighlightColor = "#f4c430";
-  const contextTargets = new WeakSet<EventTarget>();
+  let contextTargets = new WeakMap<EventTarget, () => void>();
+  const contextDisposers = new Set<() => void>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
   let pendingAnnotationSave: Promise<void> = Promise.resolve();
-  let translationRunId = 0;
-
-  listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
-    activeContext = null;
+  const translationController = createTranslationController({
+    allowModelDownload: options.allowTranslationModelDownload,
   });
 
-  listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
-    pendingAnnotationSave = saveAnnotationNote(detail.value, detail.note).catch((error) => {
-      console.warn("Failed to save annotation note.", error);
-    });
-  });
-
-  listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
-    void deleteAnnotationNote(detail.value);
-  });
-
-  listenViewerEvent(VIEWER_EVENTS.translationClose, () => {
-    ++translationRunId;
-  });
+  const viewerEventDisposers = [
+    listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
+      activeContext = null;
+    }),
+    listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
+      pendingAnnotationSave = saveAnnotationNote(detail.value, detail.note).catch((error) => {
+        console.warn("Failed to save annotation note.", error);
+      });
+    }),
+    listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
+      void deleteAnnotationNote(detail.value);
+    }),
+  ];
 
   const getContents = () => options.getReaderView()?.renderer?.getContents?.() ?? [];
 
@@ -246,6 +241,8 @@ export function createHighlightController(options: {
 
   const getHighlightColor = (highlight: ReaderHighlight) => highlight.color || defaultHighlightColor;
 
+  const getViewportCenter = () => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+
   const removeAnnotationBadges = (value: string) => {
     for (const { doc, overlayer } of getContents()) {
       for (const root of [doc, overlayer?.element]) {
@@ -271,8 +268,7 @@ export function createHighlightController(options: {
       note: highlight.note ?? "",
       sourceText: getAnnotationText(highlight),
       value: highlight.value,
-      x: point?.x ?? window.innerWidth / 2,
-      y: point?.y ?? window.innerHeight / 2,
+      ...(point ?? getViewportCenter()),
     });
   };
 
@@ -297,12 +293,12 @@ export function createHighlightController(options: {
 
     const frameBounds = getContentFrameBounds(detail.index);
     const rangeBounds = detail.range?.getBoundingClientRect();
-    const hasBounds = Boolean(frameBounds && rangeBounds);
-
-    const point = {
-      x: hasBounds ? frameBounds!.left + rangeBounds!.left + rangeBounds!.width / 2 : window.innerWidth / 2,
-      y: hasBounds ? frameBounds!.top + rangeBounds!.bottom : window.innerHeight / 2,
-    };
+    const point = frameBounds && rangeBounds
+      ? {
+          x: frameBounds.left + rangeBounds.left + rangeBounds.width / 2,
+          y: frameBounds.top + rangeBounds.bottom,
+        }
+      : getViewportCenter();
 
     open({ highlight, pageX: point.x, pageY: point.y });
   };
@@ -313,42 +309,52 @@ export function createHighlightController(options: {
       if (!doc) continue;
 
       if (!contextTargets.has(doc)) {
-        contextTargets.add(doc);
-        doc.addEventListener("pointerdown", () => {
+        const dismissPopovers = () => {
           close();
           emitViewerEvent(VIEWER_EVENTS.translationClose);
           emitViewerEvent(VIEWER_EVENTS.annotationClose);
-        }, true);
-        doc.addEventListener("keydown", () => {
-          close();
-          emitViewerEvent(VIEWER_EVENTS.translationClose);
-          emitViewerEvent(VIEWER_EVENTS.annotationClose);
-        }, true);
-        doc.addEventListener("scroll", () => {
-          close();
-          emitViewerEvent(VIEWER_EVENTS.translationClose);
-          emitViewerEvent(VIEWER_EVENTS.annotationClose);
-        }, true);
-        doc.addEventListener("contextmenu", (event) => {
+        };
+        doc.addEventListener("pointerdown", dismissPopovers, true);
+        doc.addEventListener("keydown", dismissPopovers, true);
+        doc.addEventListener("scroll", dismissPopovers, true);
+        const openContextMenu = (event: MouseEvent) => {
           event.preventDefault();
           event.stopPropagation();
           const currentContent = findContentByDocument(doc);
           if (currentContent) openFromPointer(event, currentContent);
-        });
+        };
+        doc.addEventListener("contextmenu", openContextMenu);
+        const dispose = () => {
+          doc.removeEventListener("pointerdown", dismissPopovers, true);
+          doc.removeEventListener("keydown", dismissPopovers, true);
+          doc.removeEventListener("scroll", dismissPopovers, true);
+          doc.removeEventListener("contextmenu", openContextMenu);
+        };
+        contextTargets.set(doc, dispose);
+        contextDisposers.add(dispose);
       }
 
       const frameElement = doc.defaultView?.frameElement;
       if (frameElement && !contextTargets.has(frameElement)) {
-        contextTargets.add(frameElement);
-        frameElement.addEventListener("contextmenu", (event) => {
+        const openContextMenu = (event: Event) => {
           if (!(event instanceof MouseEvent)) return;
           event.preventDefault();
           event.stopPropagation();
           const currentContent = findContentByFrame(frameElement);
           if (currentContent) openFromPointer(event, currentContent, true);
-        });
+        };
+        frameElement.addEventListener("contextmenu", openContextMenu);
+        const dispose = () => frameElement.removeEventListener("contextmenu", openContextMenu);
+        contextTargets.set(frameElement, dispose);
+        contextDisposers.add(dispose);
       }
     }
+  };
+
+  const unbindContextTargets = () => {
+    contextDisposers.forEach((dispose) => dispose());
+    contextDisposers.clear();
+    contextTargets = new WeakMap();
   };
 
   const drawAnnotation = (detail: {
@@ -412,8 +418,7 @@ export function createHighlightController(options: {
   };
 
   const copyHighlight = async (highlight: ReaderHighlight) => {
-    const text = highlight.text?.trim() || highlight.value;
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(getAnnotationText(highlight));
     close();
   };
 
@@ -426,111 +431,41 @@ export function createHighlightController(options: {
     close();
   };
 
-  const getContextText = () => activeContext?.highlight?.text?.trim()
-    || activeContext?.selection?.text.trim()
-    || activeContext?.highlight?.value.trim()
-    || "";
-
-  const detectLanguage = async (text: string) => {
-    const builtInAi = globalThis as BuiltInAiGlobals;
-    if (!builtInAi.LanguageDetector) return "en";
-
-    const availability = await builtInAi.LanguageDetector.availability();
-    if (availability === "unavailable") return "en";
-
-    const detector = await builtInAi.LanguageDetector.create();
-    const [result] = await detector.detect(text);
-    return result?.confidence && result.confidence >= 0.45 ? result.detectedLanguage : "en";
-  };
-
-  const translateContextText = async () => {
-    const text = getContextText();
+  const translateContextText = () => {
+    const text = activeContext?.highlight?.text?.trim()
+      || activeContext?.selection?.text.trim()
+      || activeContext?.highlight?.value.trim()
+      || "";
     if (!text) return;
 
-    const runId = ++translationRunId;
-    const targetLanguage = "zh";
-    const point = activeContext?.point ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const baseDetail = {
+    const point = activeContext?.point ?? getViewportCenter();
+    void translationController.translate({
       sourceText: text,
-      status: "loading" as const,
-      targetLanguage,
       x: point.x,
       y: point.y,
-    };
-
-    emitViewerEvent(VIEWER_EVENTS.translationOpen, {
-      ...baseDetail,
-      message: "Translating to Chinese...",
     });
     options.getReaderView()?.deselect?.();
     close();
-
-    try {
-      const builtInAi = globalThis as BuiltInAiGlobals;
-      if (!builtInAi.Translator) {
-        throw new Error("Chrome Translator API is not available in this browser.");
-      }
-
-      const sourceLanguage = await detectLanguage(text);
-      if (runId !== translationRunId) return;
-      if (sourceLanguage === targetLanguage || sourceLanguage.toLowerCase().startsWith("zh")) {
-        emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
-          ...baseDetail,
-          message: "Selected text is already Chinese.",
-          sourceLanguage,
-          status: "success",
-          translatedText: text,
-        });
-        return;
-      }
-
-      const availability = await builtInAi.Translator.availability({
-        sourceLanguage,
-        targetLanguage,
-      });
-      if (runId !== translationRunId) return;
-      if (availability === "unavailable") {
-        throw new Error(`Chrome cannot translate from ${sourceLanguage} to Chinese on this device.`);
-      }
-
-      const translator = await builtInAi.Translator.create({
-        sourceLanguage,
-        targetLanguage,
-        monitor(monitor) {
-          monitor.addEventListener("downloadprogress", (event) => {
-            if (runId !== translationRunId) return;
-            emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
-              ...baseDetail,
-              message: "Downloading Chrome translation model...",
-              progress: event.loaded,
-              sourceLanguage,
-            });
-          });
-        },
-      });
-      await translator.ready;
-      if (runId !== translationRunId) return;
-
-      const translatedText = await translator.translate(text);
-      if (runId !== translationRunId) return;
-      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
-        ...baseDetail,
-        sourceLanguage,
-        status: "success",
-        translatedText,
-      });
-    } catch (error) {
-      if (runId !== translationRunId) return;
-      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
-        ...baseDetail,
-        message: error instanceof Error ? error.message : "Translation failed.",
-        status: "error",
-      });
-    }
   };
 
   const markUnsaved = () => {
     emitViewerEvent(VIEWER_EVENTS.unsavedChange);
+  };
+
+  const persistHighlight = async (highlight: ReaderHighlight) => {
+    const readerView = options.getReaderView();
+    const bookKey = options.getBookKey();
+    if (!readerView || !bookKey) return false;
+
+    const exists = currentHighlights.some((item) => item.value === highlight.value);
+    const nextHighlights = exists
+      ? currentHighlights.map((item) => (item.value === highlight.value ? highlight : item))
+      : [...currentHighlights, highlight];
+    currentHighlights = nextHighlights;
+    await readerView.addAnnotation?.(highlight);
+    await setSavedHighlights(bookKey, nextHighlights);
+    markUnsaved();
+    return true;
   };
 
   const deleteHighlight = async (highlight: ReaderHighlight) => {
@@ -548,10 +483,6 @@ export function createHighlightController(options: {
   };
 
   const deleteAnnotationNote = async (value: string) => {
-    const readerView = options.getReaderView();
-    const bookKey = options.getBookKey();
-    if (!readerView || !bookKey) return;
-
     const existing = currentHighlights.find((item) => item.value === value);
     if (!existing) return;
 
@@ -561,19 +492,12 @@ export function createHighlightController(options: {
       kind: "highlight",
       note: undefined,
     };
-    currentHighlights = currentHighlights.map((item) => (item.value === value ? highlight : item));
     removeAnnotationBadges(value);
-    await readerView.addAnnotation?.(highlight);
-    await setSavedHighlights(bookKey, currentHighlights);
-    markUnsaved();
+    if (!await persistHighlight(highlight)) return;
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
   };
 
   const saveAnnotationNote = async (value: string, note: string) => {
-    const readerView = options.getReaderView();
-    const bookKey = options.getBookKey();
-    if (!readerView || !bookKey) return;
-
     const existing = currentHighlights.find((item) => item.value === value);
     if (!existing) return;
 
@@ -591,10 +515,7 @@ export function createHighlightController(options: {
       kind: "highlight",
       note: cleanNote,
     };
-    currentHighlights = currentHighlights.map((item) => (item.value === value ? annotation : item));
-    await readerView.addAnnotation?.(annotation);
-    await setSavedHighlights(bookKey, currentHighlights);
-    markUnsaved();
+    await persistHighlight(annotation);
   };
 
   const highlightSelectedText = async () => {
@@ -620,10 +541,7 @@ export function createHighlightController(options: {
       createdAt: Date.now(),
     };
 
-    currentHighlights = [...currentHighlights, annotation];
-    await readerView.addAnnotation?.(annotation);
-    await saveHighlight(bookKey, annotation);
-    markUnsaved();
+    await persistHighlight(annotation);
     readerView.deselect?.();
     close();
     return annotation;
@@ -633,7 +551,7 @@ export function createHighlightController(options: {
     const readerView = options.getReaderView();
     const bookKey = options.getBookKey();
     const context = activeContext;
-    const point = context?.point ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const point = context?.point ?? getViewportCenter();
     if (!readerView || !bookKey || !context) return;
 
     if (context.highlight) {
@@ -643,10 +561,7 @@ export function createHighlightController(options: {
         kind: "highlight",
         note: context.highlight.note ?? "",
       };
-      currentHighlights = currentHighlights.map((item) => (item.value === annotation.value ? annotation : item));
-      await readerView.addAnnotation?.(annotation);
-      await setSavedHighlights(bookKey, currentHighlights);
-      markUnsaved();
+      await persistHighlight(annotation);
       openAnnotationPopover(annotation, point);
       close();
       return;
@@ -669,48 +584,34 @@ export function createHighlightController(options: {
           createdAt: Date.now(),
         };
 
-    currentHighlights = existing
-      ? currentHighlights.map((item) => (item.value === value ? annotation : item))
-      : [...currentHighlights, annotation];
-    await readerView.addAnnotation?.(annotation);
-    await setSavedHighlights(bookKey, currentHighlights);
-    markUnsaved();
+    await persistHighlight(annotation);
     readerView.deselect?.();
     openAnnotationPopover(annotation, point);
     close();
   };
 
   const handleContextAction = (action: HighlightContextAction) => {
-    if (action === "copy") {
-      if (activeContext?.highlight) {
-        void copyHighlight(activeContext.highlight);
-      } else {
-        void copySelectedText();
-      }
-      return;
-    }
-
-    if (action === "highlight") {
-      void highlightSelectedText();
-      return;
-    }
-
-    if (action === "translate") {
-      void translateContextText();
-      return;
-    }
-
-    if (action === "annotate") {
-      void annotateContextText();
-      return;
-    }
-
-    if (action === "delete" && activeContext?.highlight) {
-      void deleteHighlight(activeContext.highlight);
+    switch (action) {
+      case "copy":
+        void (activeContext?.highlight ? copyHighlight(activeContext.highlight) : copySelectedText());
+        break;
+      case "highlight":
+        void highlightSelectedText();
+        break;
+      case "translate":
+        translateContextText();
+        break;
+      case "annotate":
+        void annotateContextText();
+        break;
+      case "delete":
+        if (activeContext?.highlight) void deleteHighlight(activeContext.highlight);
     }
   };
 
   const reset = () => {
+    translationController.cancel();
+    unbindContextTargets();
     currentHighlights = [];
     close();
   };
@@ -720,6 +621,11 @@ export function createHighlightController(options: {
     bindContextTargets,
     close,
     drawAnnotation,
+    destroy: () => {
+      reset();
+      translationController.destroy();
+      viewerEventDisposers.forEach((dispose) => dispose());
+    },
     flushPendingAnnotationSave: () => pendingAnnotationSave,
     handleContextAction,
     openFromAnnotation,

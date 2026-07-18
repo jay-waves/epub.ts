@@ -5,17 +5,18 @@ import { HighlightContextMenu } from "./components/context-menu";
 import { ReadingProgress } from "./components/reading-progress";
 import { SearchBar } from "./components/search-bar";
 import { TranslationPopover } from "./components/translation-popover";
+import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
 import type { ReadingProgressElements } from "./components/reading-progress";
 
 export function App({
-  allowLocalFileOpen = false,
+  allowLocalFileOpen,
   onOpenLocalFile,
   onReadingProgressReady,
 }: {
-  allowLocalFileOpen?: boolean;
-  onOpenLocalFile?: (file: File) => void;
-  onReadingProgressReady?: (elements: ReadingProgressElements | null) => void;
+  allowLocalFileOpen: boolean;
+  onOpenLocalFile: (file: File) => void;
+  onReadingProgressReady: (elements: ReadingProgressElements | null) => void;
 }) {
   const [showWelcome, setShowWelcome] = useState(allowLocalFileOpen);
 
@@ -34,12 +35,15 @@ export function App({
         <BookInfoPage />
         <TocPage />
         <HighlightContextMenu />
+        <AnnotationPopover />
         <TranslationPopover />
       </div>
-      {showWelcome ? <WebBookPicker onSelect={(file) => {
-        setShowWelcome(false);
-        onOpenLocalFile?.(file);
-      }} /> : null}
+      {showWelcome ? (
+        <WebBookPicker onSelect={(file) => {
+          setShowWelcome(false);
+          onOpenLocalFile(file);
+        }} />
+      ) : null}
     </>
   );
 }

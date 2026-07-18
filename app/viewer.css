@@ -60,7 +60,6 @@
     color-scheme: var(--reader-color-scheme, light);
     overflow: hidden;
   }
-
 }
 
 @layer components {
@@ -155,9 +154,9 @@
   .search-nav,
   .toc-modal-box,
   .reader-context-menu,
-  .reader-translation-popover {
+  .reader-text-popover {
     border-color: var(--reader-glass-border);
-    background-color: var(--reader-glass-bg) !important;
+    background-color: var(--reader-glass-bg);
     box-shadow: var(--reader-glass-shadow);
     backdrop-filter: var(--reader-glass-filter);
     -webkit-backdrop-filter: var(--reader-glass-filter);
@@ -248,6 +247,18 @@
     animation: reader-edge-feedback 360ms ease-out;
   }
 
+  .medium-zoom-overlay {
+    z-index: 40;
+    backdrop-filter: blur(10px) saturate(115%);
+    -webkit-backdrop-filter: blur(10px) saturate(115%);
+  }
+
+  .medium-zoom-image--opened {
+    z-index: 41;
+    border-radius: 0.95rem;
+    box-shadow: 0 24px 60px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 18%, transparent);
+  }
+
   @keyframes reader-edge-feedback {
     0% {
       opacity: 0;
@@ -308,7 +319,7 @@
   }
 
   .reader-progress-thumb {
-    @apply absolute top-1/2 z-[4] h-1 w-1 -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent p-0 opacity-0 outline-none;
+    @apply absolute top-1/2 z-[4] h-1 w-1 border-0 bg-transparent p-0 opacity-0 outline-none;
     transform: translate(-50%, -50%) !important;
     pointer-events: none;
   }
@@ -369,66 +380,66 @@
     @apply pointer-events-none opacity-40;
   }
 
-  .reader-translation-popover {
+  .reader-text-popover {
     @apply fixed z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border p-1.5;
     color: var(--reader-chrome-fg, #1f2933);
   }
 
-  .reader-translation-header {
+  .reader-text-popover-header {
     @apply flex min-w-0 items-center justify-between gap-2 pb-1;
   }
 
-  .reader-translation-title {
+  .reader-text-popover-title {
     @apply flex min-w-0 items-center gap-1.5 text-[11px] font-semibold;
     color: var(--reader-control-strong-fg);
   }
 
-  .reader-translation-title svg {
+  .reader-text-popover-title svg {
     @apply size-3.5 shrink-0;
   }
 
-  .reader-translation-title span {
+  .reader-text-popover-title span {
     @apply min-w-0 truncate;
   }
 
-  .reader-translation-actions {
+  .reader-text-popover-actions {
     @apply flex shrink-0 items-center gap-0.5;
   }
 
-  .reader-translation-actions button {
+  .reader-text-popover-actions button {
     @apply grid h-6 w-6 place-items-center rounded-md outline-none transition-colors duration-100;
     color: var(--reader-control-fg);
   }
 
-  .reader-translation-actions button:hover,
-  .reader-translation-actions button:focus-visible {
+  .reader-text-popover-actions button:hover,
+  .reader-text-popover-actions button:focus-visible {
     background-color: var(--reader-control-hover-bg);
     color: var(--reader-control-hover-fg);
   }
 
-  .reader-translation-actions button:disabled {
+  .reader-text-popover-actions button:disabled {
     @apply pointer-events-none opacity-35;
   }
 
-  .reader-translation-body {
+  .reader-text-popover-body {
     @apply grid gap-1.5;
   }
 
-  .reader-translation-source,
-  .reader-translation-result,
-  .reader-translation-message {
+  .reader-text-popover-source,
+  .reader-text-popover-result,
+  .reader-text-popover-message {
     @apply m-0 max-h-[min(12rem,32vh)] overflow-y-auto rounded-md px-2 py-1.5 text-xs leading-5;
     scrollbar-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent) transparent;
     scrollbar-width: thin;
     overflow-wrap: anywhere;
   }
 
-  textarea.reader-translation-source,
-  textarea.reader-translation-result {
+  textarea.reader-text-popover-source,
+  textarea.reader-text-popover-result {
     @apply block w-full resize-none border-0 outline-none;
   }
 
-  textarea.reader-translation-source {
+  textarea.reader-text-popover-source {
     min-height: 7rem;
   }
 
@@ -436,48 +447,52 @@
     min-height: 8rem;
   }
 
-  .reader-translation-source::-webkit-scrollbar,
-  .reader-translation-result::-webkit-scrollbar,
-  .reader-translation-message::-webkit-scrollbar {
+  .reader-text-popover-source::-webkit-scrollbar,
+  .reader-text-popover-result::-webkit-scrollbar,
+  .reader-text-popover-message::-webkit-scrollbar {
     width: 3px;
     height: 3px;
   }
 
-  .reader-translation-source::-webkit-scrollbar-track,
-  .reader-translation-result::-webkit-scrollbar-track,
-  .reader-translation-message::-webkit-scrollbar-track {
+  .reader-text-popover-source::-webkit-scrollbar-track,
+  .reader-text-popover-result::-webkit-scrollbar-track,
+  .reader-text-popover-message::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .reader-translation-source::-webkit-scrollbar-thumb,
-  .reader-translation-result::-webkit-scrollbar-thumb,
-  .reader-translation-message::-webkit-scrollbar-thumb {
+  .reader-text-popover-source::-webkit-scrollbar-thumb,
+  .reader-text-popover-result::-webkit-scrollbar-thumb,
+  .reader-text-popover-message::-webkit-scrollbar-thumb {
     border-radius: 999px;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 28%, transparent);
   }
 
-  .reader-translation-source {
+  .reader-text-popover-source {
     background-color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 6%, transparent);
     color: var(--reader-control-fg);
   }
 
-  .reader-translation-result {
+  .reader-text-popover-result {
     background-color: var(--reader-field-bg);
     color: var(--reader-control-strong-fg);
   }
 
-  .reader-translation-message {
+  .reader-text-popover-message {
     background-color: var(--reader-field-bg);
     color: var(--reader-control-fg);
   }
 
-  .reader-translation-message.is-error {
+  .reader-text-popover-message.is-error {
     background-color: var(--reader-danger-hover-bg);
     color: var(--reader-danger-fg);
   }
 
   .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-fill {
     @apply h-3 rounded-lg;
+  }
+
+  .reader-progress.is-dragging .reader-progress-fill {
+    transition-duration: 0ms;
   }
 
   .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress.is-dragging)) .reader-progress-history-marker {
@@ -563,7 +578,7 @@
   }
 
   .toc-summary {
-    @apply min-h-0 list-none cursor-pointer;
+    @apply min-h-0 list-none;
   }
 
   .toc-details > summary::-webkit-details-marker {
@@ -575,7 +590,7 @@
   }
 
   .toc-link {
-    @apply flex h-auto min-h-0 w-full items-center gap-3 rounded-md border border-transparent bg-transparent py-2 pe-3 ps-3 text-left text-[13px] font-medium leading-snug normal-case no-underline transition-all duration-150;
+    @apply flex h-auto min-h-0 w-full cursor-pointer items-center rounded-md border border-transparent bg-transparent py-2 pe-3 ps-3 text-left text-[13px] font-medium leading-snug no-underline transition-all duration-150;
     color: var(--reader-control-fg);
   }
 
@@ -603,7 +618,7 @@
   }
 
   .toc-modal-box {
-    @apply relative z-10 w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5;
+    @apply w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5;
     color: var(--reader-control-strong-fg);
     transform: translateY(-4vh);
   }
@@ -704,8 +719,8 @@
   .book-info-row {
     @apply grid-cols-1 gap-1;
   }
-
 }
+
 /* Standalone web entry */
 .web-welcome {
   position: fixed;
@@ -741,7 +756,11 @@
   height: 54px;
   margin-inline: auto;
 }
-.web-welcome h1 { margin: 18px 0 26px; font-size: 25px; }
+
+.web-welcome h1 {
+  margin: 18px 0 26px;
+  font-size: 25px;
+}
 
 .web-file-button {
   display: inline-flex;
@@ -773,9 +792,20 @@
   font-size: 11px;
 }
 
-.web-selection-error { margin: 0 0 12px; color: #dc2626; font-size: 12px; }
-.web-welcome small { display: block; color: #64748b; line-height: 1.6; }
+.web-selection-error {
+  margin: 0 0 12px;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.web-welcome small {
+  display: block;
+  color: #64748b;
+  line-height: 1.6;
+}
 
 @media (max-width: 540px) {
-  .web-welcome-card { padding: 30px 20px; }
+  .web-welcome-card {
+    padding: 30px 20px;
+  }
 }
