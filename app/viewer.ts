@@ -66,8 +66,10 @@ import {
   ensureSourceAccess,
   getInitialSourceUrl,
   getStoredFileHandle,
+  isDocflowViewer,
   isWebViewer,
   normalizeSourceUrl,
+  saveDocflowBlob,
   saveFileHandle,
   verifyWritePermission,
   writeBlobToFile,
@@ -449,6 +451,11 @@ async function saveAnnotatedBook() {
     const highlights = await getSavedHighlights(bookKey);
     const blob = await createAnnotatedEpub(sourceBlob, highlights);
     if (blob.size === 0) throw new Error("Generated EPUB is empty.");
+
+    if (isDocflowViewer) {
+      if (await saveDocflowBlob(blob)) setHasUnsavedChanges(false);
+      return;
+    }
 
     const fileHandle = await getWritableSaveHandle(bookKey, sourceUrl);
     try {

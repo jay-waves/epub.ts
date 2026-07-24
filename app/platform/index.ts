@@ -1,8 +1,11 @@
 import { del, get, set } from "idb-keyval";
+import { createDocflowSession } from "./docflow";
 
 export type WritableFileHandle = FileSystemFileHandle;
 
 export const isWebViewer = __VIEWER_PLATFORM__ === "web";
+const docflow = isWebViewer ? createDocflowSession() : null;
+export const isDocflowViewer = docflow !== null;
 
 export function getViewerAssetUrl(filename: string) {
   return isWebViewer
@@ -21,6 +24,7 @@ export async function ensureSourceAccess(sourceUrl: string) {
 }
 
 export function getInitialSourceUrl() {
+  if (docflow) return docflow.resourceUrl;
   if (isWebViewer) return null;
   const query = window.location.search;
   if (!query) return null;
@@ -36,6 +40,11 @@ export function getInitialSourceUrl() {
   } catch {
     return rawSource;
   }
+}
+
+export async function saveDocflowBlob(blob: Blob) {
+  if (!docflow) throw new Error("No active docflow session.");
+  return docflow.save(blob);
 }
 
 export function normalizeSourceUrl(sourceUrl: string) {
