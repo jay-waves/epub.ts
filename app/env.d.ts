@@ -1,5 +1,5 @@
 declare module "*.css";
-declare const __VIEWER_PLATFORM__: "chrome" | "web";
+declare const __VIEWER_PLATFORM__: "chrome" | "docflow" | "web";
 declare module "*?raw" {
   const content: string;
   export default content;

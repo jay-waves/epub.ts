@@ -73,7 +73,7 @@ import {
   saveFileHandle,
   verifyWritePermission,
   writeBlobToFile,
-} from "./platform";
+} from "#platform";
 import "./viewer.css";
 
 const runtime: {
@@ -147,7 +147,7 @@ function goToProgress(progress: number) {
 const reactRoot = createRoot(appRoot);
 flushSync(() => {
   reactRoot.render(createElement(App, {
-    allowLocalFileOpen: isWebViewer,
+    allowLocalFileOpen: isWebViewer && !isDocflowViewer,
     onOpenLocalFile: (file) => { void openBook(file, file.name); },
     onReadingProgressReady: mountReadingProgressController,
   }));

@@ -9,6 +9,9 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "paths": {
+      "#platform": ["./app/platform/chrome.ts"]
+    },
     "types": ["chrome"]
   },
   "include": ["app"]

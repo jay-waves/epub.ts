@@ -1,5 +1,5 @@
 import type { TocItem } from "./foliate";
-import type { WritableFileHandle } from "./platform";
+import type { WritableFileHandle } from "#platform";
 
 export type BookSession = ReturnType<typeof createBookSession>;
 

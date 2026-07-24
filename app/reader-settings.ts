@@ -2,7 +2,7 @@ import atomOneLightHighlightTheme from "highlight.js/styles/atom-one-light.css?r
 import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
 import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
-import { getViewerAssetUrl, isWebViewer } from "./platform";
+import { getViewerAssetUrl, usesFullReaderStyle } from "#platform";
 import { readerSettings } from "./reader";
 import type { ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./reader";
 import type { FoliateViewElement } from "./foliate";
@@ -71,21 +71,23 @@ export function applyReaderTheme(themeId: ReaderThemeId) {
   document.documentElement.style.setProperty("--reader-scrollbar-track", scrollbarTrack);
 }
 
-export const READER_FONT_FAMILY = isWebViewer ? "system-ui" : "LXGW WenKai EPUB";
+export const READER_FONT_FAMILY = usesFullReaderStyle ? "LXGW WenKai EPUB" : "system-ui";
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
-export const READER_FONT_URL = isWebViewer ? null : getViewerAssetUrl("LXGWWenKaiLite-Regular.ttf");
-export const READER_LATIN_FONT_URL = isWebViewer
-  ? "https://cdn.jsdelivr.net/fontsource/fonts/eb-garamond:vf@5.2.7/latin-wght-normal.woff2"
-  : getViewerAssetUrl("EBGaramond-VariableFont_wght.ttf");
-export const READER_MONO_FONT_URL = isWebViewer
-  ? "https://cdn.jsdelivr.net/fontsource/fonts/monaspace-argon@5.2.5/latin-400-normal.woff2"
-  : getViewerAssetUrl("Monaspace Argon Var.ttf");
-export const READER_LATIN_FONT_FORMAT = isWebViewer ? "woff2-variations" : "truetype";
-export const READER_MONO_FONT_FORMAT = isWebViewer ? "woff2" : "truetype";
-export const READER_MONO_FONT_WEIGHT = isWebViewer ? "400" : "100 900";
-const READER_FONT_SIZE_ADJUST = isWebViewer ? "none" : "0.54";
-const READER_LINE_HEIGHT_OFFSET = isWebViewer ? 0.1 : 0;
+export const READER_FONT_URL = usesFullReaderStyle
+  ? getViewerAssetUrl("LXGWWenKaiLite-Regular.ttf")
+  : null;
+export const READER_LATIN_FONT_URL = usesFullReaderStyle
+  ? getViewerAssetUrl("EBGaramond-VariableFont_wght.ttf")
+  : "https://cdn.jsdelivr.net/fontsource/fonts/eb-garamond:vf@5.2.7/latin-wght-normal.woff2";
+export const READER_MONO_FONT_URL = usesFullReaderStyle
+  ? getViewerAssetUrl("Monaspace Argon Var.ttf")
+  : "https://cdn.jsdelivr.net/fontsource/fonts/monaspace-argon@5.2.5/latin-400-normal.woff2";
+export const READER_LATIN_FONT_FORMAT = usesFullReaderStyle ? "truetype" : "woff2-variations";
+export const READER_MONO_FONT_FORMAT = usesFullReaderStyle ? "truetype" : "woff2";
+export const READER_MONO_FONT_WEIGHT = usesFullReaderStyle ? "100 900" : "400";
+const READER_FONT_SIZE_ADJUST = usesFullReaderStyle ? "0.54" : "none";
+const READER_LINE_HEIGHT_OFFSET = usesFullReaderStyle ? 0 : 0.1;
 
 const MIN_READER_FONT_SIZE = 14;
 const MAX_READER_FONT_SIZE = 22;

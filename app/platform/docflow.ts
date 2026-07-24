@@ -1,3 +1,18 @@
+import { get, set } from "idb-keyval";
+export {
+  clearFileHandle,
+  getStoredFileHandle,
+  normalizeSourceUrl,
+  saveFileHandle,
+  verifyWritePermission,
+  writeBlobToFile,
+} from "./browser-storage";
+export type { WritableFileHandle } from "./browser-storage";
+
+export const isWebViewer = true;
+export const isDocflowViewer = true;
+export const usesFullReaderStyle = true;
+
 type WriteResponse = {
   version: string;
 };
@@ -16,15 +31,15 @@ function stripEtag(value: string | null) {
 
 export class DocflowSession {
   readonly resourceUrl: string;
-  private readonly heartbeatUrl: string;
   private readonly initialVersion: Promise<string>;
   private version = "";
 
-  constructor(resourceUrl: string, heartbeatUrl: string) {
-    this.resourceUrl = new URL(resourceUrl, window.location.href).href;
-    this.heartbeatUrl = new URL(heartbeatUrl, window.location.href).href;
+  constructor(documentId: string) {
+    this.resourceUrl = new URL(
+      `/api/documents/${encodeURIComponent(documentId)}`,
+      window.location.origin,
+    ).href;
     this.initialVersion = this.readInitialVersion();
-    this.startHeartbeat();
   }
 
   async save(blob: Blob) {
@@ -68,9 +83,20 @@ export class DocflowSession {
     throw new Error(failure.message ?? `Docflow could not save the EPUB (${response.status}).`);
   }
 
+  readMetadata<Value>(key: string) {
+    return get<Value>(key);
+  }
+
+  writeMetadata<Value>(key: string, value: Value) {
+    return set(key, value);
+  }
+
   private async readInitialVersion() {
     const response = await fetch(this.resourceUrl, { method: "HEAD", cache: "no-store" });
     if (!response.ok) {
+      if (response.status === 410) {
+        throw new Error("This EPUB was moved or deleted. Open it with Docflow again to register its new location.");
+      }
       throw new Error(`Docflow could not open the document (${response.status}).`);
     }
     const version = stripEtag(response.headers.get("ETag"));
@@ -78,20 +104,39 @@ export class DocflowSession {
     return version;
   }
 
-  private startHeartbeat() {
-    const heartbeat = () => {
-      void fetch(this.heartbeatUrl, { method: "POST", cache: "no-store" }).catch(() => {});
-    };
-    heartbeat();
-    window.setInterval(heartbeat, 15_000);
-  }
 }
 
-export function createDocflowSession() {
+function createDocflowSession() {
   const query = new URLSearchParams(window.location.search);
-  const resourceUrl = query.get("docflowResource");
-  const heartbeatUrl = query.get("docflowHeartbeat");
-  return resourceUrl && heartbeatUrl
-    ? new DocflowSession(resourceUrl, heartbeatUrl)
-    : null;
+  const documentId = query.get("docflowDocument");
+  if (!documentId) {
+    throw new Error("This Docflow viewer URL is missing its document identifier.");
+  }
+  return new DocflowSession(documentId);
+}
+
+const docflow = createDocflowSession();
+
+export function getViewerAssetUrl(filename: string) {
+  return new URL(filename, document.baseURI).href;
+}
+
+export async function ensureSourceAccess() {
+  return true;
+}
+
+export function getInitialSourceUrl() {
+  return docflow.resourceUrl;
+}
+
+export function saveDocflowBlob(blob: Blob) {
+  return docflow.save(blob);
+}
+
+export function readViewerMetadata<Value>(key: string) {
+  return docflow.readMetadata<Value>(key);
+}
+
+export function writeViewerMetadata<Value>(key: string, value: Value) {
+  return docflow.writeMetadata(key, value);
 }
