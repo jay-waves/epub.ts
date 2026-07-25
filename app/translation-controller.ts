@@ -17,7 +17,17 @@ type TranslationRequest = {
 
 const targetLanguage = "zh";
 
-export function createTranslationController(options: { allowModelDownload: boolean }) {
+class ModelUnavailableError extends Error {}
+
+function googleTranslateUrl(text: string) {
+  const query = new URLSearchParams({ sl: "auto", tl: "zh-CN", text, op: "translate" });
+  return `https://translate.google.com/?${query}`;
+}
+
+export function createTranslationController(options: {
+  modelPolicy: "allow-download" | "external-fallback";
+  openExternal: (url: string) => void;
+}) {
   const builtInAi = globalThis as BuiltInAiGlobals;
   let activeResource: TranslationResource | null = null;
   let runId = 0;
@@ -39,11 +49,10 @@ export function createTranslationController(options: { allowModelDownload: boole
 
   const ensureUsable = (availability: BuiltInAiAvailability, modelName: string) => {
     if (availability === "unavailable") {
-      throw new Error(`${modelName} is not available in this browser.`);
+      throw new ModelUnavailableError(`${modelName} is not available in this browser.`);
     }
-    if (!options.allowModelDownload && availability !== "available") {
-      const state = availability === "downloading" ? "is still downloading" : "is not installed";
-      throw new Error(`${modelName} ${state}. This web reader will not download it automatically.`);
+    if (options.modelPolicy === "external-fallback" && availability !== "available") {
+      throw new ModelUnavailableError(`${modelName} is not installed.`);
     }
   };
 
@@ -69,7 +78,7 @@ export function createTranslationController(options: { allowModelDownload: boole
   const detectLanguage = async (text: string, currentRunId: number) => {
     const { LanguageDetector } = builtInAi;
     if (!LanguageDetector) {
-      throw new Error("Built-in language detection is not available in this browser.");
+      throw new ModelUnavailableError("Built-in language detection is not available in this browser.");
     }
 
     const availability = await LanguageDetector.availability();
@@ -102,7 +111,7 @@ export function createTranslationController(options: { allowModelDownload: boole
     try {
       const { Translator } = builtInAi;
       if (!Translator) {
-        throw new Error("Built-in translation is not available in this browser.");
+        throw new ModelUnavailableError("Built-in translation is not available in this browser.");
       }
 
       const sourceLanguage = await detectLanguage(sourceText, currentRunId);
@@ -154,6 +163,11 @@ export function createTranslationController(options: { allowModelDownload: boole
       });
     } catch (error) {
       if (currentRunId !== runId) return;
+      if (error instanceof ModelUnavailableError) {
+        options.openExternal(googleTranslateUrl(sourceText));
+        emitViewerEvent(VIEWER_EVENTS.translationClose);
+        return;
+      }
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
         message: error instanceof Error ? error.message : "Translation failed.",

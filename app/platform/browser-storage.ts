@@ -1,7 +1,5 @@
 import { del, get, set } from "idb-keyval";
 
-export type WritableFileHandle = FileSystemFileHandle;
-
 export function readViewerMetadata<Value>(key: string) {
   return get<Value>(key);
 }
@@ -18,7 +16,7 @@ export function getStoredFileHandle(bookKey: string) {
   return get<FileSystemFileHandle>(getFileHandleKey(bookKey));
 }
 
-export function saveFileHandle(bookKey: string, handle: WritableFileHandle) {
+export function saveFileHandle(bookKey: string, handle: FileSystemFileHandle) {
   return set(getFileHandleKey(bookKey), handle);
 }
 
@@ -26,13 +24,13 @@ export function clearFileHandle(bookKey: string) {
   return del(getFileHandleKey(bookKey));
 }
 
-export async function verifyWritePermission(handle: WritableFileHandle) {
+export async function verifyWritePermission(handle: FileSystemFileHandle) {
   const descriptor: FileSystemHandlePermissionDescriptor = { mode: "readwrite" };
   if (await handle.queryPermission(descriptor) === "granted") return true;
   return (await handle.requestPermission(descriptor)) === "granted";
 }
 
-export async function writeBlobToFile(handle: WritableFileHandle, blob: Blob) {
+export async function writeBlobToFile(handle: FileSystemFileHandle, blob: Blob) {
   if (blob.size === 0) throw new Error("Refusing to write an empty file.");
 
   const writable = await handle.createWritable({ keepExistingData: true });

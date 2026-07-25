@@ -1,3 +1,5 @@
+import { platform } from "#platform";
+
 export type ReaderThemeMode = "light" | "dark";
 export type ReaderFlow = "paginated" | "scrolled";
 export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark";
@@ -37,7 +39,7 @@ export type ReaderHighlight = {
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   flow: "paginated",
-  fontSize: __VIEWER_PLATFORM__ === "web" ? 15 : 16,
+  fontSize: platform.readerProfile.defaultFontSize,
   layoutLevel: 4,
   theme: "light",
 };

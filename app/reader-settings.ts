@@ -2,7 +2,7 @@ import atomOneLightHighlightTheme from "highlight.js/styles/atom-one-light.css?r
 import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
 import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
-import { getViewerAssetUrl, usesFullReaderStyle } from "#platform";
+import { platform } from "#platform";
 import { readerSettings } from "./reader";
 import type { ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./reader";
 import type { FoliateViewElement } from "./foliate";
@@ -71,23 +71,20 @@ export function applyReaderTheme(themeId: ReaderThemeId) {
   document.documentElement.style.setProperty("--reader-scrollbar-track", scrollbarTrack);
 }
 
-export const READER_FONT_FAMILY = usesFullReaderStyle ? "LXGW WenKai EPUB" : "system-ui";
+const readerProfile = platform.readerProfile;
+
+export const READER_FONT_FAMILY = readerProfile.fontFamily;
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
-export const READER_FONT_URL = usesFullReaderStyle
-  ? getViewerAssetUrl("LXGWWenKaiLite-Regular.ttf")
-  : null;
-export const READER_LATIN_FONT_URL = usesFullReaderStyle
-  ? getViewerAssetUrl("EBGaramond-VariableFont_wght.ttf")
-  : "https://cdn.jsdelivr.net/fontsource/fonts/eb-garamond:vf@5.2.7/latin-wght-normal.woff2";
-export const READER_MONO_FONT_URL = usesFullReaderStyle
-  ? getViewerAssetUrl("Monaspace Argon Var.ttf")
-  : "https://cdn.jsdelivr.net/fontsource/fonts/monaspace-argon@5.2.5/latin-400-normal.woff2";
-export const READER_LATIN_FONT_FORMAT = usesFullReaderStyle ? "truetype" : "woff2-variations";
-export const READER_MONO_FONT_FORMAT = usesFullReaderStyle ? "truetype" : "woff2";
-export const READER_MONO_FONT_WEIGHT = usesFullReaderStyle ? "100 900" : "400";
-const READER_FONT_SIZE_ADJUST = usesFullReaderStyle ? "0.54" : "none";
-const READER_LINE_HEIGHT_OFFSET = usesFullReaderStyle ? 0 : 0.1;
+export const READER_FONT_URL = readerProfile.fontUrl;
+export const READER_FONT_FORMAT = readerProfile.fontFormat;
+export const READER_LATIN_FONT_URL = readerProfile.latinFontUrl;
+export const READER_MONO_FONT_URL = readerProfile.monoFontUrl;
+export const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
+export const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
+export const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
+const READER_FONT_SIZE_ADJUST = readerProfile.fontSizeAdjust;
+const READER_LINE_HEIGHT_OFFSET = readerProfile.lineHeightOffset;
 
 const MIN_READER_FONT_SIZE = 14;
 const MAX_READER_FONT_SIZE = 22;

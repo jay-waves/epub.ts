@@ -5,24 +5,21 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const requestedPlatform = process.env.VIEWER_PLATFORM;
-const viewerPlatform = requestedPlatform === "web" || requestedPlatform === "docflow"
-  ? requestedPlatform
-  : "chrome";
+const viewerPlatform = requestedPlatform === "web" ? "web" : "chrome";
 const isWeb = viewerPlatform === "web";
-const isDocflow = viewerPlatform === "docflow";
-const isBrowser = isWeb || isDocflow;
-const outputDir = isBrowser ? `release/${viewerPlatform}` : "release/extension";
+const isBrowser = isWeb;
+const outputDir = isBrowser ? "release/web" : "release/extension";
 
 export default defineConfig({
   base: "./",
   publicDir: isBrowser ? false : "public",
   resolve: {
     alias: {
-      "#platform": resolve(__dirname, `app/platform/${viewerPlatform}.ts`),
+      "#platform": resolve(
+        __dirname,
+        isWeb ? "app/platform/browser.ts" : "app/platform/chrome.ts",
+      ),
     },
-  },
-  define: {
-    __VIEWER_PLATFORM__: JSON.stringify(viewerPlatform),
   },
   plugins: [
     react(),
@@ -32,14 +29,12 @@ export default defineConfig({
       writeBundle() {
         const resolvedOutputDir = resolve(__dirname, outputDir);
         cpSync(resolve(__dirname, "public/logo.svg"), resolve(resolvedOutputDir, "logo.svg"));
-        if (isDocflow) {
-          for (const filename of [
-            "LXGWWenKaiLite-Regular.ttf",
-            "EBGaramond-VariableFont_wght.ttf",
-            "Monaspace Argon Var.ttf",
-          ]) {
-            cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
-          }
+        for (const filename of [
+          "LXGWWenKaiLite-Regular.ttf",
+          "EBGaramond-VariableFont_wght.ttf",
+          "Monaspace Argon Var.ttf",
+        ]) {
+          cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
         }
       },
     }] : []),

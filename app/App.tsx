@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ReaderDock } from "./components/reader-dock";
 import { BookInfoPage } from "./components/book-info-page";
 import { HighlightContextMenu } from "./components/context-menu";
@@ -8,17 +8,23 @@ import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
 import type { ReadingProgressElements } from "./components/reading-progress";
+import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 
 export function App({
-  allowLocalFileOpen,
   onOpenLocalFile,
+  onPickLocalFile,
   onReadingProgressReady,
 }: {
-  allowLocalFileOpen: boolean;
-  onOpenLocalFile: (file: File) => void;
+  onOpenLocalFile?: (file: File) => void;
+  onPickLocalFile?: () => Promise<void>;
   onReadingProgressReady: (elements: ReadingProgressElements | null) => void;
 }) {
-  const [showWelcome, setShowWelcome] = useState(allowLocalFileOpen);
+  const [showWelcome, setShowWelcome] = useState(Boolean(onOpenLocalFile));
+
+  useEffect(
+    () => listenViewerEvent(VIEWER_EVENTS.documentOpen, () => setShowWelcome(false)),
+    [],
+  );
 
   return (
     <>
@@ -39,16 +45,28 @@ export function App({
         <TranslationPopover />
       </div>
       {showWelcome ? (
-        <WebBookPicker onSelect={(file) => {
-          setShowWelcome(false);
-          onOpenLocalFile(file);
-        }} />
+        <WebBookPicker
+          onSelect={(file) => {
+            setShowWelcome(false);
+            onOpenLocalFile?.(file);
+          }}
+          onPick={onPickLocalFile ? async () => {
+            await onPickLocalFile();
+            setShowWelcome(false);
+          } : undefined}
+        />
       ) : null}
     </>
   );
 }
 
-function WebBookPicker({ onSelect }: { onSelect(file: File): void }) {
+function WebBookPicker({
+  onSelect,
+  onPick,
+}: {
+  onSelect(file: File): void;
+  onPick?: () => Promise<void>;
+}) {
   const [dragging, setDragging] = useState(false);
   const [selectionError, setSelectionError] = useState("");
 
@@ -84,14 +102,26 @@ function WebBookPicker({ onSelect }: { onSelect(file: File): void }) {
       >
         <img className="web-welcome-logo" src="./logo.svg" alt="" />
         <h1>EPUB.ts Web Reader</h1>
-        <label className="web-file-button">
-          Choose an EPUB file
-          <input
-            type="file"
-            accept="application/epub+zip,.epub"
-            onChange={(event) => selectFile(event.target.files?.[0])}
-          />
-        </label>
+        {onPick ? (
+          <button className="web-file-button" type="button" onClick={() => {
+            void onPick().catch((error: unknown) => {
+              if (!(error instanceof DOMException && error.name === "AbortError")) {
+                setSelectionError(error instanceof Error ? error.message : "Unable to open EPUB.");
+              }
+            });
+          }}>
+            Choose an EPUB file
+          </button>
+        ) : (
+          <label className="web-file-button">
+            Choose an EPUB file
+            <input
+              type="file"
+              accept="application/epub+zip,.epub"
+              onChange={(event) => selectFile(event.target.files?.[0])}
+            />
+          </label>
+        )}
         <span className="web-drop-hint">or drop an EPUB here</span>
         {selectionError ? <p className="web-selection-error" role="alert">{selectionError}</p> : null}
         <small>Local files are processed only in this browser tab and are never uploaded.</small>

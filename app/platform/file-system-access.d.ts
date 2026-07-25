@@ -11,6 +11,16 @@ interface FileSystemHandle {
 }
 
 interface Window {
+  showOpenFilePicker(options?: {
+    excludeAcceptAllOption?: boolean;
+    id?: string;
+    multiple?: boolean;
+    startIn?: FileSystemHandle | WellKnownDirectory;
+    types?: Array<{
+      accept: Record<string, string[]>;
+      description?: string;
+    }>;
+  }): Promise<FileSystemFileHandle[]>;
   showSaveFilePicker(options?: {
     id?: string;
     suggestedName?: string;

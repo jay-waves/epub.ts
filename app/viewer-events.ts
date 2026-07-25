@@ -15,6 +15,7 @@ export const VIEWER_EVENTS = {
   translationUpdate: "reader:translation-update",
   dockAction: "reader:dock-action",
   dockUpdate: "reader:dock-update",
+  documentOpen: "reader:document-open",
   pageTurn: "reader:page-turn",
   searchClear: "reader:search-clear",
   searchCollect: "reader:search-collect",
@@ -112,6 +113,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.translationUpdate]: TranslationDetail;
   [VIEWER_EVENTS.dockAction]: DockAction;
   [VIEWER_EVENTS.dockUpdate]: DockUpdateDetail;
+  [VIEWER_EVENTS.documentOpen]: void;
   [VIEWER_EVENTS.pageTurn]: PageTurnDirection;
   [VIEWER_EVENTS.searchClear]: void;
   [VIEWER_EVENTS.searchCollect]: SearchCollectDetail;

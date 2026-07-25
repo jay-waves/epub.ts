@@ -120,11 +120,12 @@ function drawHighlightWithAnnotationBadge(rects: DOMRectList, options: Annotatio
 }
 
 export function createHighlightController(options: {
-  allowTranslationModelDownload: boolean;
   getBookKey: () => string;
   getProgress: () => number;
   getReaderView: () => FoliateViewElement | null;
+  openExternal: (url: string) => void;
   runWhenIdle: (callback: () => void, timeout?: number) => void;
+  translationModelPolicy: "allow-download" | "external-fallback";
 }) {
   const defaultHighlightColor = "#f4c430";
   let contextTargets = new WeakMap<EventTarget, () => void>();
@@ -133,7 +134,8 @@ export function createHighlightController(options: {
   let currentHighlights: ReaderHighlight[] = [];
   let pendingAnnotationSave: Promise<void> = Promise.resolve();
   const translationController = createTranslationController({
-    allowModelDownload: options.allowTranslationModelDownload,
+    modelPolicy: options.translationModelPolicy,
+    openExternal: options.openExternal,
   });
 
   const viewerEventDisposers = [

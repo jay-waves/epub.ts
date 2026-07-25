@@ -15,6 +15,7 @@ import {
   getBookStyles,
   getNextReaderThemeId,
   READER_FONT_FAMILY,
+  READER_FONT_FORMAT,
   READER_FONT_SIZE_STEP,
   READER_FONT_URL,
   READER_LATIN_FONT_FAMILY,
@@ -28,7 +29,6 @@ import {
 } from "./reader-settings";
 import {
   createAnnotatedEpub,
-  EPUB_MIME_TYPE,
   getEpubBlob,
   readEmbeddedHighlights,
 } from "./epub-annotations";
@@ -43,7 +43,7 @@ import {
   prepareReaderContentDocument,
 } from "./foliate/content";
 import { createSearchController } from "./search-controller";
-import { createBookInfo, formatSourcePath } from "./book-info";
+import { createBookInfo } from "./book-info";
 import { App } from "./App";
 import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
@@ -61,19 +61,8 @@ import type { FoliateViewElement, RelocateDetail } from "./foliate";
 import type { DockAction, DockUpdateDetail, PageTurnDirection } from "./viewer-events";
 import { createDebouncedTask, DEFAULT_READER_SETTINGS, readerSettings, runWhenIdle } from "./reader";
 import { createBookSession, resetBookSession } from "./viewer-session";
-import {
-  clearFileHandle,
-  ensureSourceAccess,
-  getInitialSourceUrl,
-  getStoredFileHandle,
-  isDocflowViewer,
-  isWebViewer,
-  normalizeSourceUrl,
-  saveDocflowBlob,
-  saveFileHandle,
-  verifyWritePermission,
-  writeBlobToFile,
-} from "#platform";
+import { platform } from "#platform";
+import type { PlatformDocument } from "./platform/types";
 import "./viewer.css";
 
 const runtime: {
@@ -147,8 +136,14 @@ function goToProgress(progress: number) {
 const reactRoot = createRoot(appRoot);
 flushSync(() => {
   reactRoot.render(createElement(App, {
-    allowLocalFileOpen: isWebViewer && !isDocflowViewer,
-    onOpenLocalFile: (file) => { void openBook(file, file.name); },
+    onOpenLocalFile: platform.openLocalDocument ? (file) => {
+      const document = platform.openLocalDocument?.(file);
+      if (document) void openBook(document);
+    } : undefined,
+    onPickLocalFile: platform.pickLocalDocument ? async () => {
+      const document = await platform.pickLocalDocument!();
+      if (document) void openBook(document);
+    } : undefined,
     onReadingProgressReady: mountReadingProgressController,
   }));
 });
@@ -185,11 +180,12 @@ function scheduleIdle(callback: () => void, timeout?: number) {
 }
 
 runtime.highlightController = createHighlightController({
-  allowTranslationModelDownload: !isWebViewer,
   getBookKey: () => session.bookKey,
   getProgress: () => runtime.readingProgressController?.getProgress() ?? 0,
   getReaderView: () => runtime.readerView,
+  openExternal: platform.openExternal,
   runWhenIdle: scheduleIdle,
+  translationModelPolicy: platform.translationModelPolicy,
 });
 
 function ensureKeybindings() {
@@ -235,7 +231,7 @@ function preloadReaderFonts() {
   if (runtime.readerFontsReady) return runtime.readerFontsReady;
 
   const fontLoads = [
-    ...(READER_FONT_URL ? [new FontFace(READER_FONT_FAMILY, `url("${READER_FONT_URL}") format("truetype")`, {
+    ...(READER_FONT_URL ? [new FontFace(READER_FONT_FAMILY, `url("${READER_FONT_URL}") format("${READER_FONT_FORMAT}")`, {
       style: "normal",
       weight: "400",
     }).load()] : []),
@@ -398,74 +394,26 @@ function emitDockUpdate() {
   emitViewerEvent(VIEWER_EVENTS.dockUpdate, getDockUpdateDetail());
 }
 
-function deriveDownloadFilename(sourceUrl: string) {
-  try {
-    const pathname = new URL(sourceUrl).pathname;
-    return decodeURIComponent(pathname.split("/").pop() || "book.epub");
-  } catch {
-    return "book.epub";
-  }
-}
-
-async function getWritableSaveHandle(bookKey: string, sourceUrl: string) {
-  if (session.saveHandle && await verifyWritePermission(session.saveHandle)) return session.saveHandle;
-
-  const storedHandle = session.saveHandle === undefined ? await getStoredFileHandle(bookKey) : null;
-  if (storedHandle && await verifyWritePermission(storedHandle)) {
-    session.saveHandle = storedHandle;
-    return storedHandle;
-  }
-
-  if (!("showSaveFilePicker" in window)) {
-    throw new Error("File System Access API is not available in this browser.");
-  }
-
-  const fileHandle = await window.showSaveFilePicker({
-    id: "epub-overlay-save-file",
-    suggestedName: session.documentTitle || deriveDownloadFilename(sourceUrl),
-    startIn: "documents",
-    types: [{
-      description: "EPUB files",
-      accept: { [EPUB_MIME_TYPE]: [".epub"] },
-    }],
-  });
-  if (!await verifyWritePermission(fileHandle)) throw new Error("Write permission was not granted.");
-
-  session.saveHandle = fileHandle;
-  await saveFileHandle(bookKey, fileHandle);
-  return fileHandle;
-}
-
 async function saveAnnotatedBook() {
-  const { bookKey, sourceUrl } = session;
-  if (!bookKey || !sourceUrl) return;
+  const { bookKey, document, sourceUrl } = session;
+  if (!bookKey || !document || !sourceUrl) return;
 
   try {
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
     await runtime.highlightController?.flushPendingAnnotationSave();
 
-    // Build the complete output before opening the save picker. The selected
-    // destination may be the source EPUB itself, so the source must no longer
-    // be needed by the time the browser starts an overwrite operation.
+    // Browser file pickers need the live Ctrl+S/click activation. Acquiring a
+    // writer does not modify the source; the actual overwrite happens below,
+    // after the complete EPUB has been serialized.
+    const target = await document.fileHandle.prepareWrite();
+    if (!target) return;
+
     const sourceBlob = await getEpubBlob(sourceUrl);
     const highlights = await getSavedHighlights(bookKey);
     const blob = await createAnnotatedEpub(sourceBlob, highlights);
     if (blob.size === 0) throw new Error("Generated EPUB is empty.");
 
-    if (isDocflowViewer) {
-      if (await saveDocflowBlob(blob)) setHasUnsavedChanges(false);
-      return;
-    }
-
-    const fileHandle = await getWritableSaveHandle(bookKey, sourceUrl);
-    try {
-      await writeBlobToFile(fileHandle, blob);
-    } catch (error) {
-      await clearFileHandle(bookKey);
-      if (session.saveHandle === fileHandle) session.saveHandle = null;
-      throw error;
-    }
-    setHasUnsavedChanges(false);
+    if (await target.save(blob)) setHasUnsavedChanges(false);
   } catch (error) {
     if ((error as DOMException).name === "AbortError") return;
     console.warn("Failed to save annotated EPUB.", error);
@@ -511,9 +459,7 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1], op
   await closeReaderContentOverlays();
   if (runtime.disposed || openToken !== runtime.bookOpenToken) return false;
   runtime.readerView?.close();
-  if (session.localSourceUrl && session.localSourceUrl !== source.localSourceUrl) {
-    URL.revokeObjectURL(session.localSourceUrl);
-  }
+  if (session.document && session.document !== source.document) session.document.release?.();
   resetBookSession(session, source);
   clearSearchState();
   renderDocumentTitle();
@@ -705,30 +651,23 @@ async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: Re
   }
 }
 
-async function openBook(input: File | string, sourceLabel: string) {
+async function openBook(document: PlatformDocument) {
   const openToken = ++runtime.bookOpenToken;
-  const normalizedInput = typeof input === "string" ? normalizeSourceUrl(input) : input;
-  const localSourceUrl = normalizedInput instanceof File ? URL.createObjectURL(normalizedInput) : null;
-  const fileUrl = typeof normalizedInput === "string" ? normalizedInput : localSourceUrl!;
-  const fallbackBookKey = normalizedInput instanceof File
-    ? `local:${normalizedInput.name}:${normalizedInput.size}:${normalizedInput.lastModified}`
-    : fileUrl;
-  const canRead = await ensureSourceAccess(fileUrl);
-  if (!canRead || runtime.disposed || openToken !== runtime.bookOpenToken) {
-    if (localSourceUrl) URL.revokeObjectURL(localSourceUrl);
+  if (runtime.disposed || openToken !== runtime.bookOpenToken) {
+    document.release?.();
     return;
   }
 
   try {
     const didReset = await resetBookState({
-      bookKey: fallbackBookKey,
-      documentTitle: input instanceof File ? input.name : deriveDownloadFilename(fileUrl),
-      localSourceUrl,
-      sourceLabel,
-      sourceUrl: fileUrl,
+      bookKey: document.key,
+      document,
+      documentTitle: document.name,
+      sourceLabel: document.sourceLabel,
+      sourceUrl: document.sourceUrl,
     }, openToken);
     if (!didReset) {
-      if (localSourceUrl && session.localSourceUrl !== localSourceUrl) URL.revokeObjectURL(localSourceUrl);
+      if (session.document !== document) document.release?.();
       return;
     }
 
@@ -738,18 +677,12 @@ async function openBook(input: File | string, sourceLabel: string) {
     setReaderRenderPending(true);
     await preloadReaderFonts();
     if (runtime.disposed || openToken !== runtime.bookOpenToken) return;
-    await view.open(normalizedInput);
+    await view.open(document.input);
     if (runtime.disposed || openToken !== runtime.bookOpenToken) return;
-    session.bookKey = await deriveBookKey(view.book, fallbackBookKey);
+    emitViewerEvent(VIEWER_EVENTS.documentOpen);
+    session.bookKey = await deriveBookKey(view.book, document.key);
     if (runtime.disposed || openToken !== runtime.bookOpenToken) return;
     const bookKey = session.bookKey;
-    void getStoredFileHandle(bookKey)
-      .then((handle) => {
-        if (session.bookKey === bookKey) session.saveHandle = handle ?? null;
-      })
-      .catch((error) => {
-        console.warn("Failed to restore saved EPUB file handle.", error);
-      });
     const savedPosition = await getSavedPosition(bookKey);
     if (runtime.disposed || openToken !== runtime.bookOpenToken) return;
     applyReaderSettings(savedPosition?.settings);
@@ -763,10 +696,10 @@ async function openBook(input: File | string, sourceLabel: string) {
   } catch (error) {
     if (runtime.disposed || openToken !== runtime.bookOpenToken) return;
     setReaderRenderPending(false);
-    console.error(`Failed to open ${sourceLabel}`, error);
-    if (localSourceUrl && session.localSourceUrl === localSourceUrl) {
-      URL.revokeObjectURL(localSourceUrl);
-      session.localSourceUrl = null;
+    console.error(`Failed to open ${document.sourceLabel}`, error);
+    if (session.document === document) {
+      document.release?.();
+      session.document = null;
     }
   }
 }
@@ -981,10 +914,17 @@ async function importEmbeddedHighlights(bookKey: string, sourceUrl: string, task
 async function bootstrap() {
   applyReaderSettings(undefined);
   setupCriticalInteractions();
-  const src = getInitialSourceUrl();
-  if (src) {
-    void openBook(src, formatSourcePath(src) || src);
-  } else {
+  try {
+    const document = await platform.loadInitialDocument();
+    if (document) {
+      void openBook(document);
+      return;
+    }
+  } catch (error) {
+    console.error("Failed to load the initial EPUB document.", error);
+  }
+
+  if (!runtime.disposed) {
     void preloadReaderFonts();
     scheduleIdle(setupExtraUi, 1000);
   }
@@ -1014,7 +954,8 @@ async function disposeViewer() {
   runtime.readingProgressController?.destroy();
   await disposeReaderContent();
   runtime.readerView?.close();
-  if (session.localSourceUrl) URL.revokeObjectURL(session.localSourceUrl);
+  session.document?.release?.();
+  session.document = null;
 
   runtime.readerView = null;
   runtime.readingProgressController = null;

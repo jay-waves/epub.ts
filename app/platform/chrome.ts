@@ -1,34 +1,14 @@
-export {
-  clearFileHandle,
-  getStoredFileHandle,
+import {
   normalizeSourceUrl,
   readViewerMetadata,
-  saveFileHandle,
-  verifyWritePermission,
-  writeBlobToFile,
   writeViewerMetadata,
 } from "./browser-storage";
-export type { WritableFileHandle } from "./browser-storage";
+import { BrowserEpubFileHandle } from "./browser-file-handle";
+import { openExternal } from "./external";
+import { createBundledReaderProfile } from "./reader-profile";
+import type { ViewerPlatform } from "./types";
 
-export const isWebViewer = false;
-export const isDocflowViewer = false;
-export const usesFullReaderStyle = true;
-
-export function getViewerAssetUrl(filename: string) {
-  return chrome.runtime.getURL(filename);
-}
-
-export async function ensureSourceAccess(sourceUrl: string) {
-  if (!sourceUrl.startsWith("file://")) return true;
-
-  const allowed = await chrome.extension.isAllowedFileSchemeAccess();
-  if (!allowed) {
-    console.warn("File URL access is disabled. Enable 'Allow access to file URLs' for this extension.");
-  }
-  return allowed;
-}
-
-export function getInitialSourceUrl() {
+function getInitialSourceUrl() {
   const query = window.location.search;
   if (!query) return null;
 
@@ -45,6 +25,39 @@ export function getInitialSourceUrl() {
   }
 }
 
-export async function saveDocflowBlob(_blob: Blob): Promise<boolean> {
-  throw new Error("No active docflow session.");
+function getFileName(sourceUrl: string) {
+  try {
+    return decodeURIComponent(new URL(sourceUrl).pathname.split("/").pop() || "book.epub");
+  } catch {
+    return "book.epub";
+  }
 }
+
+export const platform: ViewerPlatform = {
+  readerProfile: createBundledReaderProfile((filename) => chrome.runtime.getURL(filename), 15),
+  translationModelPolicy: "allow-download",
+  async loadInitialDocument() {
+    const rawSourceUrl = getInitialSourceUrl();
+    if (!rawSourceUrl) return undefined;
+    const sourceUrl = normalizeSourceUrl(rawSourceUrl);
+    if (sourceUrl.startsWith("file://")) {
+      const allowed = await chrome.extension.isAllowedFileSchemeAccess();
+      if (!allowed) {
+        console.warn("File URL access is disabled. Enable 'Allow access to file URLs' for this extension.");
+        return undefined;
+      }
+    }
+    const name = getFileName(sourceUrl);
+    return {
+      input: sourceUrl,
+      sourceUrl,
+      key: sourceUrl,
+      name,
+      sourceLabel: sourceUrl,
+      fileHandle: new BrowserEpubFileHandle(name, sourceUrl),
+    };
+  },
+  openExternal,
+  readViewerMetadata,
+  writeViewerMetadata,
+};

@@ -1,18 +1,17 @@
 import type { TocItem } from "./foliate";
-import type { WritableFileHandle } from "#platform";
+import type { PlatformDocument } from "./platform/types";
 
 export type BookSession = ReturnType<typeof createBookSession>;
 
 export function createBookSession(initialTitle: string) {
   return {
     bookKey: "",
+    document: null as PlatformDocument | null,
     dirty: false,
     documentTitle: initialTitle,
     href: "",
-    localSourceUrl: null as string | null,
     restoring: false,
     restoreScrollPending: false,
-    saveHandle: undefined as WritableFileHandle | null | undefined,
     scrolledSectionIndex: null as number | null,
     scrolledSectionProgress: new Map<number, number>(),
     sourceLabel: "",
@@ -23,7 +22,7 @@ export function createBookSession(initialTitle: string) {
 
 export function resetBookSession(
   session: BookSession,
-  source: Pick<BookSession, "bookKey" | "documentTitle" | "localSourceUrl" | "sourceLabel" | "sourceUrl">,
+  source: Pick<BookSession, "bookKey" | "document" | "documentTitle" | "sourceLabel" | "sourceUrl">,
 ) {
   Object.assign(session, createBookSession(source.documentTitle), source);
 }
