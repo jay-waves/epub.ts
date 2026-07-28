@@ -30,10 +30,13 @@ export interface PlatformDocument {
 export interface ReaderProfile {
   readonly defaultFontSize: number;
   readonly fontFamily: string;
+  readonly fontLocalName?: string;
   readonly fontUrl?: string;
   readonly fontFormat: string;
   readonly latinFontUrl: string;
   readonly latinFontFormat: string;
+  readonly latinItalicFontUrl?: string;
+  readonly latinItalicFontFormat?: string;
   readonly monoFontUrl: string;
   readonly monoFontFormat: string;
   readonly monoFontWeight: string;

@@ -36,8 +36,9 @@
       "resources": [
         "viewer.html",
         "assets/*",
-        "LXGWWenKaiLite-Regular.ttf",
-        "Monaspace Argon Var.ttf"
+        "EBGaramond-VariableFont_wght.ttf",
+        "EBGaramond-Italic-VariableFont_wght.ttf",
+        "Monaspace Argon Var.woff2"
       ],
       "matches": [
         "file:///*"

@@ -4,6 +4,10 @@ Chrome EPUB reader extension.
 
 EPUB 阅读器，Chrome 浏览器插件。
 
+Requires Chrome 120 or newer.
+
+需要 Chrome 120 或更高版本。
+
 <img src="assets/screenshot1.png" width=800>
 
 ## 功能 Features 
@@ -12,7 +16,7 @@ EPUB 阅读器，Chrome 浏览器插件。
 
 #### 美观性 Aesthetics
 
-* 字体采用霞鹜文楷，英文字体采用 EBGaramond，等宽字体采用 Monaspace Argon 
+* 中文优先使用系统安装的霞鹜文楷，英文字体采用 EB Garamond 可变直立体和斜体 TTF，等宽字体采用 Monaspace Argon WOFF2
 * 支持多种主题颜色：Light, Dark, Grey, Nord
 * 亚克力面板，Dock 栏
 
@@ -40,4 +44,3 @@ EPUB 阅读器，Chrome 浏览器插件。
 Dock 工具栏：（自动隐藏）
 
 <img src="assets/dock.png" width=800>
-

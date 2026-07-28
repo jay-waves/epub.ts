@@ -76,11 +76,15 @@ const readerProfile = platform.readerProfile;
 export const READER_FONT_FAMILY = readerProfile.fontFamily;
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
+export const READER_FONT_LOCAL_NAME = readerProfile.fontLocalName;
 export const READER_FONT_URL = readerProfile.fontUrl;
 export const READER_FONT_FORMAT = readerProfile.fontFormat;
 export const READER_LATIN_FONT_URL = readerProfile.latinFontUrl;
+export const READER_LATIN_ITALIC_FONT_URL = readerProfile.latinItalicFontUrl;
 export const READER_MONO_FONT_URL = readerProfile.monoFontUrl;
 export const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
+export const READER_LATIN_ITALIC_FONT_FORMAT =
+  readerProfile.latinItalicFontFormat ?? readerProfile.latinFontFormat;
 export const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
 export const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
 const READER_FONT_SIZE_ADJUST = readerProfile.fontSizeAdjust;
@@ -222,10 +226,13 @@ function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
 
 export const READER_STATIC_BOOK_STYLES = `
     @namespace epub "http://www.idpf.org/2007/ops";
-    ${READER_FONT_URL ? `
+    ${READER_FONT_LOCAL_NAME || READER_FONT_URL ? `
     @font-face {
       font-family: "${READER_FONT_FAMILY}";
-      src: url("${READER_FONT_URL}") format("truetype");
+      src: ${[
+        READER_FONT_LOCAL_NAME ? `local("${READER_FONT_LOCAL_NAME}")` : "",
+        READER_FONT_URL ? `url("${READER_FONT_URL}") format("${READER_FONT_FORMAT}")` : "",
+      ].filter(Boolean).join(", ")};
       font-weight: 400;
       font-style: normal;
       font-display: swap;
@@ -239,6 +246,16 @@ export const READER_STATIC_BOOK_STYLES = `
       font-display: swap;
       unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
     }
+    ${READER_LATIN_ITALIC_FONT_URL ? `
+    @font-face {
+      font-family: "${READER_LATIN_FONT_FAMILY}";
+      src: url("${READER_LATIN_ITALIC_FONT_URL}") format("${READER_LATIN_ITALIC_FONT_FORMAT}");
+      font-weight: 400 800;
+      font-style: italic;
+      font-display: swap;
+      unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
+    }
+    ` : ""}
     @font-face {
       font-family: "${READER_MONO_FONT_FAMILY}";
       src: url("${READER_MONO_FONT_URL}") format("${READER_MONO_FONT_FORMAT}");

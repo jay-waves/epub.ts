@@ -30,9 +30,9 @@ export default defineConfig({
         const resolvedOutputDir = resolve(__dirname, outputDir);
         cpSync(resolve(__dirname, "public/logo.svg"), resolve(resolvedOutputDir, "logo.svg"));
         for (const filename of [
-          "LXGWWenKaiLite-Regular.ttf",
           "EBGaramond-VariableFont_wght.ttf",
-          "Monaspace Argon Var.ttf",
+          "EBGaramond-Italic-VariableFont_wght.ttf",
+          "Monaspace Argon Var.woff2",
         ]) {
           cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
         }

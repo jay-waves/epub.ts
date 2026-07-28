@@ -20,6 +20,8 @@ import {
   READER_FONT_URL,
   READER_LATIN_FONT_FAMILY,
   READER_LATIN_FONT_FORMAT,
+  READER_LATIN_ITALIC_FONT_FORMAT,
+  READER_LATIN_ITALIC_FONT_URL,
   READER_LATIN_FONT_URL,
   READER_MONO_FONT_FAMILY,
   READER_MONO_FONT_FORMAT,
@@ -239,6 +241,16 @@ function preloadReaderFonts() {
       style: "normal",
       weight: "400 800",
     }).load(),
+    ...(READER_LATIN_ITALIC_FONT_URL ? [
+      new FontFace(
+        READER_LATIN_FONT_FAMILY,
+        `url("${READER_LATIN_ITALIC_FONT_URL}") format("${READER_LATIN_ITALIC_FONT_FORMAT}")`,
+        {
+          style: "italic",
+          weight: "400 800",
+        },
+      ).load(),
+    ] : []),
     new FontFace(READER_MONO_FONT_FAMILY, `url("${READER_MONO_FONT_URL}") format("${READER_MONO_FONT_FORMAT}")`, {
       style: "normal",
       weight: READER_MONO_FONT_WEIGHT,
@@ -611,6 +623,9 @@ async function waitForReaderDocumentFonts(doc: Document) {
     await withTimeout(Promise.allSettled([
       fonts.load(`${readerSettings.fontSize}px "${READER_FONT_FAMILY}"`),
       fonts.load(`${readerSettings.fontSize}px "${READER_LATIN_FONT_FAMILY}"`),
+      ...(READER_LATIN_ITALIC_FONT_URL
+        ? [fonts.load(`italic ${readerSettings.fontSize}px "${READER_LATIN_FONT_FAMILY}"`)]
+        : []),
       fonts.load(`${readerSettings.fontSize}px "${READER_MONO_FONT_FAMILY}"`),
       fonts.ready,
     ]), READER_DOCUMENT_FONT_TIMEOUT_MS);
