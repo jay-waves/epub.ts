@@ -1,6 +1,7 @@
 {
-	"name": "epub-viewer-extension",
-	"private": true,
+  "name": "epub-viewer-extension",
+  "license": "MIT",
+  "private": true,
 	"version": "0.2.9",
 	"type": "module",
 	"scripts": {
