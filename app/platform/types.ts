@@ -1,5 +1,8 @@
+import type { ReaderHighlight } from "../reader";
+
 export interface EpubFileWriter {
-  save(blob: Blob): Promise<boolean>;
+  save?(blob: Blob): Promise<boolean>;
+  saveAnnotations?(highlights: readonly ReaderHighlight[]): Promise<boolean>;
 }
 
 /**

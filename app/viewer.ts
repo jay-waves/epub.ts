@@ -396,23 +396,27 @@ function emitDockUpdate() {
 
 async function saveAnnotatedBook() {
   const { bookKey, document, sourceUrl } = session;
-  if (!bookKey || !document || !sourceUrl) return;
+  if (!session.dirty || !bookKey || !document || !sourceUrl) return;
 
   try {
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
     await runtime.highlightController?.flushPendingAnnotationSave();
 
-    // Browser file pickers need the live Ctrl+S/click activation. Acquiring a
-    // writer does not modify the source; the actual overwrite happens below,
-    // after the complete EPUB has been serialized.
+    // Browser file pickers need the live Ctrl+S/click activation, so acquire
+    // the platform writer before reading annotations or serializing an EPUB.
     const target = await document.fileHandle.prepareWrite();
     if (!target) return;
 
-    const sourceBlob = await getEpubBlob(sourceUrl);
     const highlights = await getSavedHighlights(bookKey);
+    if (target.saveAnnotations) {
+      if (await target.saveAnnotations(highlights)) setHasUnsavedChanges(false);
+      return;
+    }
+    if (!target.save) throw new Error("This platform cannot save EPUB changes.");
+
+    const sourceBlob = await getEpubBlob(sourceUrl);
     const blob = await createAnnotatedEpub(sourceBlob, highlights);
     if (blob.size === 0) throw new Error("Generated EPUB is empty.");
-
     if (await target.save(blob)) setHasUnsavedChanges(false);
   } catch (error) {
     if ((error as DOMException).name === "AbortError") return;
