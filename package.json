@@ -1,12 +1,13 @@
 {
-  "name": "epub-viewer-extension",
+  "name": "epub.ts",
   "license": "MIT",
   "private": true,
 	"version": "0.2.9",
 	"type": "module",
 	"scripts": {
 		"build": "pnpm typecheck && vite build",
-		"build:docflow": "pnpm build:web",
+		"build:linux": "pnpm build:web && node scripts/build-launcher.mjs linux-amd64",
+		"build:windows": "pnpm build:web && node scripts/build-launcher.mjs windows-amd64",
 		"build:web": "pnpm typecheck && VIEWER_PLATFORM=web vite build",
 		"deploy:web": "bash scripts/deploy-web.sh",
 		"typecheck": "tsgo --noEmit"

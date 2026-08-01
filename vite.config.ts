@@ -24,11 +24,21 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    ...(isBrowser ? [{
-      name: "browser-viewer-assets",
+    {
+      name: "viewer-icon-assets",
       writeBundle() {
         const resolvedOutputDir = resolve(__dirname, outputDir);
-        cpSync(resolve(__dirname, "public/logo.svg"), resolve(resolvedOutputDir, "logo.svg"));
+        const iconDir = resolve(__dirname, "assets");
+        cpSync(resolve(iconDir, "icon.png"), resolve(resolvedOutputDir, "icon.png"));
+        for (const size of [16, 32, 48, 128]) {
+          cpSync(resolve(iconDir, `icon-${size}.png`), resolve(resolvedOutputDir, `icon-${size}.png`));
+        }
+      },
+    },
+    ...(isBrowser ? [{
+      name: "browser-viewer-fonts",
+      writeBundle() {
+        const resolvedOutputDir = resolve(__dirname, outputDir);
         for (const filename of [
           "EBGaramond-VariableFont_wght.ttf",
           "EBGaramond-Italic-VariableFont_wght.ttf",

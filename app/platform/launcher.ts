@@ -40,7 +40,7 @@ function filenameFromDisposition(value: string | null) {
   return value?.match(/filename="([^"]*)"/i)?.[1]?.replace(/[\r\n]/g, "") || "book.epub";
 }
 
-class DocflowSession implements EpubFileHandle {
+class EpubLauncherSession implements EpubFileHandle {
   readonly resourceUrl: string;
   name = "book.epub";
   private version = "";
@@ -56,19 +56,19 @@ class DocflowSession implements EpubFileHandle {
     const response = await fetch(this.resourceUrl, { method: "HEAD", cache: "no-store" });
     if (!response.ok) {
       if (response.status === 410) {
-        throw new Error("This EPUB was moved or deleted. Open it with Docflow again to register its new location.");
+        throw new Error("This EPUB was moved or deleted. Open it with EPUB.ts again to register its new location.");
       }
-      throw new Error(`Docflow could not open the document (${response.status}).`);
+      throw new Error(`EPUB.ts could not open the document (${response.status}).`);
     }
 
     this.version = stripEtag(response.headers.get("ETag"));
-    if (!this.version) throw new Error("Docflow did not provide a document version.");
+    if (!this.version) throw new Error("EPUB.ts did not provide a document version.");
     this.name = filenameFromDisposition(response.headers.get("Content-Disposition"));
 
     return {
       input: this.resourceUrl,
       sourceUrl: this.resourceUrl,
-      key: `docflow:${this.resourceUrl}`,
+      key: `epub.ts:${this.resourceUrl}`,
       name: this.name,
       sourceLabel: this.name,
       fileHandle: this,
@@ -100,7 +100,7 @@ class DocflowSession implements EpubFileHandle {
     if (response.status === 409) {
       const conflict = await response.json().catch(() => ({})) as ConflictResponse;
       const shouldSaveCopy = window.confirm(
-        `${conflict.message ?? "This EPUB was modified by another program or docflow window."}\n\n`
+        `${conflict.message ?? "This EPUB was modified by another program or launcher window."}\n\n`
         + "The original will not be overwritten. Save your changes as a conflict copy beside it?",
       );
       if (!shouldSaveCopy) return false;
@@ -111,7 +111,7 @@ class DocflowSession implements EpubFileHandle {
         body: JSON.stringify(payload),
       });
       if (!copyResponse.ok) {
-        throw new Error(`Docflow could not save an EPUB conflict copy (${copyResponse.status}).`);
+        throw new Error(`EPUB.ts could not save an EPUB conflict copy (${copyResponse.status}).`);
       }
       const copy = await copyResponse.json() as CopyResponse;
       window.alert(`The EPUB changed on disk. Your edits were saved as:\n${copy.name}`);
@@ -119,16 +119,16 @@ class DocflowSession implements EpubFileHandle {
     }
 
     const failure = await response.json().catch(() => ({})) as { message?: string };
-    throw new Error(failure.message ?? `Docflow could not save EPUB annotations (${response.status}).`);
+    throw new Error(failure.message ?? `EPUB.ts could not save EPUB annotations (${response.status}).`);
   }
 }
 
-function createDocflowSession() {
-  const documentId = new URLSearchParams(window.location.search).get("docflowDocument");
-  return documentId ? new DocflowSession(documentId) : null;
+function createEpubLauncherSession() {
+  const documentId = new URLSearchParams(window.location.search).get("launcherDocument");
+  return documentId ? new EpubLauncherSession(documentId) : null;
 }
 
-const docflow = createDocflowSession();
+const launcher = createEpubLauncherSession();
 
 export const platform: ViewerPlatform = {
   readerProfile: createBundledReaderProfile(
@@ -137,10 +137,10 @@ export const platform: ViewerPlatform = {
   ),
   translationModelPolicy: "allow-download",
   async loadInitialDocument() {
-    if (!docflow) {
-      throw new Error("This Docflow viewer URL is missing its document identifier.");
+    if (!launcher) {
+      throw new Error("This EPUB.ts viewer URL is missing its document identifier.");
     }
-    return docflow.openDocument();
+    return launcher.openDocument();
   },
   openExternal,
   readViewerMetadata: get,

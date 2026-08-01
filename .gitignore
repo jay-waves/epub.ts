@@ -2,3 +2,8 @@ dist
 node_modules
 release
 *.zip
+
+# Generated assets embedded by the launcher build
+launcher/viewer/*
+!launcher/viewer/placeholder.txt
+launcher/icon_windows_amd64.syso

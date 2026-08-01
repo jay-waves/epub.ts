@@ -100,7 +100,7 @@ function WebBookPicker({
           selectFile(event.dataTransfer.files[0]);
         }}
       >
-        <img className="web-welcome-logo" src="./logo.svg" alt="" />
+        <img className="web-welcome-logo" src="./icon.png" alt="" />
         <h1>EPUB.ts Web Reader</h1>
         {onPick ? (
           <button className="web-file-button" type="button" onClick={() => {

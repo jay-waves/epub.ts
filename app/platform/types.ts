@@ -9,7 +9,7 @@ export interface EpubFileWriter {
  * Cross-platform reference to the EPUB currently being edited.
  *
  * Browser platforms back this with a persisted FileSystemFileHandle (acquired
- * lazily when necessary), while Docflow backs it with the daemon document
+ * lazily when necessary), while epub.ts backs it with the daemon document
  * capability. This mirrors PDF.ts's PdfFileHandle contract.
  */
 export interface EpubFileHandle {

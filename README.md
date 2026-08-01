@@ -4,6 +4,20 @@ Chrome EPUB reader extension.
 
 EPUB 阅读器，Chrome 浏览器插件。
 
+## Desktop launcher
+
+The launcher is built into this repository and only accepts EPUB files. It
+serves the reader from `epub.ts.localhost`, persists annotations inside the
+EPUB, and installs only the EPUB file association.
+
+```bash
+pnpm build:linux
+pnpm build:windows
+```
+
+Artifacts are written to `release/launcher/epub.ts` and
+`release/launcher/epub.ts.exe`.
+
 Requires Chrome 120 or newer.
 
 需要 Chrome 120 或更高版本。
