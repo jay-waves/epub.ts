@@ -45,10 +45,7 @@ type App struct {
 }
 
 type openResult struct {
-	ID   string `json:"id"`
-	URL  string `json:"url"`
-	Name string `json:"name"`
-	Kind string `json:"kind"`
+	URL string `json:"url"`
 }
 
 func New(options Options) (*App, error) {
@@ -294,10 +291,7 @@ func (app *App) handleRegisterDocument(response http.ResponseWriter, request *ht
 	query := url.Values{"launcherDocument": {document.ID}}
 	viewerURL := app.origin + "/?" + query.Encode()
 	writeJSON(response, http.StatusOK, openResult{
-		ID:   document.ID,
-		URL:  viewerURL,
-		Name: filepath.Base(document.Path),
-		Kind: document.Kind,
+		URL: viewerURL,
 	})
 }
 
@@ -325,10 +319,6 @@ func (app *App) handleDocument(response http.ResponseWriter, request *http.Reque
 	}
 	if len(parts) == 3 && parts[1] == "annotations" && parts[2] == "copy" {
 		app.handleEpubAnnotationsCopy(resource, response, request)
-		return
-	}
-	if len(parts) == 2 && parts[1] == "copy" {
-		app.handleCopy(resource, response, request)
 		return
 	}
 	if len(parts) != 1 {
@@ -398,84 +388,15 @@ func (app *App) writeEpubAnnotationError(response http.ResponseWriter, err error
 	writeJSONError(response, status, code, err.Error())
 }
 
-func (app *App) handleDocumentAsset(resource *Resource, relativePath string, response http.ResponseWriter, request *http.Request) {
+func (app *App) handleResource(resource *Resource, response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		response.Header().Set("Allow", "GET, HEAD")
 		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := resource.ServeAsset(response, request, relativePath); err != nil {
-		if errors.Is(err, errInvalidAssetPath) || errors.Is(err, os.ErrNotExist) {
-			http.NotFound(response, request)
-			return
-		}
+	if err := resource.Serve(response, request); err != nil {
 		app.writeResourceError(response, err)
 	}
-}
-
-func (app *App) handleResource(resource *Resource, response http.ResponseWriter, request *http.Request) {
-	switch request.Method {
-	case http.MethodGet, http.MethodHead:
-		if err := resource.Serve(response, request); err != nil {
-			app.writeResourceError(response, err)
-		}
-	case http.MethodPut:
-		if !app.sameOrigin(request) {
-			writeJSONError(response, http.StatusForbidden, "forbidden_origin", "The write request did not come from this epub.ts page.")
-			return
-		}
-		result, conflict, err := resource.Replace(response, request)
-		if conflict != nil {
-			writeJSON(response, http.StatusConflict, conflict)
-			return
-		}
-		if err != nil {
-			status := http.StatusInternalServerError
-			code := "write_failed"
-			if errors.Is(err, errPreconditionRequired) {
-				status = http.StatusPreconditionRequired
-				code = "version_required"
-			} else if errors.Is(err, errDocumentLocked) {
-				status = http.StatusLocked
-				code = "document_locked"
-			} else if errors.Is(err, os.ErrNotExist) {
-				status = http.StatusGone
-				code = "document_missing"
-			}
-			writeJSONError(response, status, code, err.Error())
-			return
-		}
-		writeJSON(response, http.StatusOK, result)
-	default:
-		response.Header().Set("Allow", "GET, HEAD, PUT")
-		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func (app *App) handleCopy(resource *Resource, response http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		response.Header().Set("Allow", http.MethodPost)
-		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !app.sameOrigin(request) {
-		writeJSONError(response, http.StatusForbidden, "forbidden_origin", "The write request did not come from this epub.ts page.")
-		return
-	}
-	result, err := resource.SaveConflictCopy(response, request)
-	if err != nil {
-		status := http.StatusInternalServerError
-		code := "copy_failed"
-		if errors.Is(err, errDocumentLocked) {
-			status = http.StatusLocked
-		} else if errors.Is(err, os.ErrNotExist) {
-			status = http.StatusGone
-			code = "document_missing"
-		}
-		writeJSONError(response, status, code, err.Error())
-		return
-	}
-	writeJSON(response, http.StatusCreated, result)
 }
 
 func (app *App) resourceFor(document Document) (*Resource, error) {
@@ -484,7 +405,7 @@ func (app *App) resourceFor(document Document) (*Resource, error) {
 	if resource := app.resources[document.ID]; resource != nil && sameDocumentPath(resource.Path(), document.Path) {
 		return resource, nil
 	}
-	resource, err := NewResourceWithID(document.Path, document.ID)
+	resource, err := NewResource(document.Path)
 	if err != nil {
 		return nil, err
 	}
