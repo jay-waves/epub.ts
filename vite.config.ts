@@ -8,7 +8,7 @@ const requestedPlatform = process.env.VIEWER_PLATFORM;
 const viewerPlatform = requestedPlatform === "web" ? "web" : "chrome";
 const isWeb = viewerPlatform === "web";
 const isBrowser = isWeb;
-const outputDir = isBrowser ? "release/web" : "release/extension";
+const outputDir = isBrowser ? "release/web" : "release/chrome/extension";
 
 export default defineConfig({
   base: "./",

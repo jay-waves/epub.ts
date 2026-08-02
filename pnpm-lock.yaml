@@ -60,6 +60,9 @@ importers:
       vite:
         specifier: ^8.0.10
         version: 8.0.10(jiti@2.6.1)
+      yazl:
+        specifier: 2.5.1
+        version: 2.5.1
 
 packages:
 
@@ -505,6 +508,9 @@ packages:
     resolution: {integrity: sha512-RQ4h9F6DOiHxpdocUDrOl6xBM+yOtz+LkUol47AVWcfebGBDpZ7w7Xvz9PS24JgXvLGiXXzSAfdCdVy1tPlaFA==}
     engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
+  buffer-crc32@0.2.13:
+    resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
+
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
@@ -726,6 +732,9 @@ packages:
   wheel-gestures@2.2.48:
     resolution: {integrity: sha512-f+Gy33Oa5Z14XY9679Zze+7VFhbsQfBFXodnU2x589l4kxGM9L5Y8zETTmcMR5pWOPQyRv4Z0lNax6xCO0NSlA==}
     engines: {node: '>=18'}
+
+  yazl@2.5.1:
+    resolution: {integrity: sha512-phENi2PLiHnHb6QBVot+dJnaAZ0xosj7p3fWl+znIjBDlnMI2PsZCJZ306BPTFOaHf5qdDEI8x5qFrSOBN5vrw==}
 
 snapshots:
 
@@ -1061,6 +1070,8 @@ snapshots:
 
   '@zip.js/zip.js@2.8.26': {}
 
+  buffer-crc32@0.2.13: {}
+
   csstype@3.2.3: {}
 
   detect-libc@2.1.2: {}
@@ -1212,3 +1223,7 @@ snapshots:
       jiti: 2.6.1
 
   wheel-gestures@2.2.48: {}
+
+  yazl@2.5.1:
+    dependencies:
+      buffer-crc32: 0.2.13

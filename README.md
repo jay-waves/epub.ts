@@ -18,6 +18,16 @@ pnpm build:windows
 Artifacts are written to `release/launcher/epub.ts` and
 `release/launcher/epub.ts.exe`.
 
+## Build
+
+```bash
+# Static web app (output: release/web)
+pnpm build:web
+
+# Chrome extension and ZIP package
+pnpm build:chrome
+```
+
 Requires Chrome 120 or newer.
 
 需要 Chrome 120 或更高版本。

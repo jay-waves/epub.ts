@@ -1,11 +1,11 @@
 {
-  "name": "epub.ts",
-  "license": "MIT",
-  "private": true,
+	"name": "epub.ts",
+	"license": "MIT",
+	"private": true,
 	"version": "0.2.9",
 	"type": "module",
 	"scripts": {
-		"build": "pnpm typecheck && vite build",
+		"build:chrome": "pnpm typecheck && node scripts/build-chrome.mjs",
 		"build:linux": "pnpm build:web && node scripts/build-launcher.mjs linux-amd64",
 		"build:windows": "pnpm build:web && node scripts/build-launcher.mjs windows-amd64",
 		"build:web": "pnpm typecheck && VIEWER_PLATFORM=web vite build",
@@ -20,7 +20,8 @@
 		"@typescript/native-preview": "7.0.0-dev.20260707.2",
 		"@vitejs/plugin-react": "^6.0.2",
 		"tailwindcss": "^4.2.4",
-		"vite": "^8.0.10"
+		"vite": "^8.0.10",
+		"yazl": "2.5.1"
 	},
 	"dependencies": {
 		"@radix-ui/react-slider": "^1.3.6",
