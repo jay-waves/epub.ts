@@ -1,5 +1,4 @@
 import {
-  getStoredFileHandle,
   readViewerMetadata,
   saveFileHandle,
   writeViewerMetadata,
@@ -10,6 +9,33 @@ import { webReaderProfile } from "./reader-profile";
 import type { PlatformDocument, ViewerPlatform } from "./types";
 
 const RECENT_FILE_KEY = "web:recent-epub";
+
+class DownloadEpubFileHandle {
+  constructor(readonly name: string) {}
+
+  async prepareWrite() {
+    const shouldDownload = window.confirm(
+      "Direct saving is not available for this file. Download a copy instead?",
+    );
+    if (!shouldDownload) return null;
+
+    const fileName = this.name;
+    return {
+      async save(blob: Blob) {
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = fileName;
+        anchor.hidden = true;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+        return true;
+      },
+    };
+  }
+}
 
 function documentFromFile(
   file: File,
@@ -23,26 +49,18 @@ function documentFromFile(
     key: `local:${file.name}:${file.size}:${file.lastModified}`,
     name: file.name,
     sourceLabel: file.name,
-    fileHandle: new BrowserEpubFileHandle(file.name, storageKey, nativeHandle),
+    fileHandle: nativeHandle
+      ? new BrowserEpubFileHandle(file.name, storageKey, nativeHandle)
+      : new DownloadEpubFileHandle(file.name),
     release: () => URL.revokeObjectURL(sourceUrl),
   };
-}
-
-async function restoreRecentDocument() {
-  try {
-    const handle = await getStoredFileHandle(RECENT_FILE_KEY);
-    if (!handle || await handle.queryPermission({ mode: "read" }) !== "granted") return undefined;
-    return documentFromFile(await handle.getFile(), RECENT_FILE_KEY, handle);
-  } catch {
-    return undefined;
-  }
 }
 
 export const platform: ViewerPlatform = {
   readerProfile: webReaderProfile,
   translationModelPolicy: "external-fallback",
   async loadInitialDocument() {
-    return restoreRecentDocument();
+    return undefined;
   },
   openLocalDocument: documentFromFile,
   ...("showOpenFilePicker" in window ? {
