@@ -93,17 +93,22 @@ export class FixedLayout extends HTMLElement {
         iframe.setAttribute('part', 'filter')
         this.#root.append(element)
         if (!src) return { blank: true, element, iframe }
-        return new Promise(resolve => {
-            iframe.addEventListener('load', () => {
-                const doc = iframe.contentDocument
-                this.dispatchEvent(new CustomEvent('load', { detail: { doc, index } }))
-                const { width, height } = getViewport(doc, this.defaultViewport)
-                resolve({
-                    element, iframe,
-                    width: parseFloat(width),
-                    height: parseFloat(height),
-                    onZoom,
-                })
+        return new Promise((resolve, reject) => {
+            iframe.addEventListener('load', async () => {
+                try {
+                    const doc = iframe.contentDocument
+                    await this.beforeRenderDocument?.(doc, index)
+                    this.dispatchEvent(new CustomEvent('load', { detail: { doc, index } }))
+                    const { width, height } = getViewport(doc, this.defaultViewport)
+                    resolve({
+                        element, iframe,
+                        width: parseFloat(width),
+                        height: parseFloat(height),
+                        onZoom,
+                    })
+                } catch (error) {
+                    reject(error)
+                }
             }, { once: true })
             iframe.src = src
         })

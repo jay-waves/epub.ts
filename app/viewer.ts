@@ -342,16 +342,8 @@ function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", (event) => {
     const { doc } = (event as CustomEvent<{ doc?: Document }>).detail;
     if (!doc) return;
-    const preparation = prepareReaderContentDocument(doc, {
-      isCurrent: () => runtime.readerView === view,
-    });
     if (runtime.readerView === view) {
-      setReaderRenderPending(true);
-      void preparation
-        .catch((error) => console.warn("Failed to enhance reader content.", error))
-        .then(() => revealReaderAfterPaint(doc));
-    } else {
-      void preparation.catch((error) => console.warn("Failed to enhance reader content.", error));
+      void revealReaderAfterPaint(doc);
     }
   }, listenerOptions);
   view.addEventListener("edge-click", (event) => {
@@ -505,7 +497,7 @@ async function createView() {
     view.close();
     return view;
   }
-  view.enhanceDocument = (doc) => enhanceCachedReaderDocument(doc, view);
+  view.enhanceRenderedDocument = (doc) => enhanceRenderedReaderDocument(doc, view);
   readerRoot.replaceChildren(view);
   wireReaderEvents(view);
   runtime.keybindings?.bindReaderView(view);
@@ -528,27 +520,15 @@ async function getReaderView() {
   }
 }
 
-async function enhanceCachedReaderDocument(doc: Document, view: FoliateViewElement) {
-  applyReaderDocumentTheme(doc);
-  await prepareReaderContentDocument(doc, {
-    interactive: false,
-    isCurrent: () => runtime.readerView === view,
-  });
-}
-
-function applyReaderDocumentTheme(doc: Document) {
-  const head = doc.head ?? doc.documentElement.insertBefore(doc.createElement("head"), doc.documentElement.firstChild);
-  const [staticStyles, dynamicStyles] = getBookStyles();
-  upsertReaderDocumentStyle(doc, head, "static", staticStyles);
-  upsertReaderDocumentStyle(doc, head, "dynamic", dynamicStyles);
-}
-
-function upsertReaderDocumentStyle(doc: Document, head: HTMLHeadElement, name: string, cssText: string) {
-  const style = head.querySelector<HTMLStyleElement>(`style[data-reader-cached-styles="${name}"]`)
-    ?? doc.createElement("style");
-  style.dataset.readerCachedStyles = name;
-  if (style.textContent !== cssText) style.textContent = cssText;
-  if (!style.isConnected) head.append(style);
+async function enhanceRenderedReaderDocument(doc: Document, view: FoliateViewElement) {
+  if (runtime.readerView === view) setReaderRenderPending(true);
+  try {
+    await prepareReaderContentDocument(doc, {
+      isCurrent: () => runtime.readerView === view,
+    });
+  } catch (error) {
+    console.warn("Failed to enhance reader content.", error);
+  }
 }
 
 function setReaderRenderPending(isPending: boolean) {

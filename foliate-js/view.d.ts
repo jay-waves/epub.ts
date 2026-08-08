@@ -38,6 +38,7 @@ export type FoliateBook = {
 export type FoliateRenderer = HTMLElement & {
   atEnd?: boolean;
   atStart?: boolean;
+  beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
   end?: number;
   next?: (distance?: number) => Promise<void>;
   removeAttribute(name: string): void;
@@ -88,6 +89,7 @@ export type FoliateAnnotation = {
 export type FoliateViewElement = HTMLElement & {
   book?: FoliateBook;
   enhanceDocument?: (doc: Document, index: number) => Promise<void> | void;
+  enhanceRenderedDocument?: (doc: Document, index: number) => Promise<void> | void;
   renderer: FoliateRenderer;
   clearSearch?: () => void;
   close: () => void;

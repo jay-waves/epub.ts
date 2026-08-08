@@ -9,10 +9,11 @@ type RenderedFormula = {
 const ENABLE_MATHJAX_SVG = false;
 const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
 const enhancedMathDocuments = new WeakSet<Document>();
+const normalizedMathDocuments = new WeakSet<Document>();
 let mathJaxReady: Promise<MathJaxSvgModule> | null = null;
 
 export async function renderMathDocument(doc: Document, isCurrent: () => boolean) {
-  normalizeTextSubscripts(doc);
+  normalizeMathDocument(doc);
   if (!ENABLE_MATHJAX_SVG) return;
   if (enhancedMathDocuments.has(doc)) return;
 
@@ -72,6 +73,14 @@ export async function renderMathDocument(doc: Document, isCurrent: () => boolean
   enhancedMathDocuments.add(doc);
 }
 
+function normalizeMathDocument(doc: Document) {
+  if (normalizedMathDocuments.has(doc)) return;
+  normalizedMathDocuments.add(doc);
+
+  normalizeTextSubscripts(doc);
+  normalizeLatinMathIdentifiers(doc);
+}
+
 function normalizeTextSubscripts(doc: Document) {
   for (const script of doc.querySelectorAll("math msub")) {
     const subscript = script.children[1];
@@ -85,13 +94,36 @@ function normalizeTextSubscripts(doc: Document) {
     }
     if (!continuation.length) continue;
 
-    const text = doc.createElementNS(MATHML_NAMESPACE, "mtext");
-    text.setAttribute("mathvariant", "normal");
-    text.textContent = [subscript, ...continuation]
+    const identifier = doc.createElementNS(MATHML_NAMESPACE, "mi");
+    identifier.setAttribute("mathvariant", "normal");
+    identifier.textContent = [subscript, ...continuation]
       .map((letter) => letter.textContent?.trim() ?? "")
       .join("");
-    subscript.replaceWith(text);
+    subscript.replaceWith(identifier);
     for (const letter of continuation) letter.remove();
+  }
+}
+
+function normalizeLatinMathIdentifiers(doc: Document) {
+  for (const identifier of doc.querySelectorAll("math mi")) {
+    const text = identifier.textContent?.trim() ?? "";
+    if (!/^[A-Za-z]+$/u.test(text)) continue;
+
+    const variant = identifier.getAttribute("mathvariant")?.toLowerCase() ?? "";
+    if (!["", "normal", "italic", "bold", "bold-italic"].includes(variant)) continue;
+
+    identifier.setAttribute("data-reader-math-latin", "true");
+    identifier.setAttribute("mathvariant", "normal");
+    const italic = variant === "italic" || variant === "bold-italic" || (!variant && text.length === 1);
+    identifier.setAttribute("data-reader-math-style", italic ? "italic" : "normal");
+    if (variant === "bold" || variant === "bold-italic") {
+      identifier.setAttribute("data-reader-math-weight", "semibold");
+    }
+  }
+
+  for (const token of doc.querySelectorAll("math mtext, math mo")) {
+    const text = token.textContent?.trim() ?? "";
+    if (/^[A-Za-z]{2,}$/u.test(text)) token.setAttribute("data-reader-math-text", "true");
   }
 }
 
