@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { MouseEvent } from "react";
 import type { TocItem } from "../foliate";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { TocUpdateDetail } from "../viewer-events";
@@ -7,28 +6,31 @@ import { normalizeTocHref } from "../foliate";
 import { Dialog } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 
+type TocInteraction = {
+  itemKey: string;
+  phase: "expanded" | "navigated";
+} | null;
+
 export function TocPage() {
   const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
-  const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null);
-  const [navigatedItemKey, setNavigatedItemKey] = useState<string | null>(null);
+  const [interaction, setInteraction] = useState<TocInteraction>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useViewerEvent(VIEWER_EVENTS.tocOpen, () => {
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.show();
-    setSelectedItemKey(null);
-    setNavigatedItemKey(null);
+    setInteraction(null);
     scrollCurrentItemIntoView(rootRef.current);
   });
   useViewerEvent(VIEWER_EVENTS.tocUpdate, (detail) => {
     setTocState(detail);
-    setSelectedItemKey(null);
+    setInteraction((current) => current?.phase === "navigated" ? current : null);
   });
 
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
-  }, [selectedItemKey, tocState]);
+  }, [interaction, tocState]);
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -62,11 +64,9 @@ export function TocPage() {
                 key={`${item.href ?? "section"}-${index}`}
                 itemKey={`${index}`}
                 depth={0}
+                interaction={interaction}
                 onNavigate={navigate}
-                navigatedItemKey={navigatedItemKey}
-                onNavigateItem={setNavigatedItemKey}
-                onSelect={setSelectedItemKey}
-                selectedItemKey={selectedItemKey}
+                onInteractionChange={setInteraction}
               />
             ))}
           </ul>
@@ -83,33 +83,48 @@ function TocTreeItem({
   depth,
   item,
   itemKey,
+  interaction,
   onNavigate,
-  navigatedItemKey,
-  onNavigateItem,
-  onSelect,
-  selectedItemKey,
+  onInteractionChange,
 }: {
   currentHref: string;
   depth: number;
   item: TocItem;
   itemKey: string;
+  interaction: TocInteraction;
   onNavigate: (href?: string) => void;
-  navigatedItemKey: string | null;
-  onNavigateItem: (itemKey: string | null) => void;
-  onSelect: (itemKey: string | null) => void;
-  selectedItemKey: string | null;
+  onInteractionChange: (interaction: TocInteraction) => void;
 }) {
   const children = item.subitems ?? [];
   const isCurrent = isMatchingHref(item.href, currentHref);
   const hasCurrentChild = containsHref(children, currentHref);
-  const isSelected = selectedItemKey === itemKey || (!selectedItemKey && isCurrent);
-  const isNavigated = navigatedItemKey === itemKey;
+  const isSelected = interaction?.itemKey === itemKey || (!interaction && isCurrent);
   const className = depth === 0 ? "toc-link toc-link-primary" : "toc-link";
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
   useLayoutEffect(() => {
     if (isCurrent || hasCurrentChild) detailsRef.current?.setAttribute("open", "");
   }, [hasCurrentChild, isCurrent]);
+
+  const handleSummaryClick = () => {
+    const details = detailsRef.current;
+    if (!details) return;
+
+    if (!details.open || !isSelected) {
+      details.open = true;
+      onInteractionChange({ itemKey, phase: "expanded" });
+      return;
+    }
+
+    if (interaction?.phase === "navigated" || isCurrent || !item.href) {
+      details.open = false;
+      onInteractionChange(null);
+      return;
+    }
+
+    onInteractionChange({ itemKey, phase: "navigated" });
+    onNavigate(item.href);
+  };
 
   if (children.length) {
     return (
@@ -119,17 +134,10 @@ function TocTreeItem({
             aria-current={isCurrent ? "page" : undefined}
             className={`${className} toc-summary`}
             data-selected={isSelected ? "true" : undefined}
-            onClick={(event) => handleSummaryClick({
-              event,
-              href: item.href,
-              isCurrent,
-              isNavigated,
-              isSelected,
-              itemKey,
-              onNavigate,
-              onNavigateItem,
-              onSelect,
-            })}
+            onClick={(event) => {
+              event.preventDefault();
+              handleSummaryClick();
+            }}
           >
             <span className="toc-link-label">{item.label ?? "Untitled section"}</span>
           </summary>
@@ -141,11 +149,9 @@ function TocTreeItem({
                 item={child}
                 key={`${child.href ?? "section"}-${index}`}
                 itemKey={`${itemKey}.${index}`}
+                interaction={interaction}
                 onNavigate={onNavigate}
-                navigatedItemKey={navigatedItemKey}
-                onNavigateItem={onNavigateItem}
-                onSelect={onSelect}
-                selectedItemKey={selectedItemKey}
+                onInteractionChange={onInteractionChange}
               />
             ))}
           </ul>
@@ -162,8 +168,7 @@ function TocTreeItem({
         data-selected={isSelected ? "true" : undefined}
         type="button"
         onClick={() => {
-          onNavigateItem(null);
-          onSelect(null);
+          onInteractionChange(null);
           onNavigate(item.href);
         }}
       >
@@ -171,50 +176,6 @@ function TocTreeItem({
       </button>
     </li>
   );
-}
-
-function handleSummaryClick({
-  event,
-  href,
-  isCurrent,
-  isNavigated,
-  isSelected,
-  itemKey,
-  onNavigate,
-  onNavigateItem,
-  onSelect,
-}: {
-  event: MouseEvent<HTMLElement>;
-  href: string | undefined;
-  isCurrent: boolean;
-  isNavigated: boolean;
-  isSelected: boolean;
-  itemKey: string;
-  onNavigate: (href?: string) => void;
-  onNavigateItem: (itemKey: string | null) => void;
-  onSelect: (itemKey: string | null) => void;
-}) {
-  const details = event.currentTarget.parentElement;
-  if (!(details instanceof HTMLDetailsElement)) return;
-
-  event.preventDefault();
-
-  if (!details.open || (!isSelected && !isNavigated)) {
-    details.open = true;
-    onSelect(itemKey);
-    onNavigateItem(null);
-    return;
-  }
-
-  if (isNavigated || isCurrent || !href) {
-    details.open = false;
-    onSelect(null);
-    onNavigateItem(null);
-    return;
-  }
-
-  onNavigateItem(itemKey);
-  onNavigate(href);
 }
 
 function containsHref(items: TocItem[], href: string): boolean {
