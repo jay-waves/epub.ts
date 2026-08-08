@@ -1,5 +1,6 @@
 import type { HighlightJs } from "./highlighter";
 import { normalizeInlineText } from "../reader";
+import { renderMathDocument } from "./math";
 
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;
@@ -20,7 +21,7 @@ const HALF_WIDTH_WORD_PATTERN = "[A-Za-z0-9]";
 const HALF_WIDTH_TRAILING_PATTERN = String.raw`[A-Za-z0-9.,:;!?%\)\]\}]`;
 const CJK_TO_HALF_WIDTH_RE = new RegExp(`(${CJK_CHAR_PATTERN})(${HALF_WIDTH_WORD_PATTERN})`, "gu");
 const HALF_WIDTH_TO_CJK_RE = new RegExp(`(${HALF_WIDTH_TRAILING_PATTERN})(${CJK_CHAR_PATTERN})`, "gu");
-const CJK_SPACING_SKIP_SELECTOR = "script, style";
+const CJK_SPACING_SKIP_SELECTOR = "script, style, math, mjx-container";
 const MEDIA_SPACING_PARENT_TAGS = new Set(["A", "DIV", "P", "FIGURE", "SECTION", "ARTICLE", "ASIDE", "LI"]);
 
 export async function prepareReaderContentDocument(doc: Document, options: {
@@ -31,6 +32,7 @@ export async function prepareReaderContentDocument(doc: Document, options: {
 
   labelFootnotes(doc);
   addCjkHalfWidthSpacing(doc);
+  await renderMathDocument(doc, options.isCurrent);
 
   if (options.interactive === false) return;
   beautifyImages(doc);

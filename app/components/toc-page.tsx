@@ -10,6 +10,7 @@ import { useViewerEvent } from "./use-viewer-event";
 export function TocPage() {
   const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
   const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null);
+  const [navigatedItemKey, setNavigatedItemKey] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -17,6 +18,7 @@ export function TocPage() {
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.show();
     setSelectedItemKey(null);
+    setNavigatedItemKey(null);
     scrollCurrentItemIntoView(rootRef.current);
   });
   useViewerEvent(VIEWER_EVENTS.tocUpdate, (detail) => {
@@ -27,6 +29,17 @@ export function TocPage() {
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
   }, [selectedItemKey, tocState]);
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog?.open || !(event.target instanceof Node)) return;
+      if (!dialog.contains(event.target)) dialog.close();
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+  }, []);
 
   const navigate = (href?: string) => {
     if (!href) return;
@@ -50,6 +63,8 @@ export function TocPage() {
                 itemKey={`${index}`}
                 depth={0}
                 onNavigate={navigate}
+                navigatedItemKey={navigatedItemKey}
+                onNavigateItem={setNavigatedItemKey}
                 onSelect={setSelectedItemKey}
                 selectedItemKey={selectedItemKey}
               />
@@ -69,6 +84,8 @@ function TocTreeItem({
   item,
   itemKey,
   onNavigate,
+  navigatedItemKey,
+  onNavigateItem,
   onSelect,
   selectedItemKey,
 }: {
@@ -77,6 +94,8 @@ function TocTreeItem({
   item: TocItem;
   itemKey: string;
   onNavigate: (href?: string) => void;
+  navigatedItemKey: string | null;
+  onNavigateItem: (itemKey: string | null) => void;
   onSelect: (itemKey: string | null) => void;
   selectedItemKey: string | null;
 }) {
@@ -84,6 +103,7 @@ function TocTreeItem({
   const isCurrent = isMatchingHref(item.href, currentHref);
   const hasCurrentChild = containsHref(children, currentHref);
   const isSelected = selectedItemKey === itemKey || (!selectedItemKey && isCurrent);
+  const isNavigated = navigatedItemKey === itemKey;
   const className = depth === 0 ? "toc-link toc-link-primary" : "toc-link";
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
@@ -103,9 +123,11 @@ function TocTreeItem({
               event,
               href: item.href,
               isCurrent,
+              isNavigated,
               isSelected,
               itemKey,
               onNavigate,
+              onNavigateItem,
               onSelect,
             })}
           >
@@ -120,6 +142,8 @@ function TocTreeItem({
                 key={`${child.href ?? "section"}-${index}`}
                 itemKey={`${itemKey}.${index}`}
                 onNavigate={onNavigate}
+                navigatedItemKey={navigatedItemKey}
+                onNavigateItem={onNavigateItem}
                 onSelect={onSelect}
                 selectedItemKey={selectedItemKey}
               />
@@ -137,7 +161,11 @@ function TocTreeItem({
         className={className}
         data-selected={isSelected ? "true" : undefined}
         type="button"
-        onClick={() => onNavigate(item.href)}
+        onClick={() => {
+          onNavigateItem(null);
+          onSelect(null);
+          onNavigate(item.href);
+        }}
       >
         <span className="toc-link-label">{item.label ?? "Untitled section"}</span>
       </button>
@@ -149,17 +177,21 @@ function handleSummaryClick({
   event,
   href,
   isCurrent,
+  isNavigated,
   isSelected,
   itemKey,
   onNavigate,
+  onNavigateItem,
   onSelect,
 }: {
   event: MouseEvent<HTMLElement>;
   href: string | undefined;
   isCurrent: boolean;
+  isNavigated: boolean;
   isSelected: boolean;
   itemKey: string;
   onNavigate: (href?: string) => void;
+  onNavigateItem: (itemKey: string | null) => void;
   onSelect: (itemKey: string | null) => void;
 }) {
   const details = event.currentTarget.parentElement;
@@ -167,18 +199,21 @@ function handleSummaryClick({
 
   event.preventDefault();
 
-  if (!details.open || !isSelected) {
+  if (!details.open || (!isSelected && !isNavigated)) {
     details.open = true;
     onSelect(itemKey);
+    onNavigateItem(null);
     return;
   }
 
-  if (isCurrent || !href) {
+  if (isNavigated || isCurrent || !href) {
     details.open = false;
     onSelect(null);
+    onNavigateItem(null);
     return;
   }
 
+  onNavigateItem(itemKey);
   onNavigate(href);
 }
 

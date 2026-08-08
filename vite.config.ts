@@ -15,6 +15,7 @@ export default defineConfig({
   publicDir: isBrowser ? false : "public",
   resolve: {
     alias: {
+      "@mathjax/src/mjs": resolve(__dirname, "node_modules/@mathjax/src/mjs"),
       "#platform": resolve(
         __dirname,
         isWeb ? "app/platform/browser.ts" : "app/platform/chrome.ts",

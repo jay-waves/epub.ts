@@ -342,14 +342,17 @@ function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", (event) => {
     const { doc } = (event as CustomEvent<{ doc?: Document }>).detail;
     if (!doc) return;
-    if (runtime.readerView === view) {
-      setReaderRenderPending(true);
-      void revealReaderAfterPaint(doc);
-    }
-
-    void prepareReaderContentDocument(doc, {
+    const preparation = prepareReaderContentDocument(doc, {
       isCurrent: () => runtime.readerView === view,
     });
+    if (runtime.readerView === view) {
+      setReaderRenderPending(true);
+      void preparation
+        .catch((error) => console.warn("Failed to enhance reader content.", error))
+        .then(() => revealReaderAfterPaint(doc));
+    } else {
+      void preparation.catch((error) => console.warn("Failed to enhance reader content.", error));
+    }
   }, listenerOptions);
   view.addEventListener("edge-click", (event) => {
     const { x } = (event as CustomEvent<{ x: number }>).detail;

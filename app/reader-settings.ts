@@ -123,9 +123,9 @@ const READER_FORM_CONTROL_SELECTOR = ":is(input, textarea, select, button)";
 const READER_TEXT_COLOR_TARGET_SELECTOR = ':where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *))';
 const READER_LINK_COLOR_TARGET_SELECTOR = ":where(*:not(svg):not(svg *))";
 const READER_SERIF_CONTENT_SELECTOR =
-  "body *:not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *)";
+  "body :where(*:not(math):not(math *):not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *))";
 const READER_NON_VISUAL_BACKGROUND_SELECTOR =
-  "body *:not(img):not(svg):not(video):not(audio):not(canvas):not(iframe):not(.hljs):not(.hljs *)";
+  "body *:not(math):not(math *):not(img):not(svg):not(video):not(audio):not(canvas):not(iframe):not(.hljs):not(.hljs *)";
 const READER_REFERENCE_SELECTOR =
   ':is(a[epub|type~="noteref"], a[role~="doc-noteref"], a[epub|type~="biblioref"], a[role~="doc-biblioref"], a[epub|type~="glossref"], a[role~="doc-glossref"], sup a, a sup, small a[href^="#"])';
 const READER_NOTE_SELECTOR =
@@ -135,7 +135,7 @@ const READER_FOOTNOTE_SELECTOR =
 const READER_FOOTNOTE_LINK_SELECTOR = ':is(a[epub|type~="noteref"], a[role~="doc-noteref"])';
 const READER_QUOTE_SELECTOR = ':is(blockquote, q, cite, [class*="quote" i], [class*="blockquote" i])';
 const READER_TABLE_SELECTOR = ':is(table, .table, [class*="table" i])';
-const READER_MEDIA_SELECTOR = ":is(img, svg, video)";
+const READER_MEDIA_SELECTOR = ":is(img, svg:not(mjx-container svg), video)";
 const READER_MEDIA_WRAPPER_SELECTOR =
   ':is(div, p, section, article, figure, aside, li):has(> img), :is(div, p, section, article, figure, aside, li):has(> svg), :is(div, p, section, article, figure, aside, li):has(> video), :is(div, p, section, article, figure, aside, li):has(> a > img), :is(div, p, section, article, figure, aside, li):has(> a > svg), :is(div, p, section, article, figure, aside, li):has(> a > video)';
 
@@ -327,6 +327,66 @@ export const READER_STATIC_BOOK_STYLES = `
     }
     ${READER_FORM_CONTROL_SELECTOR} {
       font-family: var(--reader-font-sans) !important;
+    }
+    math:not([display="block"]) {
+      display: inline-block !important;
+      max-inline-size: none !important;
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      hyphens: none !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+      -webkit-column-break-inside: avoid !important;
+    }
+    mjx-container.reader-math {
+      max-inline-size: none !important;
+      margin: 0 0.06em !important;
+      padding: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      color: var(--reader-fg-color) !important;
+      filter: none !important;
+      font-size-adjust: none !important;
+      letter-spacing: normal !important;
+      line-height: 1 !important;
+      text-indent: 0 !important;
+      text-transform: none !important;
+      word-spacing: normal !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+      -webkit-column-break-inside: avoid !important;
+    }
+    mjx-container.reader-math[display="true"] {
+      display: block !important;
+      inline-size: 100% !important;
+      width: 100% !important;
+      max-inline-size: 100% !important;
+      margin-block: 1.15em !important;
+      margin-inline: 0 !important;
+      padding-block: 0.28em !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      text-align: center !important;
+      white-space: nowrap !important;
+    }
+    mjx-container.reader-math > svg {
+      display: inline-block !important;
+      min-inline-size: 1px !important;
+      min-block-size: 1px !important;
+      max-inline-size: none !important;
+      max-width: none !important;
+      overflow: visible !important;
+      filter: none !important;
+      color: inherit !important;
+    }
+    mjx-container.reader-math > svg a {
+      fill: var(--reader-link-color) !important;
+      stroke: var(--reader-link-color) !important;
+    }
+    mjx-container.reader-math [data-mml-node="merror"] > g {
+      fill: #c2413b !important;
+      stroke: #c2413b !important;
     }
     ${READER_NON_VISUAL_BACKGROUND_SELECTOR} {
       background: transparent !important;
@@ -612,9 +672,19 @@ ${READER_AUTO_BREAK_CSS}
       text-align: center !important;
       caption-side: bottom !important;
 ${READER_MUTED_COLOR_CSS}
-      font-family: var(--reader-font-sans) !important;
+      font-family: var(--reader-font-serif) !important;
       font-size: 0.82em !important;
       line-height: 1.45 !important;
+    }
+    ${READER_CAPTION_SELECTOR} :is(a, span, em, strong, b, i, small, cite, q, mark, abbr) {
+      color: inherit !important;
+      -webkit-text-fill-color: inherit !important;
+      font-family: inherit !important;
+      font-size: inherit !important;
+      line-height: inherit !important;
+      letter-spacing: inherit !important;
+      word-spacing: inherit !important;
+      text-align: inherit !important;
     }
     :is(code, kbd, samp):not(pre code):not(.hljs) {
       display: inline-flex !important;
