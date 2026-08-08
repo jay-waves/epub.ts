@@ -601,7 +601,8 @@
     transform: translateY(-0.5px);
   }
 
-  .toc-link[aria-current="page"] {
+  .toc-link[aria-current="page"],
+  .toc-link[data-selected="true"] {
     @apply font-semibold;
     color: var(--reader-control-strong-fg);
     text-decoration-line: underline;
