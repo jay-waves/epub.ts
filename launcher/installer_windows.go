@@ -25,13 +25,7 @@ func installAssociations(executable string) error {
 		}},
 		{`epub.ts.Document\DefaultIcon`, icon, nil},
 		{`epub.ts.Document\shell\open\command`, openCommand, nil},
-	}
-	for _, extension := range []string{".epub"} {
-		keys = append(keys, struct {
-			path         string
-			defaultValue string
-			values       map[string]string
-		}{extension + `\OpenWithProgids`, "", map[string]string{"epub.ts.Document": ""}})
+		{`.epub\OpenWithProgids`, "", map[string]string{"epub.ts.Document": ""}},
 	}
 	for _, key := range keys {
 		if err := setRegistryDefault(classesRoot+key.path, key.defaultValue); err != nil {
@@ -50,12 +44,7 @@ func uninstallAssociations() error {
 	if err := deleteRegistryTree(classesRoot + `epub.ts.Document`); err != nil {
 		return err
 	}
-	for _, extension := range []string{".epub"} {
-		if err := deleteRegistryValue(classesRoot+extension+`\OpenWithProgids`, "epub.ts.Document"); err != nil {
-			return err
-		}
-	}
-	return nil
+	return deleteRegistryValue(classesRoot+`.epub\OpenWithProgids`, "epub.ts.Document")
 }
 
 func setRegistryDefault(key, value string) error {

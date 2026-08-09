@@ -1,6 +1,7 @@
-import { normalizeInlineText, runWhenIdle } from "../reader";
+import { normalizeInlineText } from "../reader";
+import { loadReaderDocumentFonts } from "../reader-fonts";
 import { enhanceReaderImages } from "./image-zoom";
-import { renderMathDocument } from "./math";
+import { prepareMathRenderer, renderMathDocument } from "./math";
 import { getEpubType, markReaderSemantics } from "./semantics";
 
 export { closeReaderContentOverlays, disposeReaderContent } from "./image-zoom";
@@ -8,23 +9,36 @@ export { closeReaderContentOverlays, disposeReaderContent } from "./image-zoom";
 const footnotesLabeledDocs = new WeakSet<Document>();
 
 export async function prepareReaderContentDocument(doc: Document, options: {
+  fontQueries: string[];
   isCurrent: () => boolean;
+  reflowable: boolean;
 }) {
   if (!options.isCurrent()) return;
 
+  if (!options.reflowable) return;
+
   markReaderSemantics(doc);
   labelFootnotes(doc);
-  await renderMathDocument(doc, options.isCurrent);
   enhanceReaderImages(doc);
 
   const codeBlocks = prepareReaderCodeBlocks(doc);
-  if (!codeBlocks.length) return;
-  runWhenIdle(() => {
-    if (!options.isCurrent()) return;
-    void import("./highlighter")
-      .then((module) => module.highlightReaderCodeBlocks(doc, codeBlocks, options.isCurrent))
-      .catch((error) => console.warn("Failed to highlight reader code blocks.", error));
-  }, 600);
+  const fontsReady = loadReaderDocumentFonts(doc, options.fontQueries);
+  const mathReady = doc.querySelector('math[display="block"]')
+    ? prepareMathRenderer()
+    : null;
+  const highlighterReady = codeBlocks.length
+    ? import("./highlighter")
+    : null;
+  void highlighterReady?.catch(() => undefined);
+
+  await fontsReady;
+  if (!options.isCurrent()) return;
+
+  await renderMathDocument(doc, options.isCurrent, mathReady ?? undefined);
+  if (!options.isCurrent() || !highlighterReady) return;
+
+  const highlighter = await highlighterReady;
+  highlighter.highlightReaderCodeBlocks(doc, codeBlocks, options.isCurrent);
 }
 
 function prepareReaderCodeBlocks(doc: Document) {
@@ -84,6 +98,15 @@ function normalizeFootnoteLabel(value: string | undefined, fallbackIndex: number
   return `[${marker || fallbackIndex}]`;
 }
 
+function setFootnoteTargetMetadata(element: HTMLElement, label: string) {
+  const labelNumber = label.match(/\d+/u)?.[0];
+  const leadingNumber = normalizeInlineText(element.textContent ?? "")
+    .match(/^[[(]?\s*(\d+)\s*[\])]?/u)?.[1];
+  element.dataset.readerFootnoteTarget = "true";
+  element.dataset.footnoteLabel = label;
+  element.toggleAttribute("data-reader-footnote-generated-label", leadingNumber !== labelNumber);
+}
+
 function labelFootnotes(doc: Document) {
   if (footnotesLabeledDocs.has(doc)) return;
 
@@ -96,7 +119,12 @@ function labelFootnotes(doc: Document) {
     const href = anchor.getAttribute("href")?.trim();
     if (!href?.startsWith("#")) return;
 
-    const targetId = decodeURIComponent(href.slice(1));
+    let targetId = href.slice(1);
+    try {
+      targetId = decodeURIComponent(targetId);
+    } catch {
+      // Keep malformed-but-usable fragment identifiers as authored.
+    }
     const label = normalizeFootnoteLabel(anchor.textContent || anchor.querySelector("img")?.getAttribute("alt") || undefined, index + 1);
     labelsByTargetId.set(targetId, label);
     anchor.dataset.footnoteLabel = label;
@@ -105,14 +133,14 @@ function labelFootnotes(doc: Document) {
   for (const [targetId, label] of labelsByTargetId) {
     const target = doc.getElementById(targetId);
     if (!target) continue;
-    target.dataset.readerFootnoteTarget = "true";
-    target.dataset.footnoteLabel = label;
+    setFootnoteTargetMetadata(target, label);
   }
 
   getFootnoteTargets(doc).forEach((element, index) => {
-    element.dataset.readerFootnoteTarget = "true";
-    element.dataset.footnoteLabel = labelsByTargetId.get(element.id)
-      || normalizeFootnoteLabel(element.textContent || undefined, index + 1);
+    setFootnoteTargetMetadata(
+      element,
+      labelsByTargetId.get(element.id) || normalizeFootnoteLabel(element.textContent || undefined, index + 1),
+    );
   });
 
   footnotesLabeledDocs.add(doc);

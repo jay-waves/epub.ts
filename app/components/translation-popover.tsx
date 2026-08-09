@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Check, Copy, Languages, X } from "lucide-react";
 import { useFloatingPosition } from "./floating-position";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
@@ -22,7 +22,6 @@ const closedState: TranslationState = {
 
 export function TranslationPopover() {
   const [state, setState] = useState(closedState);
-  const popoverRef = useRef<HTMLElement | null>(null);
 
   const show = (detail: TranslationDetail) => {
     setState({ ...detail, copied: false, open: true });
@@ -34,30 +33,11 @@ export function TranslationPopover() {
     setState((current) => ({ ...current, open: false }));
   });
 
-  useEffect(() => {
-    const requestClose = (event: Event) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-      const target = event.target;
-      if (target instanceof Element && target.closest(".reader-text-popover")) return;
-      emitViewerEvent(VIEWER_EVENTS.translationClose);
-    };
-
-    window.addEventListener("pointerdown", requestClose);
-    window.addEventListener("contextmenu", requestClose);
-    window.addEventListener("keydown", requestClose);
-    return () => {
-      window.removeEventListener("pointerdown", requestClose);
-      window.removeEventListener("contextmenu", requestClose);
-      window.removeEventListener("keydown", requestClose);
-    };
-  }, []);
-
-  const position = useFloatingPosition(
-    popoverRef,
-    { x: state.x, y: state.y },
-    state.open,
-    { fallbackHeight: 180, fallbackWidth: 340 },
-  );
+  const { floatingProps, floatingStyles, refs } = useFloatingPosition({
+    onDismiss: () => emitViewerEvent(VIEWER_EVENTS.translationClose),
+    open: state.open,
+    point: { x: state.x, y: state.y },
+  });
 
   if (!state.open) return null;
 
@@ -66,12 +46,13 @@ export function TranslationPopover() {
 
   return (
     <section
+      {...floatingProps}
+      aria-label="Translation"
       aria-live="polite"
       className="reader-text-popover"
-      ref={popoverRef}
-      style={position}
-      onContextMenu={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.stopPropagation()}
+      ref={refs.setFloating}
+      role="dialog"
+      style={floatingStyles}
     >
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">

@@ -76,7 +76,6 @@ export function createReadingProgressController(options: {
   track: HTMLElement;
   canSeek: () => boolean;
   onSeek: (progress: number) => void;
-  onReturn: (progress: number) => void;
 }) {
   let currentProgress = 0;
   let currentSectionIndex: number | null = null;
@@ -85,7 +84,6 @@ export function createReadingProgressController(options: {
   let historyDismissTimer: number | undefined;
   let dispose: (() => void) | null = null;
   let isDragging = false;
-  let isBound = false;
   let pendingHistoryProgress: number | null = null;
   let suppressNextHistoryJump = false;
 
@@ -184,12 +182,11 @@ export function createReadingProgressController(options: {
     suppressNextHistoryJump = true;
     setHistoryProgress(null);
     setProgress(targetProgress);
-    options.onReturn(targetProgress);
+    options.onSeek(targetProgress);
   };
 
   const bind = () => {
-    if (isBound) return;
-    isBound = true;
+    if (dispose) return;
 
     const clearFloatingFocus = () => {
       const shell = options.root.closest(".reader-progress-shell");
@@ -283,13 +280,12 @@ export function createReadingProgressController(options: {
       options.root.classList.remove("is-dragging");
       dragStartProgress = null;
       pendingHistoryProgress = null;
-      isBound = false;
       dispose = null;
     };
   };
 
+  bind();
   return {
-    bind,
     destroy: () => {
       dispose?.();
     },

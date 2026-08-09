@@ -24,6 +24,7 @@
 		"yazl": "2.5.1"
 	},
 	"dependencies": {
+		"@floating-ui/react": "^0.27.20",
 		"@mathjax/mathjax-newcm-font": "^4.1.3",
 		"@mathjax/src": "^4.1.3",
 		"@radix-ui/react-slider": "^1.3.6",

@@ -6,20 +6,24 @@ import {
 } from "./viewer-storage";
 import type { HighlightContextAction } from "./viewer-events";
 import type { ReaderHighlight } from "./reader";
-import type { FoliateViewElement } from "./foliate";
+import type { FoliateContent, FoliateViewElement } from "./foliate";
 import { createTranslationController } from "./translation-controller";
+import { copyReaderMedia } from "./media-clipboard";
 
-type ReaderContent = {
-  doc?: Document;
-  index: number;
-  overlayer?: {
-    element?: SVGSVGElement;
-    hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
-  };
+type PointerCoordinateSpace = "content" | "viewport";
+
+type HighlightControllerOptions = {
+  getBookKey: () => string;
+  getProgress: () => number;
+  getReaderView: () => FoliateViewElement | null;
+  openExternal: (url: string) => void;
+  runWhenIdle: (callback: () => void, timeout?: number) => void;
+  translationModelPolicy: "allow-download" | "external-fallback";
 };
 
 type HighlightContext = {
   highlight?: ReaderHighlight;
+  media?: Element;
   point?: {
     x: number;
     y: number;
@@ -45,15 +49,18 @@ type AnnotationDrawFunction = (
   options?: AnnotationDrawOptions,
 ) => SVGElement;
 
-const svgNamespace = "http://www.w3.org/2000/svg";
+const ANNOTATION_BADGE_SELECTOR = "[data-reader-annotation-badge]";
+const DEFAULT_HIGHLIGHT_COLOR = "#f4c430";
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 function createSvgElement(tagName: string) {
-  return document.createElementNS(svgNamespace, tagName);
+  return document.createElementNS(SVG_NAMESPACE, tagName);
 }
 
-const annotationBadgeSelector = "[data-reader-annotation-badge]";
-
-function drawHighlightWithAnnotationBadge(rects: DOMRectList, options: AnnotationDrawOptions = { color: "#f4c430" }) {
+function drawHighlightWithAnnotationBadge(
+  rects: DOMRectList,
+  options: AnnotationDrawOptions = { color: DEFAULT_HIGHLIGHT_COLOR },
+) {
   const group = createSvgElement("g");
   group.append(Overlayer.highlight(rects, { color: options.color }));
 
@@ -107,7 +114,7 @@ function drawHighlightWithAnnotationBadge(rects: DOMRectList, options: Annotatio
     const root = group.parentElement;
     if (!root) return;
     if (options.annotationValue) {
-      const existingBadges = Array.from(root.querySelectorAll(annotationBadgeSelector))
+      const existingBadges = Array.from(root.querySelectorAll(ANNOTATION_BADGE_SELECTOR))
         .filter((item) => item.getAttribute("data-reader-annotation-badge") === options.annotationValue);
       for (const existingBadge of existingBadges) {
         if (existingBadge !== badge) existingBadge.remove();
@@ -119,16 +126,8 @@ function drawHighlightWithAnnotationBadge(rects: DOMRectList, options: Annotatio
   return group;
 }
 
-export function createHighlightController(options: {
-  getBookKey: () => string;
-  getProgress: () => number;
-  getReaderView: () => FoliateViewElement | null;
-  openExternal: (url: string) => void;
-  runWhenIdle: (callback: () => void, timeout?: number) => void;
-  translationModelPolicy: "allow-download" | "external-fallback";
-}) {
-  const defaultHighlightColor = "#f4c430";
-  let contextTargets = new WeakMap<EventTarget, () => void>();
+export function createHighlightController(options: HighlightControllerOptions) {
+  let contextTargets = new WeakSet<EventTarget>();
   const contextDisposers = new Set<() => void>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
@@ -193,17 +192,25 @@ export function createHighlightController(options: {
   const getContentFrameBounds = (index: number) =>
     findContentByIndex(index)?.doc?.defaultView?.frameElement?.getBoundingClientRect();
 
-  const getPagePoint = (event: MouseEvent, content: ReaderContent, convertFromFrame: boolean) => {
+  const getPagePoint = (
+    event: MouseEvent,
+    content: FoliateContent,
+    coordinateSpace: PointerCoordinateSpace,
+  ) => {
     const frameBounds = getContentFrameBounds(content.index);
     return {
-      x: frameBounds && !convertFromFrame ? frameBounds.left + event.clientX : event.clientX,
-      y: frameBounds && !convertFromFrame ? frameBounds.top + event.clientY : event.clientY,
+      x: frameBounds && coordinateSpace === "content" ? frameBounds.left + event.clientX : event.clientX,
+      y: frameBounds && coordinateSpace === "content" ? frameBounds.top + event.clientY : event.clientY,
     };
   };
 
-  const getHitPoint = (event: MouseEvent, content: ReaderContent, convertFromFrame: boolean) => {
+  const getHitPoint = (
+    event: MouseEvent,
+    content: FoliateContent,
+    coordinateSpace: PointerCoordinateSpace,
+  ) => {
     const frameBounds = getContentFrameBounds(content.index);
-    if (convertFromFrame && frameBounds) {
+    if (coordinateSpace === "viewport" && frameBounds) {
       return { x: event.clientX - frameBounds.left, y: event.clientY - frameBounds.top };
     }
     return { x: event.clientX, y: event.clientY };
@@ -232,6 +239,19 @@ export function createHighlightController(options: {
       canCopy: hasSelection || hasHighlight,
       canDelete: hasHighlight,
       canHighlight: hasSelection,
+      kind: "text",
+      x: pageX,
+      y: pageY,
+    });
+  };
+
+  const openMedia = (media: Element, pageX: number, pageY: number) => {
+    activeContext = { media, point: { x: pageX, y: pageY } };
+    emitViewerEvent(VIEWER_EVENTS.highlightContextOpen, {
+      canCopy: true,
+      canDelete: false,
+      canHighlight: false,
+      kind: "media",
       x: pageX,
       y: pageY,
     });
@@ -241,14 +261,14 @@ export function createHighlightController(options: {
 
   const hasAnnotationNote = (highlight: ReaderHighlight) => Boolean(highlight.note?.trim());
 
-  const getHighlightColor = (highlight: ReaderHighlight) => highlight.color || defaultHighlightColor;
+  const getHighlightColor = (highlight: ReaderHighlight) => highlight.color || DEFAULT_HIGHLIGHT_COLOR;
 
   const getViewportCenter = () => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
   const removeAnnotationBadges = (value: string) => {
     for (const { doc, overlayer } of getContents()) {
       for (const root of [doc, overlayer?.element]) {
-        root?.querySelectorAll(annotationBadgeSelector).forEach((badge) => {
+        root?.querySelectorAll(ANNOTATION_BADGE_SELECTOR).forEach((badge) => {
           if (badge.getAttribute("data-reader-annotation-badge") === value) badge.remove();
         });
       }
@@ -274,12 +294,16 @@ export function createHighlightController(options: {
     });
   };
 
-  const openFromPointer = (event: MouseEvent, content: ReaderContent, convertFromFrame = false) => {
-    const hitPoint = getHitPoint(event, content, convertFromFrame);
+  const openFromPointer = (
+    event: MouseEvent,
+    content: FoliateContent,
+    coordinateSpace: PointerCoordinateSpace,
+  ) => {
+    const hitPoint = getHitPoint(event, content, coordinateSpace);
     const [hitValue] = content.overlayer?.hitTest?.(hitPoint) ?? [];
     const highlight = hitValue ? currentHighlights.find((item) => item.value === hitValue) : undefined;
     const selection = getSelectedReaderContext();
-    const pagePoint = getPagePoint(event, content, convertFromFrame);
+    const pagePoint = getPagePoint(event, content, coordinateSpace);
 
     open({
       highlight,
@@ -320,10 +344,20 @@ export function createHighlightController(options: {
         doc.addEventListener("keydown", dismissPopovers, true);
         doc.addEventListener("scroll", dismissPopovers, true);
         const openContextMenu = (event: MouseEvent) => {
+          const currentContent = findContentByDocument(doc);
+          const ElementClass = doc.defaultView?.Element;
+          const media = ElementClass && event.target instanceof ElementClass
+            ? event.target.closest("img, svg")
+            : null;
           event.preventDefault();
           event.stopPropagation();
-          const currentContent = findContentByDocument(doc);
-          if (currentContent) openFromPointer(event, currentContent);
+          if (media && media !== currentContent?.overlayer?.element) {
+            if (!currentContent) return;
+            const pagePoint = getPagePoint(event, currentContent, "content");
+            openMedia(media, pagePoint.x, pagePoint.y);
+            return;
+          }
+          if (currentContent) openFromPointer(event, currentContent, "content");
         };
         doc.addEventListener("contextmenu", openContextMenu);
         const dispose = () => {
@@ -332,7 +366,7 @@ export function createHighlightController(options: {
           doc.removeEventListener("scroll", dismissPopovers, true);
           doc.removeEventListener("contextmenu", openContextMenu);
         };
-        contextTargets.set(doc, dispose);
+        contextTargets.add(doc);
         contextDisposers.add(dispose);
       }
 
@@ -343,11 +377,11 @@ export function createHighlightController(options: {
           event.preventDefault();
           event.stopPropagation();
           const currentContent = findContentByFrame(frameElement);
-          if (currentContent) openFromPointer(event, currentContent, true);
+          if (currentContent) openFromPointer(event, currentContent, "viewport");
         };
         frameElement.addEventListener("contextmenu", openContextMenu);
         const dispose = () => frameElement.removeEventListener("contextmenu", openContextMenu);
-        contextTargets.set(frameElement, dispose);
+        contextTargets.add(frameElement);
         contextDisposers.add(dispose);
       }
     }
@@ -356,7 +390,7 @@ export function createHighlightController(options: {
   const unbindContextTargets = () => {
     contextDisposers.forEach((dispose) => dispose());
     contextDisposers.clear();
-    contextTargets = new WeakMap();
+    contextTargets = new WeakSet();
   };
 
   const drawAnnotation = (detail: {
@@ -433,6 +467,16 @@ export function createHighlightController(options: {
     close();
   };
 
+  const copyMedia = async (media: Element) => {
+    try {
+      await copyReaderMedia(media);
+    } catch (error) {
+      console.warn("Failed to copy reader media.", error);
+    } finally {
+      close();
+    }
+  };
+
   const translateContextText = () => {
     const text = activeContext?.highlight?.text?.trim()
       || activeContext?.selection?.text.trim()
@@ -491,7 +535,6 @@ export function createHighlightController(options: {
     const highlight: ReaderHighlight = {
       ...existing,
       color: getHighlightColor(existing),
-      kind: "highlight",
       note: undefined,
     };
     removeAnnotationBadges(value);
@@ -514,7 +557,6 @@ export function createHighlightController(options: {
     const annotation: ReaderHighlight = {
       ...existing,
       color: getHighlightColor(existing),
-      kind: "highlight",
       note: cleanNote,
     };
     await persistHighlight(annotation);
@@ -536,7 +578,7 @@ export function createHighlightController(options: {
 
     const annotation: ReaderHighlight = {
       value,
-      color: defaultHighlightColor,
+      color: DEFAULT_HIGHLIGHT_COLOR,
       text: selection.text,
       index: selection.index,
       fraction: options.getProgress(),
@@ -560,10 +602,8 @@ export function createHighlightController(options: {
       const annotation: ReaderHighlight = {
         ...context.highlight,
         color: getHighlightColor(context.highlight),
-        kind: "highlight",
         note: context.highlight.note ?? "",
       };
-      await persistHighlight(annotation);
       openAnnotationPopover(annotation, point);
       close();
       return;
@@ -574,11 +614,10 @@ export function createHighlightController(options: {
     const { value } = context.selection;
     const existing = currentHighlights.find((item) => item.value === value);
     const annotation: ReaderHighlight = existing
-      ? { ...existing, color: getHighlightColor(existing), kind: "highlight", note: existing.note ?? "" }
+      ? { ...existing, color: getHighlightColor(existing), note: existing.note ?? "" }
       : {
           value,
-          color: defaultHighlightColor,
-          kind: "highlight",
+          color: DEFAULT_HIGHLIGHT_COLOR,
           note: "",
           text: context.selection.text,
           index: context.selection.index,
@@ -586,7 +625,7 @@ export function createHighlightController(options: {
           createdAt: Date.now(),
         };
 
-    await persistHighlight(annotation);
+    if (!existing) await persistHighlight(annotation);
     readerView.deselect?.();
     openAnnotationPopover(annotation, point);
     close();
@@ -595,7 +634,11 @@ export function createHighlightController(options: {
   const handleContextAction = (action: HighlightContextAction) => {
     switch (action) {
       case "copy":
-        void (activeContext?.highlight ? copyHighlight(activeContext.highlight) : copySelectedText());
+        if (activeContext?.media) {
+          void copyMedia(activeContext.media);
+        } else {
+          void (activeContext?.highlight ? copyHighlight(activeContext.highlight) : copySelectedText());
+        }
         break;
       case "highlight":
         void highlightSelectedText();

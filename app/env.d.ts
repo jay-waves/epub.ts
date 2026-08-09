@@ -4,6 +4,9 @@ declare module "*?raw" {
   export default content;
 }
 
+declare const __EPUB_TS_BUILD_TIME__: string;
+declare const __EPUB_TS_VERSION__: string;
+
 type BuiltInAiAvailability = "available" | "downloadable" | "downloading" | "unavailable";
 
 type BuiltInAiMonitor = {

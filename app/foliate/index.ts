@@ -1,20 +1,20 @@
-import type { FoliateViewElement } from "../../foliate-js/view.js";
+import type { FoliateViewElement as BaseFoliateViewElement } from "../../foliate-js/view.js";
 import { normalizeInlineText } from "../reader";
+import type { ReaderHighlight } from "../reader";
+
+export type FoliateViewElement = BaseFoliateViewElement<ReaderHighlight>;
 
 export { Overlayer } from "../../foliate-js/overlayer.js";
 export type {
   BookSection,
-  FoliateViewElement,
+  FoliateContent,
   RelocateDetail,
   SearchHit,
   TocItem,
 } from "../../foliate-js/view.js";
 
-let viewModuleReady: Promise<unknown> | null = null;
-
 export async function createFoliateView() {
-  viewModuleReady ??= import("../../foliate-js/view.js");
-  await viewModuleReady;
+  await import("../../foliate-js/view.js");
   return document.createElement("foliate-view") as FoliateViewElement;
 }
 

@@ -13,7 +13,6 @@
       color-scheme: var(--reader-color-scheme);
       font-size: var(--reader-font-size) !important;
       background: var(--theme-bg-color) !important;
-      color: var(--reader-fg-color) !important;
       margin: 0 !important;
       padding: 0 !important;
       max-inline-size: none !important;
@@ -30,6 +29,11 @@
       letter-spacing: var(--reader-letter-spacing) !important;
       text-autospace: ideograph-alpha ideograph-numeric;
     }
+    body :where(
+      *:not(math):not(math *):not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *)
+    ) {
+      font-family: var(--reader-font-serif) !important;
+    }
     html::-webkit-scrollbar,
     body::-webkit-scrollbar,
     *::-webkit-scrollbar {
@@ -37,18 +41,22 @@
       height: 0 !important;
       display: none !important;
     }
-    body {
+    body,
+    body :where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *)) {
       color: var(--reader-fg-color) !important;
       -webkit-text-fill-color: var(--reader-fg-color) !important;
-      caret-color: var(--reader-fg-color) !important;
       text-shadow: none !important;
+    }
+    body {
+      caret-color: var(--reader-fg-color) !important;
     }
     a,
     a :where(*:not(svg):not(svg *)) {
       color: var(--reader-link-color) !important;
       -webkit-text-fill-color: var(--reader-link-color) !important;
     }
-    :is(code, pre, kbd, samp, textarea, [data-reader-role~="mono"]) {
+    :is(code, pre, kbd, samp, textarea, [data-reader-role~="mono"]),
+    :is(code, pre, kbd, samp, [data-reader-role~="mono"]) :where(*) {
       font-family: var(--reader-font-mono) !important;
     }
     :is(code, pre, kbd, samp, textarea, [data-reader-role~="mono"]):not(textarea):not(.hljs),
@@ -134,12 +142,13 @@
     }
     mjx-container.reader-math[display="true"] {
       display: block !important;
-      inline-size: 100% !important;
-      width: 100% !important;
+      inline-size: fit-content !important;
+      width: fit-content !important;
       max-inline-size: 100% !important;
+      max-width: 100% !important;
       margin-block: 1.15em !important;
-      margin-inline: 0 !important;
-      padding-block: 0.28em !important;
+      margin-inline: auto !important;
+      padding-block: 0.06em !important;
       overflow-x: auto !important;
       overflow-y: hidden !important;
       text-align: center !important;
@@ -155,6 +164,11 @@
       filter: none !important;
       color: inherit !important;
     }
+    mjx-container.reader-math > svg > g {
+      stroke-width: 10 !important;
+      stroke-linejoin: round !important;
+      paint-order: stroke fill;
+    }
     mjx-container.reader-math > svg a {
       fill: var(--reader-link-color) !important;
       stroke: var(--reader-link-color) !important;
@@ -169,6 +183,7 @@
       letter-spacing: var(--reader-letter-spacing) !important;
       text-align: justify;
       hyphens: auto !important;
+      hyphenate-limit-chars: 8 3 3 !important;
       hanging-punctuation: allow-end last;
       word-spacing: var(--reader-word-spacing) !important;
       text-autospace: ideograph-alpha ideograph-numeric;
@@ -176,6 +191,9 @@
     :is(p, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) {
       margin-block-start: 0 !important;
       margin-block-end: var(--reader-paragraph-spacing) !important;
+    }
+    :is(p, li, blockquote, dd, dt, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) {
+      text-wrap: pretty !important;
     }
     :is(ul, ol),
     blockquote,
@@ -216,6 +234,9 @@
       text-shadow: none !important;
       opacity: 1 !important;
     }
+    :is(h1, h2, h3, h4, h5, h6, [data-reader-role~="heading"]) {
+      text-wrap: balance !important;
+    }
     h1 { font-size: calc(var(--reader-font-size) * 1.55) !important; line-height: 1.35 !important; }
     h2 { font-size: calc(var(--reader-font-size) * 1.35) !important; line-height: 1.38 !important; }
     h3, [data-reader-role~="heading"] {
@@ -230,17 +251,6 @@
       font-size: inherit !important;
       line-height: inherit !important;
       font-weight: inherit !important;
-    }
-    :is(figcaption, caption, [data-reader-role~="caption"]) {
-
-      color: var(--reader-muted-color) !important;
-      -webkit-text-fill-color: var(--reader-muted-color) !important;
-
-      font-size: 0.82em !important;
-      line-height: 1.45 !important;
-      text-align: center !important;
-      word-spacing: 0 !important;
-      opacity: 1 !important;
     }
     :is(a[epub|type~="noteref"], a[role~="doc-noteref"], a[epub|type~="biblioref"], a[role~="doc-biblioref"], a[epub|type~="glossref"], a[role~="doc-glossref"], sup a, a sup, small a[href^="#"]) {
       display: inline !important;
@@ -272,11 +282,13 @@
       text-align: inherit !important;
       vertical-align: baseline !important;
     }
-    :is(blockquote, q, cite, [data-reader-role~="quote"]),
+    :is(blockquote, [data-reader-role~="quote"]),
     blockquote :is(p, span, a, em, strong, b, i, code, kbd, samp, pre) {
       font-size: var(--reader-list-font-size) !important;
       line-height: var(--reader-line-height) !important;
       word-spacing: 0 !important;
+    }
+    :is(blockquote, [data-reader-role~="quote"]) {
       opacity: 0.94 !important;
     }
     blockquote {
@@ -303,7 +315,6 @@
       line-height: var(--reader-small-line-height) !important;
 
       word-spacing: 0 !important;
-      opacity: 0.92 !important;
     }
     :is(aside, details, [data-reader-role~="note"]) {
       margin-block: 1em !important;
@@ -311,13 +322,14 @@
       border: 1px solid var(--reader-border-color) !important;
       border-radius: 0.35em !important;
       background: var(--reader-panel-bg) !important;
+      opacity: 0.92 !important;
     }
     :is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-footnote-target="true"]) {
       display: block !important;
       position: relative !important;
       margin-block: 0.55em !important;
       margin-inline: 0 !important;
-      padding: 0 0 0 2.1em !important;
+      padding: 0 !important;
       border: 0 !important;
       border-radius: 0 !important;
       background: transparent !important;
@@ -329,7 +341,10 @@
       line-height: var(--reader-small-line-height) !important;
       text-align: start !important;
     }
-    :is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-footnote-target="true"])::before {
+    [data-reader-footnote-target="true"][data-reader-footnote-generated-label] {
+      padding-inline-start: 2.1em !important;
+    }
+    [data-reader-footnote-target="true"][data-reader-footnote-generated-label]::before {
       content: attr(data-footnote-label) !important;
       position: absolute !important;
       inset-inline-start: 0 !important;
@@ -354,7 +369,8 @@
       line-height: inherit !important;
       text-align: start !important;
     }
-    nav, header, footer, aside, .sans, [data-reader-role~="sans"] {
+    :is(.sans, [data-reader-role~="sans"]),
+    :is(.sans, [data-reader-role~="sans"]) :where(*) {
       font-family: var(--reader-font-sans) !important;
     }
     :is(ul, ol, dl) { margin-inline: 0 !important; }
@@ -376,15 +392,16 @@
       height: auto !important;
       filter: var(--reader-media-filter) !important;
     }
-    img {
+    :is(figure, [data-reader-media-block="true"]) img,
+    img.reader-zoomable-image {
       display: block !important;
       margin-inline: auto !important;
     }
     img.reader-zoomable-image {
-      inline-size: var(--reader-image-inline-size) !important;
-      width: var(--reader-image-inline-size) !important;
-      max-inline-size: var(--reader-image-inline-size) !important;
-      max-width: var(--reader-image-inline-size) !important;
+      inline-size: auto !important;
+      width: auto !important;
+      max-inline-size: var(--reader-image-max-inline-size) !important;
+      max-width: var(--reader-image-max-inline-size) !important;
       border-radius: 0.5rem !important;
       cursor: zoom-in !important;
     }
@@ -394,14 +411,13 @@
     :is(table, [data-reader-role~="table"]) {
       max-inline-size: 100% !important;
       max-width: 100% !important;
-      inline-size: 100% !important;
-      width: 100% !important;
+      inline-size: fit-content !important;
+      width: fit-content !important;
       margin-block: 1.15em !important;
       margin-inline: auto !important;
       border-collapse: collapse !important;
       table-layout: auto !important;
       border: 1px solid var(--reader-border-color) !important;
-      border-radius: 0.45rem !important;
       background: color-mix(in srgb, var(--reader-panel-bg) 64%, transparent) !important;
 
       font-size: var(--reader-small-font-size) !important;
@@ -421,7 +437,7 @@
     :is(table, [data-reader-role~="table"]) :is(th, td) {
       min-inline-size: 0 !important;
       max-inline-size: 18rem !important;
-      padding: 0.4em 0.56em !important;
+      padding: 0.4em 0.72em !important;
       border: 1px solid var(--reader-border-color) !important;
       vertical-align: top !important;
       font-size: inherit !important;
@@ -470,6 +486,9 @@
       font-family: var(--reader-font-serif) !important;
       font-size: 0.82em !important;
       line-height: 1.45 !important;
+      word-spacing: 0 !important;
+      text-wrap: balance !important;
+      opacity: 1 !important;
     }
     :is(figcaption, caption, [data-reader-role~="caption"]) :is(a, span, em, strong, b, i, small, cite, q, mark, abbr) {
       color: inherit !important;
@@ -482,8 +501,7 @@
       text-align: inherit !important;
     }
     :is(code, kbd, samp):not(pre code):not(.hljs) {
-      display: inline-flex !important;
-      align-items: center !important;
+      display: inline !important;
       vertical-align: 0.1em !important;
 
       font-size: var(--reader-small-font-size) !important;
@@ -542,4 +560,3 @@
       font-size: var(--reader-list-font-size) !important;
       line-height: var(--reader-line-height) !important;
     }
-

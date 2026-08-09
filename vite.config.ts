@@ -3,16 +3,19 @@ import { cpSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import packageJson from "./package.json";
 
-const requestedPlatform = process.env.VIEWER_PLATFORM;
-const viewerPlatform = requestedPlatform === "web" ? "web" : "chrome";
-const isWeb = viewerPlatform === "web";
-const isBrowser = isWeb;
-const outputDir = isBrowser ? "release/web" : "release/chrome/extension";
+const isWeb = process.env.VIEWER_PLATFORM === "web";
+const outputDir = isWeb ? "release/web" : "release/chrome-extension";
+const buildTime = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/u, " UTC");
 
 export default defineConfig({
   base: "./",
-  publicDir: isBrowser ? false : "public",
+  define: {
+    __EPUB_TS_BUILD_TIME__: JSON.stringify(buildTime),
+    __EPUB_TS_VERSION__: JSON.stringify(packageJson.version),
+  },
+  publicDir: isWeb ? false : "public",
   resolve: {
     alias: {
       "@mathjax/src/mjs": resolve(__dirname, "node_modules/@mathjax/src/mjs"),
@@ -36,7 +39,7 @@ export default defineConfig({
         }
       },
     },
-    ...(isBrowser ? [{
+    ...(isWeb ? [{
       name: "browser-viewer-fonts",
       writeBundle() {
         const resolvedOutputDir = resolve(__dirname, outputDir);
@@ -54,7 +57,7 @@ export default defineConfig({
     outDir: outputDir,
     emptyOutDir: true,
     rollupOptions: {
-      input: isBrowser
+      input: isWeb
         ? { index: "index.html" }
         : { viewer: "viewer.html", background: "app/platform/chrome-background.ts" },
       output: {
@@ -64,9 +67,9 @@ export default defineConfig({
         entryFileNames: (chunkInfo) =>
           chunkInfo.name === "background"
             ? "background.js"
-            : isBrowser ? "assets/[name]-[hash].js" : "assets/[name].js",
-        chunkFileNames: isBrowser ? "assets/[name]-[hash].js" : "assets/[name].js",
-        assetFileNames: isBrowser ? "assets/[name]-[hash][extname]" : "assets/[name][extname]",
+            : isWeb ? "assets/[name]-[hash].js" : "assets/[name].js",
+        chunkFileNames: isWeb ? "assets/[name]-[hash].js" : "assets/[name].js",
+        assetFileNames: isWeb ? "assets/[name]-[hash][extname]" : "assets/[name][extname]",
       },
     },
   },

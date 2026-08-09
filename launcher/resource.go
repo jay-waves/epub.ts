@@ -58,8 +58,6 @@ func NewResource(path string) (*Resource, error) {
 	}, nil
 }
 
-func (resource *Resource) Path() string { return resource.path }
-
 func (resource *Resource) Serve(response http.ResponseWriter, request *http.Request) error {
 	file, err := os.Open(resource.path)
 	if err != nil {

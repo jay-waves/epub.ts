@@ -30,9 +30,19 @@ export type BookSection = {
 
 export type FoliateBook = {
   dir?: string;
+  destroy?: () => void;
   metadata?: BookMetadata;
   sections?: BookSection[];
   toc?: TocItem[];
+};
+
+export type FoliateContent = {
+  doc?: Document;
+  index: number;
+  overlayer?: {
+    element?: SVGSVGElement;
+    hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
+  };
 };
 
 export type FoliateRenderer = HTMLElement & {
@@ -51,14 +61,7 @@ export type FoliateRenderer = HTMLElement & {
   setStyles?: (cssText: string | [string, string]) => void;
   start?: number;
   viewSize?: number;
-  getContents?: () => Array<{
-    doc?: Document;
-    index: number;
-    overlayer?: {
-      element?: SVGSVGElement;
-      hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
-    };
-  }>;
+  getContents?: () => FoliateContent[];
 };
 
 export type RelocateDetail = {
@@ -72,6 +75,9 @@ export type RelocateDetail = {
   pageItem?: {
     label?: string;
   };
+  range?: Range;
+  reason?: string;
+  size?: number;
   tocItem?: TocItem;
 };
 
@@ -86,10 +92,52 @@ export type FoliateAnnotation = {
   [key: string]: unknown;
 };
 
-export type FoliateViewElement = HTMLElement & {
+export type FoliateAnnotationDrawOptions = {
+  annotationValue?: string;
+  color: string;
+  hasNote?: boolean;
+  onBadgeClick?: (event: MouseEvent) => void;
+  width?: number;
+};
+
+export type FoliateAnnotationDrawFunction = (
+  rects: DOMRectList,
+  options?: FoliateAnnotationDrawOptions,
+) => SVGElement;
+
+export type FoliateViewEventMap<Annotation extends FoliateAnnotation = FoliateAnnotation> = {
+  "create-overlay": { index: number };
+  "draw-annotation": {
+    annotation: Annotation;
+    doc: Document;
+    draw: (func: FoliateAnnotationDrawFunction, options: FoliateAnnotationDrawOptions) => void;
+    range: Range;
+  };
+  "edge-click": { x: number };
+  "external-link": { a: HTMLAnchorElement; href_: string };
+  link: { a: HTMLAnchorElement; href: string };
+  load: { doc: Document; index: number };
+  relocate: RelocateDetail;
+  "show-annotation": { index: number; range?: Range; value: string };
+};
+
+export interface FoliateViewElement<Annotation extends FoliateAnnotation = FoliateAnnotation> extends HTMLElement {
+  addEventListener<EventName extends keyof FoliateViewEventMap<Annotation>>(
+    type: EventName,
+    listener: (
+      this: FoliateViewElement<Annotation>,
+      event: CustomEvent<FoliateViewEventMap<Annotation>[EventName]>,
+    ) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
   book?: FoliateBook;
-  enhanceDocument?: (doc: Document, index: number) => Promise<void> | void;
   enhanceRenderedDocument?: (doc: Document, index: number) => Promise<void> | void;
+  isFixedLayout: boolean;
   renderer: FoliateRenderer;
   clearSearch?: () => void;
   close: () => void;
@@ -104,12 +152,12 @@ export type FoliateViewElement = HTMLElement & {
   goLeft: () => Promise<void>;
   goRight: () => Promise<void>;
   goTo: (target: string | number | { fraction: number }) => Promise<void>;
-  addAnnotation?: (annotation: FoliateAnnotation, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
-  deleteAnnotation?: (annotation: FoliateAnnotation) => Promise<{ index: number; label: string } | undefined>;
+  addAnnotation?: (annotation: Annotation, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
+  deleteAnnotation?: (annotation: Annotation) => Promise<{ index: number; label: string } | undefined>;
   deselect?: () => void;
   getCFI?: (index: number, range?: Range) => string;
   getSectionFractions?: () => number[];
-  showAnnotation?: (annotation: FoliateAnnotation) => Promise<void>;
+  showAnnotation?: (annotation: Annotation) => Promise<void>;
   search?: (options: {
     index?: number;
     matchCase?: boolean;
@@ -117,4 +165,4 @@ export type FoliateViewElement = HTMLElement & {
     query: string;
   }) => AsyncIterable<unknown>;
   select?: (target: string) => Promise<void>;
-};
+}

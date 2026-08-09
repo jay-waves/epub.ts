@@ -8,7 +8,6 @@ export function createBundledReaderProfile(
     defaultFontSize,
     fontFamily: "LXGW WenKai EPUB",
     fontLocalName: "LXGW WenKai",
-    fontFormat: "truetype",
     latinFontUrl: assetUrl("EBGaramond-VariableFont_wght.ttf"),
     latinFontFormat: "truetype",
     latinItalicFontUrl: assetUrl("EBGaramond-Italic-VariableFont_wght.ttf"),
@@ -24,7 +23,6 @@ export function createBundledReaderProfile(
 export const webReaderProfile: ReaderProfile = {
   defaultFontSize: 15,
   fontFamily: "system-ui",
-  fontFormat: "truetype",
   latinFontUrl: "https://cdn.jsdelivr.net/fontsource/fonts/eb-garamond:vf@5.2.7/latin-wght-normal.woff2",
   latinFontFormat: "woff2-variations",
   latinItalicFontUrl: "https://cdn.jsdelivr.net/fontsource/fonts/eb-garamond:vf@5.2.7/latin-wght-italic.woff2",

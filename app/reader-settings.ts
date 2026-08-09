@@ -1,27 +1,46 @@
 import { createReaderBookStyles } from "./reader-book-styles";
-export {
-  READER_FONT_FAMILY,
-  READER_FONT_FORMAT,
-  READER_FONT_URL,
-  READER_LATIN_FONT_FAMILY,
-  READER_LATIN_FONT_FORMAT,
-  READER_LATIN_FONT_URL,
-  READER_LATIN_ITALIC_FONT_FORMAT,
-  READER_LATIN_ITALIC_FONT_URL,
-  READER_MONO_FONT_FAMILY,
-  READER_MONO_FONT_FORMAT,
-  READER_MONO_FONT_URL,
-  READER_MONO_FONT_WEIGHT,
-} from "./reader-book-styles";
 import { readerSettings } from "./reader";
-import type { ReaderFlow, ReaderSettings, ReaderTheme, ReaderThemeId } from "./reader";
+import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./reader";
 import type { FoliateViewElement } from "./foliate";
 
+type ReaderLayoutTarget = {
+  root: HTMLElement;
+  view: FoliateViewElement | null;
+};
+
 const READER_THEMES: ReaderTheme[] = [
-  { id: "light", bodyTheme: "lofi", mode: "light", background: "#fffefd", foreground: "#1f2933", link: "#1f5f8f" },
-  { id: "grey", bodyTheme: "corporate", mode: "light", background: "#f1f1ee", foreground: "#2f3438", link: "#4c6a7f" },
-  { id: "dark", bodyTheme: "nord", mode: "dark", background: "#212830", foreground: "#e5e9f0", link: "#88c0d0" },
-  { id: "one-dark", bodyTheme: "dim", mode: "dark", background: "#0f1117", foreground: "#d7dae0", link: "#61afef" },
+  {
+    id: "light",
+    bodyTheme: "lofi",
+    mode: "light",
+    background: "#fffefd",
+    foreground: "#1f2933",
+    link: "#1f5f8f",
+  },
+  {
+    id: "grey",
+    bodyTheme: "corporate",
+    mode: "light",
+    background: "#f1f1ee",
+    foreground: "#2f3438",
+    link: "#4c6a7f",
+  },
+  {
+    id: "dark",
+    bodyTheme: "nord",
+    mode: "dark",
+    background: "#212830",
+    foreground: "#e5e9f0",
+    link: "#88c0d0",
+  },
+  {
+    id: "one-dark",
+    bodyTheme: "dim",
+    mode: "dark",
+    background: "#0f1117",
+    foreground: "#d7dae0",
+    link: "#61afef",
+  },
 ];
 
 function getReaderTheme(themeId = readerSettings.theme) {
@@ -136,9 +155,11 @@ export function getBookStyles(themeId = readerSettings.theme): [string, string] 
   });
 }
 
-export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElement) {
+export function applyReaderLayout({ root, view }: ReaderLayoutTarget) {
+  if (!view || view.isFixedLayout) return;
+
   const layout = getLayoutPreset();
-  const readerWidth = readerRoot.getBoundingClientRect().width;
+  const readerWidth = root.getBoundingClientRect().width;
   const allowMultipleColumns =
     readerSettings.flow === "paginated" && readerWidth >= PAGINATED_TWO_COLUMN_MIN_WIDTH;
   const allowThreeColumns =
@@ -160,7 +181,6 @@ export function applyReaderLayout(view: FoliateViewElement, readerRoot: HTMLElem
   view.renderer?.setAttribute("margin", `${SCROLLED_LAYOUT_WIDTH_BASELINE.margin}px`);
   view.renderer?.setAttribute("max-inline-size", `${SCROLLED_LAYOUT_WIDTH_BASELINE.singleColumnMaxInlineSize}px`);
   view.renderer?.removeAttribute("max-column-count");
-
 }
 
 function clampReaderFontSize(fontSize: number) {
@@ -176,10 +196,10 @@ export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement 
   view?.renderer?.setStyles?.(getBookStyles());
 }
 
-export function applyReaderLayoutLevel(layoutLevel: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
+export function applyReaderLayoutLevel(layoutLevel: number, target: ReaderLayoutTarget) {
   readerSettings.layoutLevel = clampLayoutLevel(layoutLevel);
-  view?.renderer?.setStyles?.(getBookStyles());
-  if (view) applyReaderLayout(view, readerRoot);
+  target.view?.renderer?.setStyles?.(getBookStyles());
+  applyReaderLayout(target);
 }
 
 export function canChangeReaderFontSize(delta: number) {
@@ -187,41 +207,23 @@ export function canChangeReaderFontSize(delta: number) {
   return clampReaderFontSize(currentSize + delta) !== currentSize;
 }
 
-export function changeReaderFontSize(delta: number, view?: FoliateViewElement | null) {
-  const currentSize = clampReaderFontSize(readerSettings.fontSize);
-  const nextSize = clampReaderFontSize(currentSize + delta);
-  if (nextSize === currentSize) {
-    readerSettings.fontSize = currentSize;
-    return false;
-  }
-  applyReaderFontSize(nextSize, view);
-  return true;
-}
-
 export function canChangeReaderLayoutLevel(delta: number) {
   const currentLevel = clampLayoutLevel(readerSettings.layoutLevel);
   return clampLayoutLevel(currentLevel + delta) !== currentLevel;
 }
 
-export function changeReaderLayoutLevel(delta: number, view: FoliateViewElement | null, readerRoot: HTMLElement) {
-  const currentLevel = clampLayoutLevel(readerSettings.layoutLevel);
-  const nextLevel = clampLayoutLevel(currentLevel + delta);
-  if (nextLevel === currentLevel) {
-    readerSettings.layoutLevel = currentLevel;
-    return false;
-  }
-  applyReaderLayoutLevel(nextLevel, view, readerRoot);
-  return true;
-}
-
-export function applyReaderFlow(flow: ReaderFlow, view: FoliateViewElement | null, readerRoot: HTMLElement) {
+export function applyReaderFlow(flow: ReaderFlow, target: ReaderLayoutTarget) {
   readerSettings.flow = flow;
-  if (view) applyReaderLayout(view, readerRoot);
+  applyReaderLayout(target);
 }
 
-export function changeReaderFlow(view: FoliateViewElement | null, readerRoot: HTMLElement) {
+export function changeReaderFlow(target: ReaderLayoutTarget) {
+  if (target.view?.isFixedLayout) {
+    readerSettings.flow = "paginated";
+    return;
+  }
   const nextFlow = readerSettings.flow === "paginated" ? "scrolled" : "paginated";
-  applyReaderFlow(nextFlow, view, readerRoot);
+  applyReaderFlow(nextFlow, target);
 }
 
 function clamp(value: number, min: number, max: number) {

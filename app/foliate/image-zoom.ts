@@ -13,11 +13,19 @@ export function enhanceReaderImages(doc: Document) {
   if (enhancedDocuments.has(doc)) return;
   enhancedDocuments.add(doc);
 
-  const images = Array.from(doc.querySelectorAll<HTMLImageElement>("img")).filter(isZoomableImage);
-  for (const image of images) {
-    image.classList.add("reader-zoomable-image");
-    image.addEventListener("click", handleReaderImageClick, { passive: false });
+  for (const image of doc.querySelectorAll<HTMLImageElement>("img")) {
+    if (image.complete) {
+      markZoomableImage(image);
+    } else {
+      image.addEventListener("load", () => markZoomableImage(image), { once: true });
+    }
   }
+}
+
+function markZoomableImage(image: HTMLImageElement) {
+  if (!isZoomableImage(image)) return;
+  image.classList.add("reader-zoomable-image");
+  image.addEventListener("click", handleReaderImageClick, { passive: false });
 }
 
 function ensureMediumZoom() {
@@ -84,12 +92,21 @@ export async function disposeReaderContent() {
 
 function isZoomableImage(image: HTMLImageElement) {
   if (image.closest("[data-reader-footnote-target='true']")) return false;
-  if (image.closest("a[role~='doc-noteref'], a[epub\\:type~='noteref']")) return false;
+  if (image.closest("a[href]")) return false;
   if (image.closest("button, input, label, summary")) return false;
+
+  const style = image.ownerDocument.defaultView?.getComputedStyle(image);
+  const renderedWidth = Number.parseFloat(style?.width ?? "");
+  const renderedHeight = Number.parseFloat(style?.height ?? "");
+  if (renderedWidth > 0 && renderedHeight > 0
+    && renderedWidth < MIN_ZOOMABLE_IMAGE_SIZE && renderedHeight < MIN_ZOOMABLE_IMAGE_SIZE) {
+    return false;
+  }
 
   const knownWidth = image.naturalWidth || image.width;
   const knownHeight = image.naturalHeight || image.height;
-  if (knownWidth && knownHeight && knownWidth < MIN_ZOOMABLE_IMAGE_SIZE && knownHeight < MIN_ZOOMABLE_IMAGE_SIZE) {
+  if (!knownWidth || !knownHeight) return false;
+  if (knownWidth < MIN_ZOOMABLE_IMAGE_SIZE && knownHeight < MIN_ZOOMABLE_IMAGE_SIZE) {
     return false;
   }
   return true;
@@ -98,7 +115,9 @@ function isZoomableImage(image: HTMLImageElement) {
 function handleReaderImageClick(event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
-  void openReaderImageZoom(event.currentTarget as HTMLImageElement);
+  void openReaderImageZoom(event.currentTarget as HTMLImageElement).catch((error) => {
+    console.warn("Failed to open reader image zoom.", error);
+  });
 }
 
 async function openReaderImageZoom(image: HTMLImageElement) {

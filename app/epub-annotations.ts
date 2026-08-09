@@ -10,7 +10,7 @@ import {
 import type { ReaderHighlight } from "./reader";
 import type { Entry, FileEntry } from "@zip.js/zip.js";
 
-export const EPUB_MIME_TYPE = "application/epub+zip";
+const EPUB_MIME_TYPE = "application/epub+zip";
 const EPUB_MIMETYPE_ENTRY = "mimetype";
 const OVERLAY_ENTRY = "META-INF/epub-viewer-annotations.json";
 

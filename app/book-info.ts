@@ -15,11 +15,13 @@ type BookInfoRow = {
 const WORDS_PER_MINUTE = 250;
 const CHARS_PER_WORD = 6;
 
-export function createBookInfo(
-  book: FoliateViewElement["book"],
-  sourceLabel: string,
-  sourceUrl: string,
-): BookInfo {
+type BookInfoSource = {
+  book: FoliateViewElement["book"];
+  sourceLabel: string;
+  sourceUrl: string;
+};
+
+export function createBookInfo({ book, sourceLabel, sourceUrl }: BookInfoSource): BookInfo {
   if (!book) return { metadataRows: [], statsRows: [], title: "Book information" };
 
   const metadata = book.metadata;
@@ -50,11 +52,12 @@ export function createBookInfo(
       ["Identifier", formatMetadataValue(metadata?.identifier)],
       ["Subject", formatMetadataValue(metadata?.subject)],
       ["Source", sourcePath],
+      ["epub.ts", `v${__EPUB_TS_VERSION__} · ${__EPUB_TS_BUILD_TIME__}`],
     ]),
   };
 }
 
-export function formatSourcePath(sourceUrl: string) {
+function formatSourcePath(sourceUrl: string) {
   if (!sourceUrl) return "";
 
   try {

@@ -12,9 +12,6 @@ if (!existsSync(resolve(source, 'index.html'))) throw new Error('Run pnpm build:
 
 function copy(sourceDir, targetDir) {
   mkdirSync(targetDir, { recursive: true });
-  for (const entry of readdirSync(targetDir)) {
-    if (entry !== 'placeholder.txt') rmSync(resolve(targetDir, entry), { recursive: true, force: true });
-  }
   for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
     const from = resolve(sourceDir, entry.name);
     const to = resolve(targetDir, entry.name);
@@ -23,10 +20,13 @@ function copy(sourceDir, targetDir) {
   }
 }
 
+mkdirSync(embedded, { recursive: true });
+for (const entry of readdirSync(embedded)) {
+  if (entry !== 'placeholder.txt') rmSync(resolve(embedded, entry), { recursive: true, force: true });
+}
 copy(source, embedded);
 const windows = target === 'windows-amd64';
-const output = resolve(root, 'release/launcher', windows ? 'epub.ts.exe' : 'epub.ts');
-mkdirSync(resolve(root, 'release/launcher'), { recursive: true });
+const output = resolve(root, 'release', windows ? 'epub.ts.exe' : 'epub.ts');
 const linkerFlags = windows ? '-s -w -H=windowsgui' : '-s -w';
 let windowsResource = null;
 if (windows) {

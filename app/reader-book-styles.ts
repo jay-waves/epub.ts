@@ -11,15 +11,12 @@ const readerProfile = platform.readerProfile;
 export const READER_FONT_FAMILY = readerProfile.fontFamily;
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
-export const READER_FONT_LOCAL_NAME = readerProfile.fontLocalName;
-export const READER_FONT_URL = readerProfile.fontUrl;
-export const READER_FONT_FORMAT = readerProfile.fontFormat;
+const READER_FONT_LOCAL_NAME = readerProfile.fontLocalName;
 export const READER_LATIN_FONT_URL = readerProfile.latinFontUrl;
 export const READER_LATIN_ITALIC_FONT_URL = readerProfile.latinItalicFontUrl;
 export const READER_MONO_FONT_URL = readerProfile.monoFontUrl;
 export const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
-export const READER_LATIN_ITALIC_FONT_FORMAT =
-  readerProfile.latinItalicFontFormat ?? readerProfile.latinFontFormat;
+export const READER_LATIN_ITALIC_FONT_FORMAT = readerProfile.latinItalicFontFormat;
 export const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
 export const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
 
@@ -30,9 +27,9 @@ const READER_SANS_STACK =
 const READER_MONO_STACK =
   `"${READER_MONO_FONT_FAMILY}", "Sarasa Mono SC", "Maple Mono SC NF", "Cascadia Code", "SFMono-Regular", Consolas, monospace`;
 
-const DEFAULT_READER_IMAGE_INLINE_SIZE = 80;
-const MIN_READER_IMAGE_INLINE_SIZE = 72;
-const MAX_READER_IMAGE_INLINE_SIZE = 92;
+const DEFAULT_READER_IMAGE_MAX_INLINE_SIZE = 80;
+const MIN_READER_IMAGE_MAX_INLINE_SIZE = 72;
+const MAX_READER_IMAGE_MAX_INLINE_SIZE = 92;
 const READER_IMAGE_SCALE_PER_FONT_PIXEL = 2;
 
 type ReaderBookLayout = {
@@ -42,7 +39,7 @@ type ReaderBookLayout = {
   wordSpacing: string;
 };
 
-export type ReaderBookStyleOptions = {
+type ReaderBookStyleOptions = {
   fontSize: number;
   layout: ReaderBookLayout;
   layoutLevel: number;
@@ -70,14 +67,10 @@ const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
 };
 
 const READER_BOOK_FOUNDATION_STYLES = `
-  @namespace epub "http://www.idpf.org/2007/ops";
-  ${READER_FONT_LOCAL_NAME || READER_FONT_URL ? `
+  ${READER_FONT_LOCAL_NAME ? `
   @font-face {
     font-family: "${READER_FONT_FAMILY}";
-    src: ${[
-      READER_FONT_LOCAL_NAME ? `local("${READER_FONT_LOCAL_NAME}")` : "",
-      READER_FONT_URL ? `url("${READER_FONT_URL}") format("${READER_FONT_FORMAT}")` : "",
-    ].filter(Boolean).join(", ")};
+    src: local("${READER_FONT_LOCAL_NAME}");
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -91,7 +84,6 @@ const READER_BOOK_FOUNDATION_STYLES = `
     font-display: swap;
     unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
   }
-  ${READER_LATIN_ITALIC_FONT_URL ? `
   @font-face {
     font-family: "${READER_LATIN_FONT_FAMILY}";
     src: url("${READER_LATIN_ITALIC_FONT_URL}") format("${READER_LATIN_ITALIC_FONT_FORMAT}");
@@ -100,7 +92,6 @@ const READER_BOOK_FOUNDATION_STYLES = `
     font-display: swap;
     unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
   }
-  ` : ""}
   @font-face {
     font-family: "${READER_MONO_FONT_FAMILY}";
     src: url("${READER_MONO_FONT_URL}") format("${READER_MONO_FONT_FORMAT}");
@@ -115,11 +106,11 @@ export function createReaderBookStyles(options: ReaderBookStyleOptions): [string
   const cacheKey = `${theme.id}|${fontSize}|${layoutLevel}`;
   if (cachedBookStyles?.key === cacheKey) return cachedBookStyles.value;
 
-  const imageInlineSize = clamp(
-    DEFAULT_READER_IMAGE_INLINE_SIZE
+  const imageMaxInlineSize = clamp(
+    DEFAULT_READER_IMAGE_MAX_INLINE_SIZE
       + (fontSize - readerProfile.defaultFontSize) * READER_IMAGE_SCALE_PER_FONT_PIXEL,
-    MIN_READER_IMAGE_INLINE_SIZE,
-    MAX_READER_IMAGE_INLINE_SIZE,
+    MIN_READER_IMAGE_MAX_INLINE_SIZE,
+    MAX_READER_IMAGE_MAX_INLINE_SIZE,
   );
   const mediaFilter = theme.mode === "dark"
     ? "brightness(0.72) contrast(0.92) saturate(0.88)"
@@ -139,15 +130,13 @@ export function createReaderBookStyles(options: ReaderBookStyleOptions): [string
       --reader-word-spacing: ${layout.wordSpacing};
       --reader-paragraph-spacing: ${layout.paragraphSpacing};
       --reader-media-filter: ${mediaFilter};
-      --reader-image-inline-size: ${imageInlineSize}%;
+      --reader-image-max-inline-size: ${imageMaxInlineSize}%;
       --reader-color-scheme: ${theme.mode};
       --reader-config-font-serif: ${READER_SERIF_STACK};
       --reader-config-font-sans: ${READER_SANS_STACK};
       --reader-config-font-mono: ${READER_MONO_STACK};
       --reader-font-size-adjust: ${readerProfile.fontSizeAdjust};
       color-scheme: ${theme.mode};
-      background: ${theme.background} !important;
-      color: ${theme.foreground} !important;
     }
     ${READER_CODE_HIGHLIGHT_THEMES[theme.id]}
     .hljs {

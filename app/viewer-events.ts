@@ -31,13 +31,14 @@ export const VIEWER_EVENTS = {
 } as const;
 
 export type HighlightContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
-export type TranslationStatus = "error" | "loading" | "success";
+type TranslationStatus = "error" | "loading" | "success";
 export type PageTurnDirection = "left" | "right";
 
 export type HighlightContextOpenDetail = {
   canCopy: boolean;
   canDelete: boolean;
   canHighlight: boolean;
+  kind: "media" | "text";
   x: number;
   y: number;
 };
@@ -82,7 +83,7 @@ export type DockUpdateDetail = {
   searchActive: boolean;
 };
 
-export type SearchCollectDetail = {
+type SearchCollectDetail = {
   query: string;
   highlightedOnly?: boolean;
 };

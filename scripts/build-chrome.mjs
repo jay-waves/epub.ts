@@ -5,7 +5,8 @@ import yazl from 'yazl';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const packageJson = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
-const extensionDir = resolve(repoRoot, 'release', 'chrome', 'extension');
+const releaseDir = resolve(repoRoot, 'release');
+const extensionDir = resolve(releaseDir, 'chrome-extension');
 
 const vite = spawnSync('pnpm', ['exec', 'vite', 'build'], {
   cwd: repoRoot,
@@ -20,8 +21,10 @@ const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 manifest.version = packageJson.version;
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-const archivePath = resolve(repoRoot, 'release', 'chrome', `epub-ts-chrome-v${packageJson.version}.zip`);
-rmSync(archivePath, { force: true });
+for (const entry of readdirSync(releaseDir)) {
+  if (/^epub-ts-chrome-v.+\.zip$/u.test(entry)) rmSync(resolve(releaseDir, entry), { force: true });
+}
+const archivePath = resolve(releaseDir, `epub-ts-chrome-v${packageJson.version}.zip`);
 
 const zip = new yazl.ZipFile();
 function addDirectory(directory) {

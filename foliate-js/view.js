@@ -5,15 +5,8 @@ import { textWalker } from './text-walker.js'
 import { BlobReader, BlobWriter, configure, TextWriter, ZipReader } from '@zip.js/zip.js'
 
 const SEARCH_PREFIX = 'foliate-search:'
-const CACHE_OFFSETS = [0, 1, -1, 2]
 const EDGE_CLICK_RATIO = 0.22
 const EDGE_CLICK_MAX_DISTANCE = 4
-
-const runWhenIdle = (callback, timeout = 1200) => {
-    if ('requestIdleCallback' in globalThis)
-        return globalThis.requestIdleCallback(callback, { timeout })
-    return setTimeout(callback, 0)
-}
 
 const isZip = async file => {
     const arr = new Uint8Array(await file.slice(0, 4).arrayBuffer())
@@ -55,168 +48,6 @@ export const makeBook = async file => {
     }
     if (!book) throw new UnsupportedTypeError('File type not supported')
     return book
-}
-
-class SectionDocumentCache {
-    #book = null
-    #generation = 0
-    #isPreparing = false
-    #scheduled = false
-    #cache = new Map()
-    #desired = new Set()
-    #pending = new Map()
-    #originals = new WeakMap()
-    #enhanceDocument
-    #getSection(index) {
-        return this.#book?.sections?.[index]
-    }
-    #getOriginals(section) {
-        const original = this.#originals.get(section)
-        if (original) return original
-        const methods = {
-            createDocument: section.createDocument,
-            load: section.load,
-            unload: section.unload,
-        }
-        this.#originals.set(section, methods)
-        return methods
-    }
-    #releaseEntry(index) {
-        const section = this.#getSection(index)
-        if (this.#cache.has(index) && section) this.#getOriginals(section).unload?.()
-        this.#cache.delete(index)
-    }
-    #prune(allowed) {
-        for (const index of this.#cache.keys())
-            if (!allowed.has(index)) this.#releaseEntry(index)
-    }
-    async #prepareSection(index, token) {
-        const section = this.#getSection(index)
-        if (!section) return
-        const { createDocument, load } = this.#getOriginals(section)
-        if (!createDocument || !load) return
-
-        const id = String(section.id ?? index)
-        const cached = this.#cache.get(index)
-        if (cached?.id === id) return
-
-        const [sourceUrl, doc] = await Promise.all([load(), createDocument()])
-        if (token !== this.#generation || this.#book?.sections?.[index] !== section) {
-            this.#getOriginals(section).unload?.()
-            return
-        }
-
-        doc.documentElement.dataset.foliateCachedDocument = 'true'
-        await this.#enhanceDocument?.(doc, index)
-        if (token !== this.#generation || this.#book?.sections?.[index] !== section) {
-            this.#getOriginals(section).unload?.()
-            return
-        }
-
-        this.#cache.set(index, { document: doc, id, sourceUrl })
-    }
-    #getNextPrepareIndex() {
-        for (const index of this.#desired)
-            if (!this.#cache.has(index) && !this.#pending.has(index)) return index
-    }
-    #schedulePrepare() {
-        if (this.#scheduled || this.#isPreparing) return
-        this.#scheduled = true
-        const token = this.#generation
-        runWhenIdle(() => {
-            if (token !== this.#generation) return
-            this.#scheduled = false
-            this.#prepareNext()
-        })
-    }
-    async #prepareNext() {
-        if (this.#isPreparing) return
-        const index = this.#getNextPrepareIndex()
-        if (typeof index !== 'number') return
-
-        this.#isPreparing = true
-        const token = this.#generation
-        let task
-        task = this.#prepareSection(index, token)
-            .catch(error => console.warn(`Failed to prepare section ${index}.`, error))
-            .finally(() => {
-                if (this.#pending.get(index) === task) this.#pending.delete(index)
-            })
-        this.#pending.set(index, task)
-
-        try {
-            await task
-        } finally {
-            if (token !== this.#generation) return
-            this.#isPreparing = false
-            if (this.#getNextPrepareIndex() != null) this.#schedulePrepare()
-        }
-    }
-    prepareAround(currentIndex) {
-        if (!this.#book || typeof currentIndex !== 'number') return
-        const sections = this.#book.sections ?? []
-        const targets = new Set()
-        for (const offset of CACHE_OFFSETS) {
-            const index = currentIndex + offset
-            if (index >= 0 && index < sections.length) targets.add(index)
-        }
-
-        this.#prune(targets)
-        this.#desired.clear()
-        for (const index of targets) this.#desired.add(index)
-        this.#schedulePrepare()
-    }
-    reset() {
-        this.#generation += 1
-        for (const index of this.#cache.keys()) this.#releaseEntry(index)
-        this.#desired.clear()
-        this.#pending.clear()
-        this.#book = null
-        this.#isPreparing = false
-        this.#scheduled = false
-    }
-    setBook(book, { enhanceDocument } = {}) {
-        this.reset()
-        this.#book = book
-        this.#enhanceDocument = enhanceDocument
-        const sections = this.#book?.sections
-        if (!sections?.length) return
-
-        sections.forEach((section, index) => {
-            const original = this.#getOriginals(section)
-            if (original.createDocument) section.createDocument = async () => {
-                const cached = this.#cache.get(index)
-                const id = String(section.id ?? index)
-                if (cached?.id === id) return cached.document
-
-                if (this.#pending.has(index)) {
-                    await this.#pending.get(index)
-                    const pendingCached = this.#cache.get(index)
-                    if (pendingCached?.id === id) return pendingCached.document
-                }
-
-                await this.#prepareSection(index, this.#generation)
-                const prepared = this.#cache.get(index)
-                if (prepared?.id === id) return prepared.document
-
-                const doc = await original.createDocument()
-                await this.#enhanceDocument?.(doc, index)
-                return doc
-            }
-
-            if (original.load) section.load = async () => {
-                const cached = this.#cache.get(index)
-                const id = String(section.id ?? index)
-                if (cached?.id === id && cached.sourceUrl) return cached.sourceUrl
-                return original.load()
-            }
-
-            if (original.unload) section.unload = () => {
-                if (this.#cache.has(index)) return
-                original.unload?.()
-            }
-        })
-    }
 }
 
 class CursorAutohider {
@@ -298,7 +129,7 @@ const languageInfo = lang => {
     try {
         const canonical = Intl.getCanonicalLocales(lang)[0]
         const locale = new Intl.Locale(canonical)
-        const isCJK = ['zh', 'ja', 'kr'].includes(locale.language)
+        const isCJK = ['zh', 'ja', 'ko'].includes(locale.language)
         const direction = (locale.getTextInfo?.() ?? locale.textInfo)?.direction
         return { canonical, locale, isCJK, direction }
     } catch (e) {
@@ -317,7 +148,6 @@ export class View extends HTMLElement {
     #searchDrawOptions
     #cursorAutohider = new CursorAutohider(this, () =>
         this.hasAttribute('autohide-cursor'))
-    #documentCache = new SectionDocumentCache()
     #edgeClickDocs = new WeakSet()
     isFixedLayout = false
     lastLocation
@@ -334,9 +164,6 @@ export class View extends HTMLElement {
         || typeof book.arrayBuffer === 'function') book = await makeBook(book)
         this.book = book
         this.language = languageInfo(book.metadata?.language)
-        this.#documentCache.setBook(book, {
-            enhanceDocument: (doc, index) => this.enhanceDocument?.(doc, index),
-        })
 
         if (book.splitTOCHref && book.getTOCFragment) {
             const ids = book.sections.map(s => s.id)
@@ -376,12 +203,14 @@ export class View extends HTMLElement {
             let lastActive
             this.mediaOverlay.addEventListener('highlight', e => {
                 const resolved = this.resolveNavigation(e.detail.text)
+                if (!resolved) return
                 this.renderer.goTo(resolved)
                     .then(() => {
-                        const { doc } = this.renderer.getContents()
-                            .find(x => x.index = resolved.index)
-                        const el = resolved.anchor(doc)
-                        el.classList.add(activeClass)
+                        const content = this.renderer.getContents()
+                            .find(x => x.index === resolved.index)
+                        const el = content?.doc && resolved.anchor?.(content.doc)
+                        if (!el?.classList) return
+                        if (activeClass) el.classList.add(activeClass)
                         if (playbackActiveClass) el.ownerDocument
                             .documentElement.classList.add(playbackActiveClass)
                         lastActive = new WeakRef(el)
@@ -390,7 +219,7 @@ export class View extends HTMLElement {
             this.mediaOverlay.addEventListener('unhighlight', () => {
                 const el = lastActive?.deref()
                 if (el) {
-                    el.classList.remove(activeClass)
+                    if (activeClass) el.classList.remove(activeClass)
                     if (playbackActiveClass) el.ownerDocument
                         .documentElement.classList.remove(playbackActiveClass)
                 }
@@ -406,8 +235,9 @@ export class View extends HTMLElement {
         this.#searchResults = new Map()
         this.lastLocation = null
         this.history.clear()
-        this.#documentCache.reset()
         this.mediaOverlay = null
+        this.book?.destroy?.()
+        this.book = null
     }
     goToTextStart() {
         return this.goTo(this.book.landmarks
@@ -430,7 +260,6 @@ export class View extends HTMLElement {
         return this.dispatchEvent(new CustomEvent(name, { detail, cancelable }))
     }
     #onRelocate({ reason, range, index, fraction, size }) {
-        this.#documentCache.prepareAround(index)
         const progress = this.#sectionProgress?.getProgress(index, fraction, size) ?? {}
         const tocItem = this.#tocProgress?.getProgress(index, range)
         const pageItem = this.#pageProgress?.getProgress(index, range)
@@ -449,7 +278,6 @@ export class View extends HTMLElement {
         this.#handleLinks(doc, index)
         this.#handleEdgeClicks(doc)
         this.#cursorAutohider.cloneFor(doc.documentElement)
-        this.#documentCache.prepareAround(index)
 
         this.#emit('load', { doc, index })
     }
@@ -733,7 +561,8 @@ export class View extends HTMLElement {
         this.#searchResults.clear()
     }
     startMediaOverlay() {
-        const { index } = this.renderer.getContents()[0]
+        const index = this.renderer?.getContents?.()[0]?.index
+        if (index == null || !this.mediaOverlay) return
         return this.mediaOverlay.start(index)
     }
 }

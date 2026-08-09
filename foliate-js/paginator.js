@@ -254,10 +254,12 @@ class View {
             this.#iframe.addEventListener('load', async () => {
                 try {
                     const doc = this.document
+                    // Content enhancement may depend on computed styles and
+                    // layout measurements (for example, MathJax line breaking).
+                    this.#iframe.style.display = 'block'
                     await afterLoad?.(doc)
 
                     // it needs to be visible for Firefox to get computed style
-                    this.#iframe.style.display = 'block'
                     const { vertical, rtl } = getDirection(doc)
                     const background = getBackground(doc)
                     this.#iframe.style.display = 'none'
@@ -834,7 +836,7 @@ export class Paginator extends HTMLElement {
         this.#touchState = {
             x: touch?.screenX, y: touch?.screenY,
             t: e.timeStamp,
-            vx: 0, xy: 0,
+            vx: 0, vy: 0,
         }
     }
     #onTouchMove(e) {
@@ -990,6 +992,7 @@ export class Paginator extends HTMLElement {
                     const $style = doc.createElement('style')
                     doc.head.append($style)
                     this.#styleMap.set(doc, [$styleBefore, $style])
+                    this.#applyStyles(doc, this.#styles)
                 }
                 await this.beforeRenderDocument?.(doc, index)
                 onLoad?.({ doc, index })
@@ -1017,7 +1020,6 @@ export class Paginator extends HTMLElement {
             const oldIndex = this.#index
             const onLoad = detail => {
                 this.sections[oldIndex]?.unload?.()
-                this.setStyles(this.#styles)
                 this.dispatchEvent(new CustomEvent('load', { detail }))
             }
             await this.#display(Promise.resolve(this.sections[index].load())
@@ -1107,30 +1109,39 @@ export class Paginator extends HTMLElement {
         }]
         return []
     }
-    setStyles(styles) {
-        this.#styles = styles
-        const $$styles = this.#styleMap.get(this.#view?.document)
-        if (!$$styles) return
+    #applyStyles(doc, styles) {
+        const $$styles = this.#styleMap.get(doc)
+        if (!$$styles || styles == null) return false
         const [$beforeStyle, $style] = $$styles
         if (Array.isArray(styles)) {
             const [beforeStyle, style] = styles
             if ($beforeStyle.textContent !== beforeStyle) $beforeStyle.textContent = beforeStyle
             if ($style.textContent !== style) $style.textContent = style
         } else if ($style.textContent !== styles) $style.textContent = styles
+        return true
+    }
+    setStyles(styles) {
+        this.#styles = styles
+        const doc = this.#view?.document
+        if (!doc || !this.#applyStyles(doc, styles)) return
 
         // NOTE: needs `requestAnimationFrame` in Chromium
-        requestAnimationFrame(() =>
-            this.#background.style.background = getBackground(this.#view.document))
+        requestAnimationFrame(() => {
+            const doc = this.#view?.document
+            if (doc) this.#background.style.background = getBackground(doc)
+        })
 
         // needed because the resize observer doesn't work in Firefox
-        this.#view?.document?.fonts?.ready?.then(() => this.#view.expand())
+        doc.fonts?.ready?.then(() => {
+            if (this.#view?.document === doc) this.#view.expand()
+        })
     }
     focusView() {
         this.#view.document.defaultView.focus()
     }
     destroy() {
         this.#observer.unobserve(this)
-        this.#view.destroy()
+        this.#view?.destroy()
         this.#view = null
         this.sections[this.#index]?.unload?.()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)

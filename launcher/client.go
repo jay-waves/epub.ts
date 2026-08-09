@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-func DaemonRunning(stateDir string) (bool, error) {
-	listenAddress, err := daemonAddress(stateDir)
+func DaemonRunning() (bool, error) {
+	listenAddress, err := daemonAddress()
 	if err != nil || listenAddress == "" {
 		return false, err
 	}
@@ -28,8 +28,8 @@ func DaemonRunning(stateDir string) (bool, error) {
 	return true, nil
 }
 
-func StopDaemon(stateDir string) error {
-	listenAddress, err := daemonAddress(stateDir)
+func StopDaemon() error {
+	listenAddress, err := daemonAddress()
 	if err != nil || listenAddress == "" {
 		return err
 	}
@@ -44,7 +44,7 @@ func StopDaemon(stateDir string) error {
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		currentAddress, checkErr := daemonAddress(stateDir)
+		currentAddress, checkErr := daemonAddress()
 		if checkErr != nil {
 			return checkErr
 		}
@@ -56,8 +56,8 @@ func StopDaemon(stateDir string) error {
 	return errors.New("epub.ts daemon did not stop within 10 seconds")
 }
 
-func RegisterWithDaemon(stateDir, documentPath string) (string, error) {
-	listenAddress, err := daemonAddress(stateDir)
+func RegisterWithDaemon(documentPath string) (string, error) {
+	listenAddress, err := daemonAddress()
 	if err != nil {
 		return "", err
 	}
@@ -91,13 +91,12 @@ func RegisterWithDaemon(stateDir, documentPath string) (string, error) {
 	return result.URL, nil
 }
 
-func daemonAddress(stateDir string) (string, error) {
-	registry, err := OpenRegistry(stateDir)
+func daemonAddress() (string, error) {
+	registry, err := OpenRegistry()
 	if err != nil {
 		return "", err
 	}
-	listenAddress, _ := registry.Endpoint()
-	return listenAddress, nil
+	return registry.Endpoint(), nil
 }
 
 func daemonRequest(method, listenAddress, path string, body io.Reader) (*http.Response, error) {

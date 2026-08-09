@@ -1,36 +1,7 @@
-import hljs from "highlight.js/lib/core";
-import bash from "highlight.js/lib/languages/bash";
-import c from "highlight.js/lib/languages/c";
-import cpp from "highlight.js/lib/languages/cpp";
-import csharp from "highlight.js/lib/languages/csharp";
-import css from "highlight.js/lib/languages/css";
-import diff from "highlight.js/lib/languages/diff";
-import go from "highlight.js/lib/languages/go";
-import ini from "highlight.js/lib/languages/ini";
-import java from "highlight.js/lib/languages/java";
-import javascript from "highlight.js/lib/languages/javascript";
-import json from "highlight.js/lib/languages/json";
-import kotlin from "highlight.js/lib/languages/kotlin";
-import markdown from "highlight.js/lib/languages/markdown";
-import plaintext from "highlight.js/lib/languages/plaintext";
-import python from "highlight.js/lib/languages/python";
-import rust from "highlight.js/lib/languages/rust";
-import sql from "highlight.js/lib/languages/sql";
-import typescript from "highlight.js/lib/languages/typescript";
-import xml from "highlight.js/lib/languages/xml";
-import yaml from "highlight.js/lib/languages/yaml";
+import hljs from "highlight.js/lib/common";
 
-type HighlightJs = typeof hljs;
 const enhancedDocuments = new WeakSet<Document>();
-const languages = {
-  bash, c, cpp, csharp, css, diff, go, ini, java, javascript, json, kotlin,
-  markdown, plaintext, python, rust, sql, typescript, xml, yaml,
-};
-
-for (const [name, language] of Object.entries(languages)) {
-  hljs.registerLanguage(name, language);
-}
-
+const MAX_AUTO_HIGHLIGHT_LENGTH = 20_000;
 export function highlightReaderCodeBlocks(
   doc: Document,
   codeBlocks: HTMLElement[],
@@ -42,21 +13,21 @@ export function highlightReaderCodeBlocks(
 }
 
 function highlightCodeBlock(block: HTMLElement) {
-  const source = extractCodeBlockText(block);
+  const target = resolveCodeBlockTarget(block);
+  const source = extractCodeBlockText(target);
   if (!source.trim()) return;
 
-  const target = resolveCodeBlockTarget(block);
-  const language = resolveHighlightLanguage(block, target, hljs);
+  const language = resolveHighlightLanguage(block, target);
+  if (!language && source.length > MAX_AUTO_HIGHLIGHT_LENGTH) return;
   const result = language
     ? hljs.highlight(source, { ignoreIllegals: true, language })
     : hljs.highlightAuto(source);
 
-  block.innerHTML = result.value;
+  target.innerHTML = result.value;
   block.classList.add("hljs");
 }
 
-function extractCodeBlockText(block: HTMLElement) {
-  const target = resolveCodeBlockTarget(block);
+function extractCodeBlockText(target: HTMLElement) {
   const structuralText = collectCodeText(target);
   const renderedText = target.innerText || "";
   return countLineBreaks(renderedText) > countLineBreaks(structuralText)
@@ -86,7 +57,7 @@ function resolveCodeBlockTarget(block: HTMLElement) {
   return onlyChild?.tagName === "CODE" ? onlyChild as HTMLElement : block;
 }
 
-function resolveHighlightLanguage(block: HTMLElement, codeElement: HTMLElement, highlighter: HighlightJs) {
+function resolveHighlightLanguage(block: HTMLElement, codeElement: HTMLElement) {
   const candidates = [
     codeElement.getAttribute("data-language"),
     block.getAttribute("data-language"),
@@ -95,22 +66,22 @@ function resolveHighlightLanguage(block: HTMLElement, codeElement: HTMLElement, 
   ].filter(Boolean) as string[];
 
   for (const value of candidates) {
-    const language = extractLanguageCandidate(value, highlighter);
+    const language = extractLanguageCandidate(value);
     if (language) return language;
   }
   return undefined;
 }
 
-function extractLanguageCandidate(value: string, highlighter: HighlightJs) {
+function extractLanguageCandidate(value: string) {
   const normalized = value.toLowerCase();
   for (const match of normalized.matchAll(/(?:language-|lang-)([a-z0-9_+#-]+)/giu)) {
     const candidate = match[1];
-    if (candidate && highlighter.getLanguage(candidate)) return candidate;
+    if (candidate && hljs.getLanguage(candidate)) return candidate;
   }
 
   for (const token of normalized.split(/\s+/u)) {
     const candidate = token.replace(/^[^a-z0-9]+|[^a-z0-9+#-]+$/giu, "");
-    if (candidate && highlighter.getLanguage(candidate)) return candidate;
+    if (candidate && hljs.getLanguage(candidate)) return candidate;
   }
   return undefined;
 }

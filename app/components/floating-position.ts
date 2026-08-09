@@ -1,66 +1,80 @@
-import { RefObject, useLayoutEffect, useState } from "react";
+import { useLayoutEffect } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import {
+  autoUpdate,
+  flip,
+  offset,
+  shift,
+  useDismiss,
+  useFloating,
+  useInteractions,
+} from "@floating-ui/react";
 
 type FloatingPoint = {
   x: number;
   y: number;
 };
 
-type FloatingSize = {
-  height: number;
-  width: number;
+type FloatingPositionOptions = {
+  gap?: number;
+  gutter?: number;
+  onDismiss: () => void;
+  open: boolean;
+  point: FloatingPoint;
 };
 
-const fallbackSize: FloatingSize = {
-  height: 0,
-  width: 0,
-};
-
-export function useFloatingPosition(
-  ref: RefObject<HTMLElement | null>,
-  point: FloatingPoint,
-  open: boolean,
-  options: { fallbackHeight?: number; fallbackWidth?: number; gap?: number; gutter?: number } = {},
-) {
+export function useFloatingPosition(options: FloatingPositionOptions) {
   const {
-    fallbackHeight = 0,
-    fallbackWidth = 0,
     gap = 8,
     gutter = 12,
+    onDismiss,
+    open,
+    point,
   } = options;
-  const [size, setSize] = useState<FloatingSize>(fallbackSize);
+  const {
+    context,
+    floatingStyles,
+    isPositioned,
+    refs,
+  } = useFloating({
+    middleware: [
+      offset(gap),
+      flip({ padding: gutter }),
+      shift({ padding: gutter }),
+    ],
+    onOpenChange: (nextOpen) => {
+      if (!nextOpen) onDismiss();
+    },
+    open,
+    placement: "bottom-start",
+    strategy: "fixed",
+    whileElementsMounted: autoUpdate,
+  });
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      refs.setPositionReference(null);
+      return;
+    }
 
-    const element = ref.current;
-    if (!element) return;
+    refs.setPositionReference({
+      getBoundingClientRect: () => new DOMRect(point.x, point.y, 0, 0),
+    });
+    return () => refs.setPositionReference(null);
+  }, [open, point.x, point.y, refs]);
 
-    const update = () => {
-      const rect = element.getBoundingClientRect();
-      setSize({ height: rect.height, width: rect.width });
-    };
-
-    update();
-    const resizeObserver = new ResizeObserver(update);
-    resizeObserver.observe(element);
-    window.addEventListener("resize", update);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", update);
-    };
-  }, [open, ref]);
-
-  const width = size.width || fallbackWidth;
-  const height = size.height || fallbackHeight;
-  const maxLeft = Math.max(gutter, window.innerWidth - width - gutter);
-  const maxTop = Math.max(gutter, window.innerHeight - height - gutter);
-  const preferredBelowTop = point.y + gap;
-  const preferredAboveTop = point.y - height - gap;
+  const dismiss = useDismiss(context, { enabled: open });
+  const { getFloatingProps } = useInteractions([dismiss]);
 
   return {
-    left: Math.min(Math.max(point.x, gutter), maxLeft),
-    top: preferredBelowTop + height > window.innerHeight - gutter && preferredAboveTop >= gutter
-      ? preferredAboveTop
-      : Math.min(Math.max(preferredBelowTop, gutter), maxTop),
+    floatingStyles: {
+      ...floatingStyles,
+      visibility: isPositioned ? undefined : "hidden",
+    },
+    floatingProps: getFloatingProps({
+      onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
+      onPointerDown: (event: ReactMouseEvent) => event.stopPropagation(),
+    }),
+    refs,
   };
 }

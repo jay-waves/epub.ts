@@ -28,7 +28,6 @@ type Document struct {
 type persistentState struct {
 	Version       int                 `json:"version"`
 	ListenAddress string              `json:"listenAddress,omitempty"`
-	PublicOrigin  string              `json:"publicOrigin,omitempty"`
 	Documents     map[string]Document `json:"documents"`
 }
 
@@ -38,7 +37,7 @@ type Registry struct {
 	state persistentState
 }
 
-func DefaultStateDir() (string, error) {
+func defaultStateDir() (string, error) {
 	directory, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("locate user configuration directory: %w", err)
@@ -46,18 +45,23 @@ func DefaultStateDir() (string, error) {
 	return filepath.Join(directory, "epub.ts"), nil
 }
 
-func OpenRegistry(directory string) (*Registry, error) {
-	if directory == "" {
-		var err error
-		directory, err = DefaultStateDir()
-		if err != nil {
-			return nil, err
-		}
+func ensureStateDir() (string, error) {
+	directory, err := defaultStateDir()
+	if err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, fmt.Errorf("create state directory: %w", err)
+		return "", fmt.Errorf("create state directory: %w", err)
 	}
 	_ = os.Chmod(directory, 0o700)
+	return directory, nil
+}
+
+func OpenRegistry() (*Registry, error) {
+	directory, err := ensureStateDir()
+	if err != nil {
+		return nil, err
+	}
 	registry := &Registry{
 		path: filepath.Join(directory, stateFilename),
 		state: persistentState{
@@ -173,17 +177,16 @@ func (registry *Registry) RemoveExpired(now time.Time) ([]string, error) {
 	return ids, nil
 }
 
-func (registry *Registry) Endpoint() (listenAddress, publicOrigin string) {
+func (registry *Registry) Endpoint() string {
 	registry.mutex.RLock()
 	defer registry.mutex.RUnlock()
-	return registry.state.ListenAddress, registry.state.PublicOrigin
+	return registry.state.ListenAddress
 }
 
-func (registry *Registry) SetEndpoint(listenAddress, publicOrigin string) error {
+func (registry *Registry) SetEndpoint(listenAddress string) error {
 	registry.mutex.Lock()
 	defer registry.mutex.Unlock()
 	registry.state.ListenAddress = listenAddress
-	registry.state.PublicOrigin = publicOrigin
 	return registry.writeLocked()
 }
 
@@ -194,7 +197,6 @@ func (registry *Registry) ClearEndpoint(listenAddress string) error {
 		return nil
 	}
 	registry.state.ListenAddress = ""
-	registry.state.PublicOrigin = ""
 	return registry.writeLocked()
 }
 
@@ -204,35 +206,12 @@ func (registry *Registry) writeLocked() error {
 		return fmt.Errorf("encode document registry: %w", err)
 	}
 	content = append(content, '\n')
-	temp, err := os.CreateTemp(filepath.Dir(registry.path), ".epub.ts-state-*")
-	if err != nil {
-		return fmt.Errorf("create temporary document registry: %w", err)
-	}
-	tempPath := temp.Name()
-	complete := false
-	defer func() {
-		_ = temp.Close()
-		if !complete {
-			_ = os.Remove(tempPath)
-		}
-	}()
-	if err := temp.Chmod(0o600); err != nil {
-		return fmt.Errorf("protect document registry: %w", err)
-	}
-	if _, err := temp.Write(content); err != nil {
-		return fmt.Errorf("write document registry: %w", err)
-	}
-	if err := temp.Sync(); err != nil {
-		return fmt.Errorf("flush document registry: %w", err)
-	}
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("close document registry: %w", err)
-	}
-	if err := atomicReplace(tempPath, registry.path); err != nil {
-		return fmt.Errorf("replace document registry: %w", err)
-	}
-	complete = true
-	return nil
+	return writePrivateFileAtomically(
+		registry.path,
+		".epub.ts-state-*",
+		"document registry",
+		content,
+	)
 }
 
 func sameDocumentPath(left, right string) bool {

@@ -15,8 +15,7 @@ pnpm build:linux
 pnpm build:windows
 ```
 
-Artifacts are written to `release/launcher/epub.ts` and
-`release/launcher/epub.ts.exe`.
+Artifacts are written to `release/epub.ts` and `release/epub.ts.exe`.
 
 ## Build
 
@@ -24,7 +23,7 @@ Artifacts are written to `release/launcher/epub.ts` and
 # Static web app (output: release/web)
 pnpm build:web
 
-# Chrome extension and ZIP package
+# Chrome extension (output: release/chrome-extension) and ZIP package (output: release/)
 pnpm build:chrome
 ```
 

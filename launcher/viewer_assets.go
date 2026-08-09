@@ -17,10 +17,6 @@ type viewerAssetHandler struct {
 	files fs.FS
 }
 
-func newViewerAssetHandler(files fs.FS) http.Handler {
-	return viewerAssetHandler{files: files}
-}
-
 func (handler viewerAssetHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		response.Header().Set("Allow", "GET, HEAD")

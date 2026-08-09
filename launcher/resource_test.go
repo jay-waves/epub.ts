@@ -10,7 +10,7 @@ import (
 )
 
 func TestServeRefreshesVersionAfterExternalChange(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "document.pdf")
+	path := filepath.Join(t.TempDir(), "document.epub")
 	if err := os.WriteFile(path, []byte("version one"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -44,39 +44,30 @@ func TestServeRefreshesVersionAfterExternalChange(t *testing.T) {
 }
 
 func TestServeReportsDocumentFilename(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "reader copy.epub")
-	if err := os.WriteFile(path, []byte("epub"), 0o600); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		filename string
+		expected string
+	}{
+		{"reader copy.epub", `inline; filename="reader copy.epub"; filename*=UTF-8''reader%20copy.epub`},
+		{"中文 书.epub", `inline; filename="__ _.epub"; filename*=UTF-8''%E4%B8%AD%E6%96%87%20%E4%B9%A6.epub`},
 	}
-	resource, err := NewResource(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	if err := resource.Serve(response, httptest.NewRequest(http.MethodHead, "/resource", nil)); err != nil {
-		t.Fatal(err)
-	}
-	if disposition := response.Header().Get("Content-Disposition"); disposition !=
-		`inline; filename="reader copy.epub"; filename*=UTF-8''reader%20copy.epub` {
-		t.Fatalf("unexpected Content-Disposition: %q", disposition)
-	}
-}
-
-func TestServeEncodesUnicodeDocumentFilename(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "中文 书.epub")
-	if err := os.WriteFile(path, []byte("epub"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	resource, err := NewResource(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := httptest.NewRecorder()
-	if err := resource.Serve(response, httptest.NewRequest(http.MethodHead, "/resource", nil)); err != nil {
-		t.Fatal(err)
-	}
-	const expected = `inline; filename="__ _.epub"; filename*=UTF-8''%E4%B8%AD%E6%96%87%20%E4%B9%A6.epub`
-	if disposition := response.Header().Get("Content-Disposition"); disposition != expected {
-		t.Fatalf("unexpected Content-Disposition: %q", disposition)
+	for _, test := range tests {
+		t.Run(test.filename, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), test.filename)
+			if err := os.WriteFile(path, []byte("epub"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			resource, err := NewResource(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			if err := resource.Serve(response, httptest.NewRequest(http.MethodHead, "/resource", nil)); err != nil {
+				t.Fatal(err)
+			}
+			if disposition := response.Header().Get("Content-Disposition"); disposition != test.expected {
+				t.Fatalf("unexpected Content-Disposition: %q", disposition)
+			}
+		})
 	}
 }

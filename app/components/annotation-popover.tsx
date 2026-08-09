@@ -25,7 +25,6 @@ export function AnnotationPopover() {
   const stateRef = useRef(state);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const deletingRef = useRef(false);
-  const popoverRef = useRef<HTMLElement | null>(null);
 
   const updateState = (update: (current: AnnotationState) => AnnotationState) => {
     setState((current) => {
@@ -59,30 +58,11 @@ export function AnnotationPopover() {
     return () => cancelAnimationFrame(frame);
   }, [state.open, state.value]);
 
-  useEffect(() => {
-    const requestClose = (event: Event) => {
-      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-      const target = event.target;
-      if (target instanceof Element && target.closest(".reader-text-popover")) return;
-      emitViewerEvent(VIEWER_EVENTS.annotationClose);
-    };
-
-    window.addEventListener("pointerdown", requestClose);
-    window.addEventListener("contextmenu", requestClose);
-    window.addEventListener("keydown", requestClose);
-    return () => {
-      window.removeEventListener("pointerdown", requestClose);
-      window.removeEventListener("contextmenu", requestClose);
-      window.removeEventListener("keydown", requestClose);
-    };
-  }, []);
-
-  const position = useFloatingPosition(
-    popoverRef,
-    { x: state.x, y: state.y },
-    state.open,
-    { fallbackHeight: 300, fallbackWidth: 340 },
-  );
+  const { floatingProps, floatingStyles, refs } = useFloatingPosition({
+    onDismiss: () => emitViewerEvent(VIEWER_EVENTS.annotationClose),
+    open: state.open,
+    point: { x: state.x, y: state.y },
+  });
 
   if (!state.open) return null;
 
@@ -90,12 +70,13 @@ export function AnnotationPopover() {
 
   return (
     <section
+      {...floatingProps}
+      aria-label="Annotation"
       aria-live="polite"
       className="reader-text-popover"
-      ref={popoverRef}
-      style={position}
-      onContextMenu={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.stopPropagation()}
+      ref={refs.setFloating}
+      role="dialog"
+      style={floatingStyles}
     >
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">

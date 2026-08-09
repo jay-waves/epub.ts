@@ -8,10 +8,6 @@ import (
 	"strings"
 )
 
-var allowedExtensions = map[string]bool{
-	".epub": true,
-}
-
 func ResolveTarget(argument string) (string, error) {
 	raw := strings.TrimSpace(strings.Trim(argument, `"`))
 	if raw == "" {
@@ -32,7 +28,7 @@ func ResolveTarget(argument string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", errors.New("document target must be a regular file")
 	}
-	if !allowedExtensions[strings.ToLower(filepath.Ext(canonical))] {
+	if !strings.EqualFold(filepath.Ext(canonical), ".epub") {
 		return "", errors.New("epub.ts only opens EPUB files")
 	}
 	return canonical, nil

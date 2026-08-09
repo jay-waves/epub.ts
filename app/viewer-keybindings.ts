@@ -28,10 +28,10 @@ function isScrollUpKey(key: string) {
 }
 
 function isScrollDownKey(key: string) {
-  return key === "ArrowDown" || key === "j" || key === " " || key === "Spacebar";
+  return key === "ArrowDown" || key === "j" || key === " ";
 }
 
-export function setupViewerKeybindings(options: {
+type ViewerKeybindingOptions = {
   getReaderView: () => FoliateViewElement | null;
   getFlow: () => "paginated" | "scrolled";
   canTurnPage: () => boolean;
@@ -41,7 +41,9 @@ export function setupViewerKeybindings(options: {
   openSearch: () => void;
   closeSearch: () => void;
   saveBook: () => void;
-}) {
+};
+
+export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
   const keyTargets = new Map<Document, () => void>();
   const boundReaderViews = new Map<FoliateViewElement, { documents: Set<Document>; onLoad: EventListener }>();
   let pressedScrollKey: string | null = null;

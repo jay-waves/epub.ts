@@ -24,14 +24,7 @@ const (
 	DefaultPublicHost    = "epub.ts.localhost"
 )
 
-type Options struct {
-	ListenAddress string
-	PublicHost    string
-	StateDir      string
-}
-
 type App struct {
-	options    Options
 	registry   *Registry
 	resources  map[string]*Resource
 	mutex      sync.Mutex
@@ -48,19 +41,12 @@ type openResult struct {
 	URL string `json:"url"`
 }
 
-func New(options Options) (*App, error) {
-	if options.ListenAddress == "" {
-		options.ListenAddress = DefaultListenAddress
-	}
-	if options.PublicHost == "" {
-		options.PublicHost = DefaultPublicHost
-	}
-	registry, err := OpenRegistry(options.StateDir)
+func New() (*App, error) {
+	registry, err := OpenRegistry()
 	if err != nil {
 		return nil, err
 	}
 	return &App{
-		options:   options,
 		registry:  registry,
 		resources: make(map[string]*Resource),
 		done:      make(chan error, 1),
@@ -71,10 +57,10 @@ func (app *App) Start(ctx context.Context) (string, error) {
 	if err := app.acquireDaemonLock(); err != nil {
 		return "", err
 	}
-	listener, err := net.Listen("tcp", app.options.ListenAddress)
+	listener, err := net.Listen("tcp", DefaultListenAddress)
 	if err != nil {
 		app.releaseDaemonLock()
-		return "", fmt.Errorf("listen on %s: %w", app.options.ListenAddress, err)
+		return "", fmt.Errorf("listen on %s: %w", DefaultListenAddress, err)
 	}
 	tcpAddress, ok := listener.Addr().(*net.TCPAddr)
 	if !ok || !tcpAddress.IP.IsLoopback() {
@@ -83,8 +69,8 @@ func (app *App) Start(ctx context.Context) (string, error) {
 		return "", errors.New("epub.ts must listen on a loopback address")
 	}
 	app.listener = listener
-	app.origin = "http://" + net.JoinHostPort(app.options.PublicHost, fmt.Sprint(tcpAddress.Port))
-	if err := app.registry.SetEndpoint(listener.Addr().String(), app.origin); err != nil {
+	app.origin = "http://" + net.JoinHostPort(DefaultPublicHost, fmt.Sprint(tcpAddress.Port))
+	if err := app.registry.SetEndpoint(listener.Addr().String()); err != nil {
 		_ = listener.Close()
 		app.releaseDaemonLock()
 		return "", err
@@ -207,7 +193,7 @@ func (app *App) routes() http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	mux.Handle("/", newViewerAssetHandler(sub))
+	mux.Handle("/", viewerAssetHandler{files: sub})
 	return app.securityHeaders(mux)
 }
 
@@ -402,7 +388,7 @@ func (app *App) handleResource(resource *Resource, response http.ResponseWriter,
 func (app *App) resourceFor(document Document) (*Resource, error) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	if resource := app.resources[document.ID]; resource != nil && sameDocumentPath(resource.Path(), document.Path) {
+	if resource := app.resources[document.ID]; resource != nil && sameDocumentPath(resource.path, document.Path) {
 		return resource, nil
 	}
 	resource, err := NewResource(document.Path)

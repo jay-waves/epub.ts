@@ -23,7 +23,7 @@ mathjax.asyncLoad = async (name: string) => {
 const adaptor = browserAdaptor();
 RegisterHTMLHandler(adaptor);
 
-export type MathJaxSvgRenderOptions = {
+type MathJaxSvgRenderOptions = {
   containerWidth: number;
   em: number;
   ex: number;
@@ -35,7 +35,7 @@ export function createMathJaxSvgRenderer() {
   const output = new SVG({
     fontCache: "local",
     fontData: MathJaxNewcmFont,
-    scale: 1.22,
+    scale: 1.55,
     useXlink: false,
   });
   const mathDocument = mathjax.document(sourceDocument, {

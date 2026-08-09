@@ -82,6 +82,7 @@ export class FixedLayout extends HTMLElement {
         const element = document.createElement('div')
         element.setAttribute('dir', 'ltr')
         const iframe = document.createElement('iframe')
+        iframe.dataset.index = String(index)
         element.append(iframe)
         Object.assign(iframe.style, {
             border: '0',
@@ -183,8 +184,9 @@ export class FixedLayout extends HTMLElement {
             this.#side = 'center'
             this.#render()
         } else {
-            this.#left = await this.#createFrame(left)
-            this.#right = await this.#createFrame(right)
+            ;[this.#left, this.#right] = await Promise.all([
+                this.#createFrame(left), this.#createFrame(right),
+            ])
             this.#side = this.#left.blank ? 'right'
                 : this.#right.blank ? 'left' : side
             this.#render()
@@ -272,12 +274,19 @@ export class FixedLayout extends HTMLElement {
             if (center === section) return { index, side: 'center' }
         }
     }
+    #unloadSpread(spread, keep = {}) {
+        const retained = new Set([keep.left, keep.right, keep.center])
+        for (const section of [spread?.left, spread?.right, spread?.center]) {
+            if (section && !retained.has(section)) section.unload?.()
+        }
+    }
     async goToSpread(index, side, reason) {
         if (index < 0 || index > this.#spreads.length - 1) return
         if (index === this.#index) {
             this.#render(side)
             return
         }
+        const previousSpread = this.#spreads[this.#index]
         this.#index = index
         const spread = this.#spreads[index]
         if (spread.center) {
@@ -293,6 +302,7 @@ export class FixedLayout extends HTMLElement {
             const right = { index: indexR, src: srcR }
             await this.#showSpread({ left, right, side })
         }
+        this.#unloadSpread(previousSpread, spread)
         this.#reportLocation(reason)
     }
     async select(target) {
@@ -318,11 +328,13 @@ export class FixedLayout extends HTMLElement {
     getContents() {
         return Array.from(this.#root.querySelectorAll('iframe'), frame => ({
             doc: frame.contentDocument,
-            // TODO: index, overlayer
+            index: Number(frame.dataset.index),
+            // TODO: overlayer
         }))
     }
     destroy() {
         this.#observer.unobserve(this)
+        this.#unloadSpread(this.#spreads?.[this.#index])
     }
 }
 

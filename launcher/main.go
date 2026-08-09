@@ -14,7 +14,7 @@ func main() {
 	args := os.Args[1:]
 	if err := run(args); err != nil {
 		if len(args) == 1 && args[0] == "daemon" {
-			_ = RecordDaemonError("", err)
+			_ = RecordDaemonError(err)
 			os.Exit(1)
 		}
 		ReportError("epub.ts", err.Error())
@@ -41,7 +41,7 @@ func run(args []string) error {
 		if len(args) != 1 {
 			return usageError()
 		}
-		return StopDaemon("")
+		return StopDaemon()
 	case "status":
 		if len(args) != 1 {
 			return usageError()
@@ -72,7 +72,7 @@ func run(args []string) error {
 }
 
 func printStatus() error {
-	running, err := DaemonRunning("")
+	running, err := DaemonRunning()
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func printStatus() error {
 		return nil
 	}
 	fmt.Println("stopped")
-	failure, err := LastDaemonError("")
+	failure, err := LastDaemonError()
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func openDocument(argument string) error {
 	if err := startDaemon(); err != nil {
 		return err
 	}
-	viewerURL, err := RegisterWithDaemon("", documentPath)
+	viewerURL, err := RegisterWithDaemon(documentPath)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func openDocument(argument string) error {
 }
 
 func startDaemon() error {
-	running, err := DaemonRunning("")
+	running, err := DaemonRunning()
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func startDaemon() error {
 	var lastError error
 	for time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
-		running, err = DaemonRunning("")
+		running, err = DaemonRunning()
 		if err != nil {
 			lastError = err
 			continue
@@ -152,7 +152,7 @@ func startDaemon() error {
 }
 
 func runDaemon() error {
-	app, err := New(Options{})
+	app, err := New()
 	if err != nil {
 		return err
 	}
@@ -163,6 +163,6 @@ func runDaemon() error {
 	if err != nil {
 		return err
 	}
-	_ = ClearDaemonError("")
+	_ = ClearDaemonError()
 	return app.Wait()
 }

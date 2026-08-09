@@ -6,20 +6,34 @@ type RenderedFormula = {
   container: Element;
 };
 
-const ENABLE_MATHJAX_SVG = false;
 const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+const MATH_TEXT_SPACING = "0.25em";
 const enhancedMathDocuments = new WeakSet<Document>();
 const normalizedMathDocuments = new WeakSet<Document>();
-let mathJaxReady: Promise<MathJaxSvgModule> | null = null;
+let mathRendererReady: Promise<MathJaxSvgRenderer> | null = null;
+let mathRenderQueue = Promise.resolve();
 
-export async function renderMathDocument(doc: Document, isCurrent: () => boolean) {
+export function prepareMathRenderer() {
+  if (mathRendererReady) return mathRendererReady;
+
+  const pending = import("./mathjax-svg")
+    .then((mathJax) => mathJax.createMathJaxSvgRenderer());
+  mathRendererReady = pending;
+  void pending.catch(() => {
+    if (mathRendererReady === pending) mathRendererReady = null;
+  });
+  return pending;
+}
+
+export async function renderMathDocument(
+  doc: Document,
+  isCurrent: () => boolean,
+  rendererReady?: Promise<MathJaxSvgRenderer>,
+) {
   normalizeMathDocument(doc);
-  if (!ENABLE_MATHJAX_SVG) return;
   if (enhancedMathDocuments.has(doc)) return;
 
-  const formulas = Array.from(
-    doc.querySelectorAll<MathMLElement>('math[display="block"]'),
-  );
+  const formulas = Array.from(doc.querySelectorAll<MathMLElement>('math[display="block"]'));
   if (!formulas.length) {
     enhancedMathDocuments.add(doc);
     return;
@@ -27,14 +41,30 @@ export async function renderMathDocument(doc: Document, isCurrent: () => boolean
 
   let renderer: MathJaxSvgRenderer;
   try {
-    const mathJax = await ensureMathJax();
-    renderer = mathJax.createMathJaxSvgRenderer();
+    renderer = await (rendererReady ?? prepareMathRenderer());
   } catch (error) {
     console.warn("Failed to load MathJax; keeping native MathML.", error);
     return;
   }
   if (!isCurrent()) return;
 
+  await enqueueMathRender(async () => {
+    await renderMathFormulas(doc, formulas, renderer, isCurrent);
+  });
+}
+
+function enqueueMathRender(render: () => Promise<void>) {
+  const queued = mathRenderQueue.then(render);
+  mathRenderQueue = queued.catch(() => undefined);
+  return queued;
+}
+
+async function renderMathFormulas(
+  doc: Document,
+  formulas: MathMLElement[],
+  renderer: MathJaxSvgRenderer,
+  isCurrent: () => boolean,
+) {
   const rendered: RenderedFormula[] = [];
   for (const formula of formulas) {
     if (!formula.isConnected || !isCurrent()) return;
@@ -79,6 +109,38 @@ function normalizeMathDocument(doc: Document) {
 
   normalizeTextSubscripts(doc);
   normalizeLatinMathIdentifiers(doc);
+  normalizeMathTextSpacing(doc);
+}
+
+function normalizeMathTextSpacing(doc: Document) {
+  for (const text of doc.querySelectorAll('math[display="block"] mtext')) {
+    const value = text.textContent ?? "";
+    if (!value.trim()) continue;
+
+    if (!/^\s/u.test(value) && needsMathTextSpace(text.previousElementSibling, "before")) {
+      text.before(createMathSpace(doc));
+    }
+    if (!/\s$/u.test(value) && needsMathTextSpace(text.nextElementSibling, "after")) {
+      text.after(createMathSpace(doc));
+    }
+  }
+}
+
+function needsMathTextSpace(sibling: Element | null, side: "before" | "after") {
+  if (!sibling || sibling.localName === "mspace") return false;
+  if (sibling.localName !== "mo") return true;
+
+  const operator = sibling.textContent?.trim() ?? "";
+  const adjacentPunctuation = side === "before"
+    ? /^[([{（【《“‘]$/u
+    : /^[,.;:!?，。；：！？、)\]}）】》”’]$/u;
+  return !adjacentPunctuation.test(operator);
+}
+
+function createMathSpace(doc: Document) {
+  const space = doc.createElementNS(MATHML_NAMESPACE, "mspace");
+  space.setAttribute("width", MATH_TEXT_SPACING);
+  return space;
 }
 
 function normalizeTextSubscripts(doc: Document) {
@@ -149,9 +211,4 @@ function decorateMathContainer(container: Element, formula: MathMLElement) {
   container.setAttribute("aria-label", altText);
   container.setAttribute("role", "math");
   container.querySelector("svg")?.setAttribute("aria-hidden", "true");
-}
-
-async function ensureMathJax() {
-  mathJaxReady ??= import("./mathjax-svg");
-  return mathJaxReady;
 }

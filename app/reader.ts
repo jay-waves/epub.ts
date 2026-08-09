@@ -1,6 +1,6 @@
 import { platform } from "#platform";
 
-export type ReaderThemeMode = "light" | "dark";
+type ReaderThemeMode = "light" | "dark";
 export type ReaderFlow = "paginated" | "scrolled";
 export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark";
 
@@ -29,7 +29,6 @@ export type ReadingPosition = {
 export type ReaderHighlight = {
   value: string;
   color: string;
-  kind?: "annotation" | "highlight";
   text?: string;
   note?: string;
   index?: number;

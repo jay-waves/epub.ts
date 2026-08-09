@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useFloatingPosition } from "./floating-position";
@@ -17,6 +17,7 @@ const closedState: MenuState = {
   canCopy: false,
   canDelete: false,
   canHighlight: false,
+  kind: "text",
   open: false,
   x: 0,
   y: 0,
@@ -32,49 +33,33 @@ const menuItems = [
 
 export function HighlightContextMenu() {
   const [state, setState] = useState<MenuState>(closedState);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const position = useFloatingPosition(
-    menuRef,
-    { x: state.x, y: state.y },
-    state.open,
-    { fallbackHeight: 150, fallbackWidth: 144, gap: 4 },
-  );
-  const close = () => setState((current) => ({ ...current, open: false }));
+  const close = () => emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
+  const { floatingProps, floatingStyles, refs } = useFloatingPosition({
+    gap: 4,
+    onDismiss: close,
+    open: state.open,
+    point: { x: state.x, y: state.y },
+  });
 
   useViewerEvent(VIEWER_EVENTS.highlightContextOpen, (detail) => {
     setState({ ...detail, open: true });
   });
-  useViewerEvent(VIEWER_EVENTS.highlightContextClose, close);
-
-  useEffect(() => {
-    const requestClose = (event: Event) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest(".reader-context-menu")) return;
-      emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
-    };
-
-    window.addEventListener("pointerdown", requestClose);
-    window.addEventListener("contextmenu", requestClose);
-    window.addEventListener("keydown", requestClose);
-    return () => {
-      window.removeEventListener("pointerdown", requestClose);
-      window.removeEventListener("contextmenu", requestClose);
-      window.removeEventListener("keydown", requestClose);
-    };
-  }, []);
+  useViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
+    setState((current) => ({ ...current, open: false }));
+  });
 
   if (!state.open) return null;
+  const visibleItems = state.kind === "media" ? menuItems.slice(0, 1) : menuItems;
 
   return (
     <div
+      {...floatingProps}
       className="reader-context-menu"
-      ref={menuRef}
-      style={position}
+      ref={refs.setFloating}
+      style={floatingStyles}
       role="menu"
-      onContextMenu={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.stopPropagation()}
     >
-      {menuItems.map((item) => (
+      {visibleItems.map((item) => (
         <ContextMenuItem
           {...item}
           disabled={!state[item.enabledBy]}

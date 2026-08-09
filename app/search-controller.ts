@@ -6,12 +6,19 @@ import { getSavedHighlights } from "./viewer-storage";
 const LONG_SEARCH_QUERY_THRESHOLD = 24;
 const MAX_SEARCH_QUERY_LENGTH = 120;
 const MAX_SEARCH_RESULTS = 200;
+const SECTION_DISTANCE_WEIGHT = 1_000_000;
 
-export function createSearchController(options: {
+type SearchControllerOptions = {
   getBookKey: () => string;
   getReaderView: () => FoliateViewElement | null;
   runWithReaderRenderPending: (action: () => Promise<unknown> | undefined) => Promise<void>;
-}) {
+};
+
+type SearchCollectOptions = {
+  highlightedOnly?: boolean;
+};
+
+export function createSearchController(options: SearchControllerOptions) {
   let searchRunId = 0;
   let searchHits: SearchHit[] = [];
   let searchHitIndex = -1;
@@ -77,15 +84,11 @@ export function createSearchController(options: {
       const resolved = readerView.resolveNavigation?.(hit.cfi);
       if (!resolved) continue;
 
-      let distance = Math.abs(resolved.index - currentSection) * 1_000_000;
+      let distance = Math.abs(resolved.index - currentSection) * SECTION_DISTANCE_WEIGHT;
       if (resolved.index === currentSection && resolved.anchor) {
         const anchor = resolved.anchor(doc);
-        const rects = anchor instanceof view.Range
-          ? anchor.getClientRects()
-          : anchor instanceof view.Element
-            ? [anchor.getBoundingClientRect()]
-            : [];
-        distance = Math.min(...Array.from(rects ?? [], (rect) => {
+        const rects = getAnchorRects(anchor, view);
+        distance = Math.min(...rects.map((rect) => {
           const start = vertical ? rect.top : rect.left;
           const end = vertical ? rect.bottom : rect.right;
           return end < 0 ? -end : start > viewportEnd ? start - viewportEnd : 0;
@@ -129,7 +132,7 @@ export function createSearchController(options: {
     }
   };
 
-  const collect = async (query: string, collectOptions: { highlightedOnly?: boolean } = {}) => {
+  const collect = async (query: string, collectOptions: SearchCollectOptions = {}) => {
     if (collectOptions.highlightedOnly) {
       await collectHighlights(query);
       return;
@@ -149,18 +152,9 @@ export function createSearchController(options: {
         if (runId !== searchRunId) return;
         if (entry === "done") break;
 
-        if (typeof entry === "object" && entry) {
-          const hits =
-            "subitems" in entry && Array.isArray(entry.subitems)
-              ? (entry.subitems as SearchHit[])
-              : "cfi" in entry
-                ? [entry as SearchHit]
-                : [];
-
-          for (const hit of hits) {
-            searchHits.push({ cfi: hit.cfi, excerpt: hit.excerpt });
-            if (searchHits.length >= MAX_SEARCH_RESULTS) break searchBook;
-          }
+        for (const hit of getSearchEntryHits(entry)) {
+          searchHits.push({ cfi: hit.cfi, excerpt: hit.excerpt });
+          if (searchHits.length >= MAX_SEARCH_RESULTS) break searchBook;
         }
       }
 
@@ -183,6 +177,19 @@ export function createSearchController(options: {
     showNext: () => showHit(searchHitIndex + 1),
     showPrevious: () => showHit(searchHitIndex - 1),
   };
+}
+
+function getAnchorRects(anchor: Node | Range, view: Window & typeof globalThis) {
+  if (anchor instanceof view.Range) return Array.from(anchor.getClientRects());
+  if (anchor instanceof view.Element) return [anchor.getBoundingClientRect()];
+  return [];
+}
+
+function getSearchEntryHits(entry: unknown): SearchHit[] {
+  if (!entry || typeof entry !== "object") return [];
+  if ("subitems" in entry && Array.isArray(entry.subitems)) return entry.subitems as SearchHit[];
+  if ("cfi" in entry && typeof entry.cfi === "string") return [entry as SearchHit];
+  return [];
 }
 
 function getSearchOptions(query: string) {

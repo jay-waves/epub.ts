@@ -12,27 +12,18 @@ const queueHighlightWrite = createWriteQueue();
 const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
 const getBookHighlightsKey = (bookKey: string) => `reading-highlights:${bookKey}`;
 
-async function getBookPositionRecord(bookKey: string) {
-  if (!bookKey) return null;
-  return (await platform.readViewerMetadata<ReadingPosition>(getBookPositionKey(bookKey))) ?? null;
-}
-
-async function getBookHighlightsRecord(bookKey: string) {
-  if (!bookKey) return [];
-  return (await platform.readViewerMetadata<ReaderHighlight[]>(getBookHighlightsKey(bookKey))) ?? [];
-}
-
 function updateBookPosition(
   bookKey: string,
-  update: (previous: ReadingPosition | null) => ReadingPosition,
+  update: (previous: ReadingPosition | undefined) => ReadingPosition,
 ) {
   return queuePositionWrite(async () => {
-    await platform.writeViewerMetadata(getBookPositionKey(bookKey), update(await getBookPositionRecord(bookKey)));
+    await platform.writeViewerMetadata(getBookPositionKey(bookKey), update(await getSavedPosition(bookKey)));
   });
 }
 
 export async function getSavedPosition(bookKey: string) {
-  return (await getBookPositionRecord(bookKey)) ?? undefined;
+  if (!bookKey) return undefined;
+  return platform.readViewerMetadata<ReadingPosition>(getBookPositionKey(bookKey));
 }
 
 export async function saveReadingPosition(bookKey: string, detail: RelocateDetail) {
@@ -56,7 +47,8 @@ export async function saveReaderSettings(bookKey: string, settings: ReaderSettin
 }
 
 export async function getSavedHighlights(bookKey: string) {
-  return getBookHighlightsRecord(bookKey);
+  if (!bookKey) return [];
+  return (await platform.readViewerMetadata<ReaderHighlight[]>(getBookHighlightsKey(bookKey))) ?? [];
 }
 
 export async function setSavedHighlights(bookKey: string, bookHighlights: ReaderHighlight[]) {
