@@ -7,7 +7,9 @@ let activeZoomProxy: HTMLImageElement | null = null;
 let imageZoomRunId = 0;
 let disposed = false;
 const enhancedDocuments = new WeakSet<Document>();
+const IMAGE_ZOOM_MARGIN = 28;
 const MIN_ZOOMABLE_IMAGE_SIZE = 160;
+const MIN_ZOOMED_IMAGE_LONG_EDGE = 320;
 
 export function enhanceReaderImages(doc: Document) {
   if (enhancedDocuments.has(doc)) return;
@@ -41,7 +43,7 @@ async function ensureReaderImageZoom() {
   if (disposed) return null;
   readerImageZoom = mediumZoom({
     background: "color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, rgb(15 23 42) 28%)",
-    margin: 28,
+    margin: IMAGE_ZOOM_MARGIN,
     scrollOffset: 24,
   });
   readerImageZoom.on("open", handleImageZoomOpen);
@@ -147,6 +149,28 @@ async function openReaderImageZoom(image: HTMLImageElement) {
     return;
   }
   await zoom.open({ target: proxy });
+  if (runId !== imageZoomRunId || activeZoomProxy !== proxy) return;
+  enlargeSmallZoomedImage(zoom.getZoomedImage());
+}
+
+function enlargeSmallZoomedImage(image: HTMLElement | null) {
+  if (!image) return;
+
+  const bounds = image.getBoundingClientRect();
+  const longEdge = Math.max(bounds.width, bounds.height);
+  if (!bounds.width || !bounds.height || longEdge >= MIN_ZOOMED_IMAGE_LONG_EDGE) return;
+
+  const availableWidth = document.documentElement.clientWidth - IMAGE_ZOOM_MARGIN * 2;
+  const availableHeight = document.documentElement.clientHeight - IMAGE_ZOOM_MARGIN * 2;
+  const minimumScale = MIN_ZOOMED_IMAGE_LONG_EDGE / longEdge;
+  const viewportScale = Math.min(
+    availableWidth / bounds.width,
+    availableHeight / bounds.height,
+  );
+  const scale = Math.min(minimumScale, viewportScale);
+  if (scale <= 1) return;
+
+  image.style.transform = `${image.style.transform} scale(${scale})`;
 }
 
 function createReaderImageZoomProxy(image: HTMLImageElement) {

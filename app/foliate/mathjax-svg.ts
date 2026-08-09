@@ -42,10 +42,10 @@ const STYLE_ID = "reader-math-styles";
 export function createMathJaxSvgRenderer() {
   const sourceDocument = document.implementation.createHTMLDocument("");
   const output = new SVG({
-    blacker: 10,
+    blacker: 12,
     fontCache: "global",
     fontData: MathJaxNewcmFont,
-    scale: 1.55,
+    scale: 1.35,
     useXlink: false,
   });
   const mathDocument = mathjax.document(sourceDocument, {
@@ -75,7 +75,7 @@ export function createMathJaxSvgRenderer() {
   };
 
   return {
-    cacheKey: "mathjax-newcm-svg-1.55-b10-global",
+    cacheKey: "mathjax-newcm-svg-1.35-b12-global",
     async render(source: string, options: MathJaxSvgRenderOptions) {
       return await mathDocument.convertPromise(source, options) as Element;
     },

@@ -19,7 +19,7 @@ export function TocPage() {
 
   useViewerEvent(VIEWER_EVENTS.tocOpen, () => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.show();
+    if (dialog && !dialog.open) dialog.showModal();
     setInteraction(null);
     scrollCurrentItemIntoView(rootRef.current);
   });
@@ -31,17 +31,6 @@ export function TocPage() {
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
   }, [interaction, tocState]);
-
-  useEffect(() => {
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const dialog = dialogRef.current;
-      if (!dialog?.open || !(event.target instanceof Node)) return;
-      if (!dialog.contains(event.target)) dialog.close();
-    };
-
-    window.addEventListener("pointerdown", closeOnOutsidePointer, true);
-    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
-  }, []);
 
   const navigate = (href?: string) => {
     if (!href) return;
