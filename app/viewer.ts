@@ -38,6 +38,7 @@ import {
 } from "./foliate";
 import { createHighlightController } from "./highlight-controller";
 import {
+  clearMathSvgCache,
   closeReaderContentOverlays,
   disposeReaderContent,
   prepareReaderContentDocument,
@@ -469,6 +470,7 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1], op
   highlightController.reset();
   await closeReaderContentOverlays();
   if (!isCurrentBookOpen(openToken)) return false;
+  clearMathSvgCache();
   runtime.readerView?.close();
   if (session.document && session.document !== source.document) session.document.release?.();
   resetBookSession(session, source);
@@ -894,6 +896,7 @@ async function disposeViewer() {
   runtime.searchController?.clear();
   runtime.readingProgressController?.destroy();
   await disposeReaderContent();
+  clearMathSvgCache();
   runtime.readerView?.close();
   session.document?.release?.();
   session.document = null;

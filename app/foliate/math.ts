@@ -1,3 +1,9 @@
+import {
+  cacheMathSvg,
+  clearMathSvgCache,
+  getCachedMathSvg,
+} from "./math-svg-cache";
+
 type MathJaxSvgModule = typeof import("./mathjax-svg");
 type MathJaxSvgRenderer = ReturnType<MathJaxSvgModule["createMathJaxSvgRenderer"]>;
 
@@ -12,6 +18,8 @@ const enhancedMathDocuments = new WeakSet<Document>();
 const normalizedMathDocuments = new WeakSet<Document>();
 let mathRendererReady: Promise<MathJaxSvgRenderer> | null = null;
 let mathRenderQueue = Promise.resolve();
+
+export { clearMathSvgCache };
 
 export function prepareMathRenderer() {
   if (mathRendererReady) return mathRendererReady;
@@ -76,12 +84,18 @@ async function renderMathFormulas(
         || doc.documentElement.clientWidth
         || 80 * em;
       const source = new XMLSerializer().serializeToString(formula);
-      const container = await renderer.render(source, {
+      const options = {
         containerWidth,
         em,
         ex: em / 2,
         family: style?.fontFamily ?? "",
-      });
+      };
+      const cacheKey = JSON.stringify([renderer.cacheKey, source, options]);
+      const cached = getCachedMathSvg(cacheKey);
+      const container = cached
+        ? parseMathContainer(doc, cached)
+        : await renderer.render(source, options);
+      if (!cached && container) cacheMathSvg(cacheKey, container.outerHTML);
       if (!formula.isConnected || !isCurrent()) return;
       if (!container || container.localName !== "mjx-container") continue;
       rendered.push({ formula, container });
@@ -101,6 +115,12 @@ async function renderMathFormulas(
   }
 
   enhancedMathDocuments.add(doc);
+}
+
+function parseMathContainer(doc: Document, markup: string) {
+  const template = doc.createElement("template");
+  template.innerHTML = markup;
+  return template.content.firstElementChild;
 }
 
 function normalizeMathDocument(doc: Document) {

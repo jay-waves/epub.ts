@@ -5,6 +5,7 @@ import { prepareMathRenderer, renderMathDocument } from "./math";
 import { getEpubType, markReaderSemantics } from "./semantics";
 
 export { closeReaderContentOverlays, disposeReaderContent } from "./image-zoom";
+export { clearMathSvgCache } from "./math";
 
 const footnotesLabeledDocs = new WeakSet<Document>();
 

@@ -23,7 +23,7 @@ const makeZipLoader = async file => {
     const loadText = load(entry => entry.getData(new TextWriter()))
     const loadBlob = load((entry, type) => entry.getData(new BlobWriter(type)))
     const getSize = name => map.get(name)?.uncompressedSize ?? 0
-    return { entries, loadText, loadBlob, getSize }
+    return { entries, loadText, loadBlob, getSize, destroy: () => reader.close() }
 }
 
 export class ResponseError extends Error {}

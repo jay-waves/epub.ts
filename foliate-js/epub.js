@@ -1,4 +1,5 @@
 import * as CFI from './epubcfi.js'
+import { ResourceCache } from './resource-cache.js'
 
 const NS = {
     CONTAINER: 'urn:oasis:names:tc:opendocument:xmlns:container',
@@ -704,9 +705,9 @@ class Resources {
 }
 
 class Loader {
-    #cache = new Map()
-    #children = new Map()
-    #refCount = new Map()
+    #cache = new ResourceCache()
+    #pending = new Map()
+    #destroyed = false
     eventTarget = new EventTarget()
     constructor({ loadText, loadBlob, resources }) {
         this.loadText = loadText
@@ -724,40 +725,8 @@ class Loader {
         this.eventTarget.dispatchEvent(event)
         const newData = await event.detail.data
         const newType = await event.detail.type
-        const url = URL.createObjectURL(new Blob([newData], { type: newType }))
-        this.#cache.set(href, url)
-        this.#refCount.set(href, 1)
-        if (parent) {
-            const childList = this.#children.get(parent)
-            if (childList) childList.push(href)
-            else this.#children.set(parent, [href])
-        }
-        return url
-    }
-    ref(href, parent) {
-        const childList = this.#children.get(parent)
-        if (!childList?.includes(href)) {
-            this.#refCount.set(href, this.#refCount.get(href) + 1)
-            //console.log(`referencing ${href}, now ${this.#refCount.get(href)}`)
-            if (childList) childList.push(href)
-            else this.#children.set(parent, [href])
-        }
-        return this.#cache.get(href)
-    }
-    unref(href) {
-        if (!this.#refCount.has(href)) return
-        const count = this.#refCount.get(href) - 1
-        //console.log(`unreferencing ${href}, now ${count}`)
-        if (count < 1) {
-            //console.log(`unloading ${href}`)
-            URL.revokeObjectURL(this.#cache.get(href))
-            this.#cache.delete(href)
-            this.#refCount.delete(href)
-            // unref children
-            const childList = this.#children.get(href)
-            if (childList) while (childList.length) this.unref(childList.pop())
-            this.#children.delete(href)
-        } else this.#refCount.set(href, count)
+        if (this.#destroyed) return null
+        return this.#cache.add(href, new Blob([newData], { type: newType }), parent)
     }
     // load manifest item, recursively loading all resources as needed
     async loadItem(item, parents = []) {
@@ -772,16 +741,32 @@ class Loader {
         if (!allow) return null
 
         const parent = parents.at(-1)
-        if (this.#cache.has(href)) return this.ref(href, parent)
+        const cached = this.#cache.get(href, parent)
+        if (cached) return cached
 
         const shouldReplace =
             (isScript || [MIME.XHTML, MIME.HTML, MIME.CSS, MIME.SVG].includes(mediaType))
             // prevent circular references
             && parents.every(p => p !== href)
-        if (shouldReplace) return this.loadReplaced(item, parents)
-        // NOTE: this can be replaced with `Promise.try()`
-        const tryLoadBlob = Promise.resolve().then(() => this.loadBlob(href))
-        return this.createURL(href, tryLoadBlob, mediaType, parent)
+        let pending = this.#pending.get(href)
+        if (!pending) {
+            pending = shouldReplace
+                ? this.loadReplaced(item, parents)
+                : Promise.resolve().then(() => this.loadBlob(href))
+                    .then(blob => this.createURL(href, blob, mediaType))
+            this.#pending.set(href, pending)
+        }
+
+        try {
+            const url = await pending
+            if (url && parent) this.#cache.link(parent, href)
+            return url
+        } catch (error) {
+            this.#cache.discardParent(href)
+            throw error
+        } finally {
+            if (this.#pending.get(href) === pending) this.#pending.delete(href)
+        }
     }
     async loadHref(href, base, parents = []) {
         if (isExternal(href)) return href
@@ -901,11 +886,17 @@ class Loader {
             this.loadItem(assetMap.get(match.replace(/^\//, '')),
                 parents.concat(href)))
     }
-    unloadItem(item) {
-        this.unref(item?.href)
+    async loadSection(item) {
+        const url = await this.loadItem(item)
+        if (url) this.#cache.pin(item.href)
+        return url
+    }
+    unloadSection(item) {
+        if (item) this.#cache.release(item.href)
     }
     destroy() {
-        for (const url of this.#cache.values()) URL.revokeObjectURL(url)
+        this.#destroyed = true
+        this.#cache.clear()
     }
 }
 
@@ -934,10 +925,12 @@ export class EPUB {
     parser = new DOMParser()
     #loader
     #encryption
-    constructor({ loadText, loadBlob, getSize, sha1 }) {
+    #destroySource
+    constructor({ loadText, loadBlob, getSize, sha1, destroy }) {
         this.loadText = loadText
         this.loadBlob = loadBlob
         this.getSize = getSize
+        this.#destroySource = destroy
         this.#encryption = new Encryption(deobfuscators(sha1))
     }
     async #loadXML(uri) {
@@ -986,8 +979,8 @@ ${doc.querySelector('parsererror').innerText}`)
             }
             return {
                 id: item.href,
-                load: () => this.#loader.loadItem(item),
-                unload: () => this.#loader.unloadItem(item),
+                load: () => this.#loader.loadSection(item),
+                unload: () => this.#loader.unloadSection(item),
                 createDocument: () => this.loadDocument(item),
                 size: this.getSize(item.href),
                 cfi: this.resources.cfis[index],
@@ -1080,5 +1073,7 @@ ${doc.querySelector('parsererror').innerText}`)
     }
     destroy() {
         this.#loader?.destroy()
+        void Promise.resolve(this.#destroySource?.()).catch(error =>
+            console.warn('Failed to close EPUB source.', error))
     }
 }

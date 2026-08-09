@@ -44,6 +44,7 @@ export function createMathJaxSvgRenderer() {
   });
 
   return {
+    cacheKey: "mathjax-newcm-svg-1.55",
     async render(source: string, options: MathJaxSvgRenderOptions) {
       return await mathDocument.convertPromise(source, options) as Element;
     },
