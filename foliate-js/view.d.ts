@@ -117,6 +117,7 @@ export type FoliateViewEventMap<Annotation extends FoliateAnnotation = FoliateAn
   "external-link": { a: HTMLAnchorElement; href_: string };
   link: { a: HTMLAnchorElement; href: string };
   load: { doc: Document; index: number };
+  unload: { doc: Document };
   relocate: RelocateDetail;
   "show-annotation": { index: number; range?: Range; value: string };
 };

@@ -45,7 +45,11 @@ type ViewerKeybindingOptions = {
 
 export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
   const keyTargets = new Map<Document, () => void>();
-  const boundReaderViews = new Map<FoliateViewElement, { documents: Set<Document>; onLoad: EventListener }>();
+  const boundReaderViews = new Map<FoliateViewElement, {
+    documents: Set<Document>;
+    onLoad: EventListener;
+    onUnload: EventListener;
+  }>();
   let pressedScrollKey: string | null = null;
   let holdScrollDelayTimer: number | undefined;
   let holdScrollDirection = 0;
@@ -342,6 +346,11 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     });
   };
 
+  const unbindKeyTarget = (targetDocument: Document) => {
+    keyTargets.get(targetDocument)?.();
+    keyTargets.delete(targetDocument);
+  };
+
   const bindReaderView = (view: FoliateViewElement) => {
     if (boundReaderViews.has(view)) return;
     const documents = new Set<Document>();
@@ -356,18 +365,23 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
       const detail = (event as CustomEvent<{ doc?: Document }>).detail;
       if (detail?.doc) bindDocument(detail.doc);
     };
+    const onUnload: EventListener = (event) => {
+      const doc = (event as CustomEvent<{ doc?: Document }>).detail?.doc;
+      if (!doc) return;
+      documents.delete(doc);
+      unbindKeyTarget(doc);
+    };
     view.addEventListener("load", onLoad);
-    boundReaderViews.set(view, { documents, onLoad });
+    view.addEventListener("unload", onUnload);
+    boundReaderViews.set(view, { documents, onLoad, onUnload });
   };
 
   const unbindReaderView = (view: FoliateViewElement) => {
     const binding = boundReaderViews.get(view);
     if (!binding) return;
     view.removeEventListener("load", binding.onLoad);
-    binding.documents.forEach((doc) => {
-      keyTargets.get(doc)?.();
-      keyTargets.delete(doc);
-    });
+    view.removeEventListener("unload", binding.onUnload);
+    binding.documents.forEach(unbindKeyTarget);
     boundReaderViews.delete(view);
   };
 

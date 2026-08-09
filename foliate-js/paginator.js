@@ -675,16 +675,21 @@ export class Paginator extends HTMLElement {
         })
     }
     #createView() {
-        if (this.#view) {
-            this.#view.destroy()
-            this.#container.removeChild(this.#view.element)
-        }
+        this.#destroyView()
         this.#view = new View({
             container: this,
             onExpand: () => this.#scrollToAnchor(this.#anchor),
         })
         this.#container.append(this.#view.element)
         return this.#view
+    }
+    #destroyView() {
+        if (!this.#view) return
+        const doc = this.#view.document
+        if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
+        this.#view.destroy()
+        this.#view.element.remove()
+        this.#view = null
     }
     #beforeRender({ vertical, rtl, background }) {
         this.#vertical = vertical
@@ -1141,8 +1146,7 @@ export class Paginator extends HTMLElement {
     }
     destroy() {
         this.#observer.unobserve(this)
-        this.#view?.destroy()
-        this.#view = null
+        this.#destroyView()
         this.sections[this.#index]?.unload?.()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
     }

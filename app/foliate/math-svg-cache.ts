@@ -1,6 +1,6 @@
 /*
- * Per-book MathJax SVG cache. Serialized SVG strings are kept by LRU order,
- * capped at 1,500 formulas or roughly 12 MiB, and cleared with the open book.
+ * Per-book formula LRU. MathJax owns the book's global glyph cache; section
+ * documents receive only the glyph DOM they use and release it on unload.
  */
 
 const MAX_ENTRIES = 1_500;
@@ -43,7 +43,7 @@ export function cacheMathSvg(key: string, markup: string) {
   }
 }
 
-export function clearMathSvgCache() {
+export function clearBookMathSvgCache() {
   entries.clear();
   totalBytes = 0;
 }

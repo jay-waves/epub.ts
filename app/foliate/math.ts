@@ -1,6 +1,6 @@
 import {
   cacheMathSvg,
-  clearMathSvgCache,
+  clearBookMathSvgCache,
   getCachedMathSvg,
 } from "./math-svg-cache";
 
@@ -19,7 +19,17 @@ const normalizedMathDocuments = new WeakSet<Document>();
 let mathRendererReady: Promise<MathJaxSvgRenderer> | null = null;
 let mathRenderQueue = Promise.resolve();
 
-export { clearMathSvgCache };
+export function clearMathSvgCache() {
+  clearBookMathSvgCache();
+  const rendererReady = mathRendererReady;
+  if (!rendererReady) return;
+
+  void enqueueMathRender(async () => {
+    const renderer = await rendererReady;
+    renderer.reset();
+    clearBookMathSvgCache();
+  }).catch(() => undefined);
+}
 
 export function prepareMathRenderer() {
   if (mathRendererReady) return mathRendererReady;
@@ -98,6 +108,7 @@ async function renderMathFormulas(
       if (!cached && container) cacheMathSvg(cacheKey, container.outerHTML);
       if (!formula.isConnected || !isCurrent()) return;
       if (!container || container.localName !== "mjx-container") continue;
+      renderer.mount(doc, container);
       rendered.push({ formula, container });
     } catch (error) {
       console.warn("Failed to render a MathML expression; keeping the native formula.", error);

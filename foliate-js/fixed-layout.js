@@ -175,6 +175,7 @@ export class FixedLayout extends HTMLElement {
         }
     }
     async #showSpread({ left, right, center, side }) {
+        this.#unloadDocuments()
         this.#root.replaceChildren()
         this.#left = null
         this.#right = null
@@ -332,8 +333,14 @@ export class FixedLayout extends HTMLElement {
             // TODO: overlayer
         }))
     }
+    #unloadDocuments() {
+        for (const { doc } of this.getContents()) {
+            if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
+        }
+    }
     destroy() {
         this.#observer.unobserve(this)
+        this.#unloadDocuments()
         this.#unloadSpread(this.#spreads?.[this.#index])
     }
 }

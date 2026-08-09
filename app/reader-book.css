@@ -164,11 +164,6 @@
       filter: none !important;
       color: inherit !important;
     }
-    mjx-container.reader-math > svg > g {
-      stroke-width: 10 !important;
-      stroke-linejoin: round !important;
-      paint-order: stroke fill;
-    }
     mjx-container.reader-math > svg a {
       fill: var(--reader-link-color) !important;
       stroke: var(--reader-link-color) !important;

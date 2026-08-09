@@ -335,12 +335,6 @@ function queuePositionSave(detail: RelocateDetail) {
   savePositionTask.schedule(detail);
 }
 
-const highlightContextBindTask = createDebouncedTask((view: FoliateViewElement) => {
-  runWhenIdle(() => {
-    if (runtime.readerView === view) highlightController.bindContextTargets();
-  }, 250);
-}, 120);
-
 function wireReaderEvents(view: FoliateViewElement) {
   runtime.readerEvents?.abort();
   const events = new AbortController();
@@ -350,7 +344,11 @@ function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("load", () => {
     if (runtime.readerView === view) {
       void readerRender.revealAfterPaint();
+      highlightController.bindContextTargets();
     }
+  }, listenerOptions);
+  view.addEventListener("unload", (event) => {
+    highlightController.unbindContextDocument(event.detail.doc);
   }, listenerOptions);
   view.addEventListener("edge-click", (event) => {
     const { x } = event.detail;
@@ -371,7 +369,6 @@ function wireReaderEvents(view: FoliateViewElement) {
       index: sectionIndex,
     });
     queuePositionSave(detail);
-    highlightContextBindTask.schedule(view);
     const previousSectionIndex = session.scrolledSectionIndex;
     session.scrolledSectionIndex = typeof sectionIndex === "number" ? sectionIndex : null;
     if (sectionIndex !== previousSectionIndex) restoreScrolledSectionProgress(sectionIndex);
@@ -461,7 +458,6 @@ function toggleSearch() {
 async function resetBookState(source: Parameters<typeof resetBookSession>[1], openToken: number) {
   ++runtime.postLoadTaskToken;
   savePositionTask.cancel();
-  highlightContextBindTask.cancel();
   emitViewerEvent(VIEWER_EVENTS.annotationClose);
   await highlightController.flushPendingAnnotationSave();
   if (!isCurrentBookOpen(openToken)) return false;
@@ -797,7 +793,6 @@ function setupExtraUi() {
 
   ensureKeybindings();
   emitDockUpdate();
-  highlightController.bindContextTargets();
   runtime.extraInteractionsDispose = setupExtraInteractions();
 }
 
@@ -821,7 +816,6 @@ function schedulePostLoadTasks({ bookKey, sourceUrl, view }: PostLoadTaskOptions
 
     scheduleIdle(() => {
       if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
-      highlightController.bindContextTargets();
       void importEmbeddedHighlights({ bookKey, sourceUrl, taskToken })
         .finally(() => {
           if (runtime.readerView === view && runtime.postLoadTaskToken === taskToken) {
@@ -857,9 +851,11 @@ async function importEmbeddedHighlights({
 async function bootstrap() {
   applyReaderSettings(undefined);
   setupCriticalInteractions();
+  void preloadReaderFonts();
   try {
     const initialDocument = await platform.loadInitialDocument();
     if (initialDocument) {
+      if (runtime.disposed) return;
       void openBook(initialDocument);
       return;
     }
@@ -868,7 +864,6 @@ async function bootstrap() {
   }
 
   if (!runtime.disposed) {
-    void preloadReaderFonts();
     scheduleIdle(setupExtraUi, 1000);
   }
 }
@@ -879,7 +874,6 @@ async function disposeViewer() {
   ++runtime.bookOpenToken;
   ++runtime.postLoadTaskToken;
   savePositionTask.cancel();
-  highlightContextBindTask.cancel();
   runtime.idleTasks.forEach((cancel) => cancel());
   runtime.idleTasks.clear();
   window.clearTimeout(runtime.scrollEdgeFeedbackTimer);

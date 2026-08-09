@@ -127,8 +127,7 @@ function drawHighlightWithAnnotationBadge(
 }
 
 export function createHighlightController(options: HighlightControllerOptions) {
-  let contextTargets = new WeakSet<EventTarget>();
-  const contextDisposers = new Set<() => void>();
+  const contextDisposers = new Map<EventTarget, () => void>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
   let pendingAnnotationSave: Promise<void> = Promise.resolve();
@@ -330,11 +329,12 @@ export function createHighlightController(options: HighlightControllerOptions) {
   };
 
   const bindContextTargets = () => {
-    for (const content of getContents()) {
+    const contents = getContents();
+    for (const content of contents) {
       const { doc } = content;
       if (!doc) continue;
 
-      if (!contextTargets.has(doc)) {
+      if (!contextDisposers.has(doc)) {
         const dismissPopovers = () => {
           close();
           emitViewerEvent(VIEWER_EVENTS.translationClose);
@@ -366,12 +366,11 @@ export function createHighlightController(options: HighlightControllerOptions) {
           doc.removeEventListener("scroll", dismissPopovers, true);
           doc.removeEventListener("contextmenu", openContextMenu);
         };
-        contextTargets.add(doc);
-        contextDisposers.add(dispose);
+        contextDisposers.set(doc, dispose);
       }
 
       const frameElement = doc.defaultView?.frameElement;
-      if (frameElement && !contextTargets.has(frameElement)) {
+      if (frameElement && !contextDisposers.has(frameElement)) {
         const openContextMenu = (event: Event) => {
           if (!(event instanceof MouseEvent)) return;
           event.preventDefault();
@@ -381,16 +380,26 @@ export function createHighlightController(options: HighlightControllerOptions) {
         };
         frameElement.addEventListener("contextmenu", openContextMenu);
         const dispose = () => frameElement.removeEventListener("contextmenu", openContextMenu);
-        contextTargets.add(frameElement);
-        contextDisposers.add(dispose);
+        contextDisposers.set(frameElement, dispose);
       }
+    }
+  };
+
+  const unbindContextDocument = (doc: Document) => {
+    close();
+    emitViewerEvent(VIEWER_EVENTS.translationClose);
+    emitViewerEvent(VIEWER_EVENTS.annotationClose);
+    const frameElement = doc.defaultView?.frameElement;
+    for (const target of [doc, frameElement]) {
+      if (!target) continue;
+      contextDisposers.get(target)?.();
+      contextDisposers.delete(target);
     }
   };
 
   const unbindContextTargets = () => {
     contextDisposers.forEach((dispose) => dispose());
     contextDisposers.clear();
-    contextTargets = new WeakSet();
   };
 
   const drawAnnotation = (detail: {
@@ -676,5 +685,6 @@ export function createHighlightController(options: HighlightControllerOptions) {
     openFromAnnotation,
     reset,
     scheduleRestore,
+    unbindContextDocument,
   };
 }

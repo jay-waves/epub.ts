@@ -30,16 +30,18 @@ export async function prepareReaderContentDocument(doc: Document, options: {
   const highlighterReady = codeBlocks.length
     ? import("./highlighter")
     : null;
-  void highlighterReady?.catch(() => undefined);
 
   await fontsReady;
   if (!options.isCurrent()) return;
 
-  await renderMathDocument(doc, options.isCurrent, mathReady ?? undefined);
-  if (!options.isCurrent() || !highlighterReady) return;
-
-  const highlighter = await highlighterReady;
-  highlighter.highlightReaderCodeBlocks(doc, codeBlocks, options.isCurrent);
+  await Promise.all([
+    renderMathDocument(doc, options.isCurrent, mathReady ?? undefined),
+    highlighterReady?.then((highlighter) => {
+      highlighter.highlightReaderCodeBlocks(doc, codeBlocks, options.isCurrent);
+    }).catch((error) => {
+      console.warn("Failed to load syntax highlighting; keeping the original code blocks.", error);
+    }),
+  ]);
 }
 
 function prepareReaderCodeBlocks(doc: Document) {

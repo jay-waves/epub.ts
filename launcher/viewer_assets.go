@@ -64,7 +64,19 @@ func (handler viewerAssetHandler) ServeHTTP(response http.ResponseWriter, reques
 		contentType = "application/octet-stream"
 	}
 	response.Header().Set("Content-Type", contentType)
+	if isFontAsset(name) {
+		response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
 	http.ServeContent(response, request, name, time.Time{}, bytes.NewReader(content))
+}
+
+func isFontAsset(name string) bool {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".otf", ".ttf", ".woff", ".woff2":
+		return true
+	default:
+		return false
+	}
 }
 
 func acceptsGzip(values []string) bool {

@@ -130,11 +130,14 @@ function createEpubLauncherSession() {
 
 const launcher = createEpubLauncherSession();
 
+function getViewerAssetUrl(filename: string) {
+  const url = new URL(filename, document.baseURI);
+  url.searchParams.set("v", `${__EPUB_TS_VERSION__}-${__EPUB_TS_BUILD_TIME__}`);
+  return url.href;
+}
+
 export const platform: ViewerPlatform = {
-  readerProfile: createBundledReaderProfile(
-    (filename) => new URL(filename, document.baseURI).href,
-    16,
-  ),
+  readerProfile: createBundledReaderProfile(getViewerAssetUrl, 16),
   translationModelPolicy: "allow-download",
   async loadInitialDocument() {
     if (!launcher) {

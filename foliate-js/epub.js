@@ -806,6 +806,8 @@ class Loader {
                 doc = new DOMParser().parseFromString(str, item.mediaType)
             }
             doc.querySelectorAll('script').forEach(el => el.remove())
+            for (const image of doc.querySelectorAll('img'))
+                image.setAttribute('decoding', 'async')
             // replace hrefs in XML processing instructions
             // this is mainly for SVGs that use xml-stylesheet
             if ([MIME.XHTML, MIME.SVG].includes(item.mediaType)) {

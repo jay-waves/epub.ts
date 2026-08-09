@@ -16,6 +16,7 @@ export async function copyReaderMedia(element: Element) {
 async function copySvg(element: Element) {
   const bounds = element.getBoundingClientRect();
   const source = element.cloneNode(true) as SVGSVGElement;
+  inlineReferencedDefinitions(source, element.ownerDocument);
   const geometry = getSvgCopyGeometry(element as SVGSVGElement, bounds);
 
   source.setAttribute("xmlns", "http://www.w3.org/2000/svg");
@@ -40,6 +41,23 @@ async function copySvg(element: Element) {
   }
 
   await writeClipboardImage(png);
+}
+
+function inlineReferencedDefinitions(svg: SVGSVGElement, sourceDocument: Document) {
+  const embeddedIds = new Set(Array.from(svg.querySelectorAll("[id]"), ({ id }) => id));
+  const definitions = new Map<string, Element>();
+
+  for (const use of svg.querySelectorAll("use")) {
+    const reference = use.getAttribute("href") ?? use.getAttribute("xlink:href");
+    const id = reference?.startsWith("#") ? reference.slice(1) : null;
+    const definition = id && !embeddedIds.has(id) ? sourceDocument.getElementById(id) : null;
+    if (id && definition) definitions.set(id, definition);
+  }
+  if (!definitions.size) return;
+
+  const defs = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "defs");
+  for (const definition of definitions.values()) defs.append(definition.cloneNode(true));
+  svg.prepend(defs);
 }
 
 function getSvgCopyGeometry(element: SVGSVGElement, bounds: DOMRect) {

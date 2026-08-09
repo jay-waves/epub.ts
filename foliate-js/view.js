@@ -190,6 +190,7 @@ export class View extends HTMLElement {
             this.enhanceRenderedDocument?.(doc, index)
         this.renderer.setAttribute('exportparts', 'head,foot,filter')
         this.renderer.addEventListener('load', e => this.#onLoad(e.detail))
+        this.renderer.addEventListener('unload', e => this.#emit('unload', e.detail))
         this.renderer.addEventListener('relocate', e => this.#onRelocate(e.detail))
         this.renderer.addEventListener('create-overlayer', e =>
             e.detail.attach(this.#createOverlayer(e.detail)))

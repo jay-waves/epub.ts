@@ -171,7 +171,6 @@ function createReaderImageZoomProxy(image: HTMLImageElement) {
     maxInlineSize: "none",
     pointerEvents: "none",
     margin: "0",
-    transform: "translateZ(0)",
     zIndex: "2147483646",
     borderRadius: imageStyle.borderRadius,
     objectFit: imageStyle.objectFit || "contain",
