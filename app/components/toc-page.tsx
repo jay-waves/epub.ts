@@ -6,31 +6,25 @@ import { normalizeTocHref } from "../foliate";
 import { Dialog } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 
-type TocInteraction = {
-  itemKey: string;
-  phase: "expanded" | "navigated";
-} | null;
-
 export function TocPage() {
   const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
-  const [interaction, setInteraction] = useState<TocInteraction>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useViewerEvent(VIEWER_EVENTS.tocOpen, () => {
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
-    setInteraction(null);
+    setSelectedKey(null);
     scrollCurrentItemIntoView(rootRef.current);
   });
   useViewerEvent(VIEWER_EVENTS.tocUpdate, (detail) => {
     setTocState(detail);
-    setInteraction((current) => current?.phase === "navigated" ? current : null);
   });
 
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
-  }, [interaction, tocState]);
+  }, [selectedKey, tocState]);
 
   const navigate = (href?: string) => {
     if (!href) return;
@@ -53,9 +47,9 @@ export function TocPage() {
                 key={`${item.href ?? "section"}-${index}`}
                 itemKey={`${index}`}
                 depth={0}
-                interaction={interaction}
+                selectedKey={selectedKey}
                 onNavigate={navigate}
-                onInteractionChange={setInteraction}
+                onSelect={setSelectedKey}
               />
             ))}
           </ul>
@@ -72,22 +66,22 @@ function TocTreeItem({
   depth,
   item,
   itemKey,
-  interaction,
+  selectedKey,
   onNavigate,
-  onInteractionChange,
+  onSelect,
 }: {
   currentHref: string;
   depth: number;
   item: TocItem;
   itemKey: string;
-  interaction: TocInteraction;
+  selectedKey: string | null;
   onNavigate: (href?: string) => void;
-  onInteractionChange: (interaction: TocInteraction) => void;
+  onSelect: (itemKey: string) => void;
 }) {
   const children = item.subitems ?? [];
   const isCurrent = isMatchingHref(item.href, currentHref);
   const hasCurrentChild = containsHref(children, currentHref);
-  const isSelected = interaction?.itemKey === itemKey || (!interaction && isCurrent);
+  const isSelected = selectedKey === itemKey || (selectedKey === null && isCurrent);
   const className = depth === 0 ? "toc-link toc-link-primary" : "toc-link";
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
@@ -99,19 +93,17 @@ function TocTreeItem({
     const details = detailsRef.current;
     if (!details) return;
 
-    if (!details.open || !isSelected) {
+    if (!details.open) {
       details.open = true;
-      onInteractionChange({ itemKey, phase: "expanded" });
       return;
     }
 
-    if (interaction?.phase === "navigated" || isCurrent || !item.href) {
+    if (isSelected || !item.href) {
       details.open = false;
-      onInteractionChange(null);
       return;
     }
 
-    onInteractionChange({ itemKey, phase: "navigated" });
+    onSelect(itemKey);
     onNavigate(item.href);
   };
 
@@ -138,9 +130,9 @@ function TocTreeItem({
                 item={child}
                 key={`${child.href ?? "section"}-${index}`}
                 itemKey={`${itemKey}.${index}`}
-                interaction={interaction}
+                selectedKey={selectedKey}
                 onNavigate={onNavigate}
-                onInteractionChange={onInteractionChange}
+                onSelect={onSelect}
               />
             ))}
           </ul>
@@ -157,7 +149,7 @@ function TocTreeItem({
         data-selected={isSelected ? "true" : undefined}
         type="button"
         onClick={() => {
-          onInteractionChange(null);
+          onSelect(itemKey);
           onNavigate(item.href);
         }}
       >
