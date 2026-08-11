@@ -1,4 +1,5 @@
 import type { FoliateViewElement } from "./foliate";
+import type { Navigation } from "./reader/navigation";
 import type { PageTurnDirection } from "./viewer-events";
 
 const EDGE_RATIO = 0.22;
@@ -9,6 +10,7 @@ type Point = { x: number; y: number };
 
 type InteractionOptions = {
   getFlow: () => "paginated" | "scrolled";
+  getNavigation: () => Navigation | null;
   onEdgeClick: (direction: PageTurnDirection) => void;
   openExternal: (href: string) => void;
   root: HTMLElement;
@@ -158,7 +160,9 @@ export function createReaderInteractions(options: InteractionOptions) {
           options.openExternal(sourceHref);
         }
       } else if (emit(view, "link", { a: anchor, href }, true)) {
-        void view.goTo(href);
+        void options.getNavigation()?.go(href).catch((error) => {
+          console.warn("Failed to open reader link.", error);
+        });
       }
     }, { signal });
   };

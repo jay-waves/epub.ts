@@ -1,3 +1,4 @@
+// Project-owned EPUB CFI implementation.
 const findIndices = (arr, f) => arr
     .map((x, i, a) => f(x, i, a) ? i : null).filter(x => x != null)
 const splitAt = (arr, is) => [-1, ...is, arr.length].reduce(({ xs, a }, b) =>

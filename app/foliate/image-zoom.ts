@@ -11,23 +11,23 @@ const IMAGE_ZOOM_MARGIN = 28;
 const MIN_ZOOMABLE_IMAGE_SIZE = 160;
 const MIN_ZOOMED_IMAGE_LONG_EDGE = 320;
 
-export function enhanceReaderImages(doc: Document) {
+export function enhanceReaderImages(doc: Document, signal: AbortSignal) {
   if (enhancedDocuments.has(doc)) return;
   enhancedDocuments.add(doc);
 
   for (const image of doc.querySelectorAll<HTMLImageElement>("img")) {
     if (image.complete) {
-      markZoomableImage(image);
+      markZoomableImage(image, signal);
     } else {
-      image.addEventListener("load", () => markZoomableImage(image), { once: true });
+      image.addEventListener("load", () => markZoomableImage(image, signal), { once: true, signal });
     }
   }
 }
 
-function markZoomableImage(image: HTMLImageElement) {
+function markZoomableImage(image: HTMLImageElement, signal?: AbortSignal) {
   if (!isZoomableImage(image)) return;
   image.classList.add("reader-zoomable-image");
-  image.addEventListener("click", handleReaderImageClick, { passive: false });
+  image.addEventListener("click", handleReaderImageClick, { passive: false, signal });
 }
 
 function ensureMediumZoom() {

@@ -1,3 +1,11 @@
+import type {
+  Book as NavigationBook,
+  Location,
+  Navigation,
+  RawLocation,
+  Resolved,
+} from "../app/reader/navigation";
+
 export type TocItem = {
   label?: string;
   href?: string;
@@ -29,12 +37,12 @@ export type BookSection = {
   unload?: () => void;
 };
 
-export type FoliateBook = {
+export type FoliateBook = Omit<NavigationBook, "sections" | "toc"> & {
   dir?: string;
-  destroy?: () => void;
+  destroy?: () => void | Promise<void>;
   metadata?: BookMetadata;
   isExternal?: (href: string) => boolean;
-  sections?: BookSection[];
+  sections: BookSection[];
   toc?: TocItem[];
 };
 
@@ -52,10 +60,10 @@ export type FoliateRenderer = HTMLElement & {
   atStart?: boolean;
   beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
   end?: number;
-  next?: (distance?: number) => Promise<void>;
+  next: (distance?: number) => Promise<void>;
   removeAttribute(name: string): void;
   nextSection?: () => Promise<void>;
-  prev?: (distance?: number) => Promise<void>;
+  prev: (distance?: number) => Promise<void>;
   prevSection?: () => Promise<void>;
   setAttribute(name: string, value: string): void;
   scrollToAnchor?: (anchor: number, select?: boolean) => Promise<void>;
@@ -64,24 +72,11 @@ export type FoliateRenderer = HTMLElement & {
   start?: number;
   viewSize?: number;
   getContents?: () => FoliateContent[];
+  goTo: (target: Resolved) => Promise<unknown>;
 };
 
-export type RelocateDetail = {
-  cfi?: string;
-  fraction?: number;
-  index: number;
-  location?: {
-    current?: number;
-    total?: number;
-  };
-  pageItem?: {
-    label?: string;
-  };
-  range?: Range;
-  reason?: string;
-  size?: number;
-  tocItem?: TocItem;
-};
+export type RawRelocateDetail = RawLocation;
+export type RelocateDetail = Location;
 
 export type SearchHit = {
   cfi: string;
@@ -120,7 +115,7 @@ export type FoliateViewEventMap<Annotation extends FoliateAnnotation = FoliateAn
   link: { a: HTMLAnchorElement; href: string };
   load: { doc: Document; index: number };
   unload: { doc: Document };
-  relocate: RelocateDetail;
+  relocate: RawRelocateDetail;
   "show-annotation": { index: number; range?: Range; value: string };
 };
 
@@ -139,27 +134,15 @@ export interface FoliateViewElement<Annotation extends FoliateAnnotation = Folia
     options?: boolean | AddEventListenerOptions,
   ): void;
   book?: FoliateBook;
-  enhanceRenderedDocument?: (doc: Document, index: number) => Promise<void> | void;
+  enhanceRenderedDocument?: (doc: Document, index: number, signal: AbortSignal) => Promise<void> | void;
   isFixedLayout: boolean;
+  navigation?: Navigation;
   renderer: FoliateRenderer;
   clearSearch?: () => void;
-  close: () => void;
-  init: (options: { lastLocation?: string | { fraction: number }; showTextStart?: boolean }) => Promise<void>;
-  open: (input: File | string) => Promise<void>;
-  prev: (distance?: number) => Promise<void>;
-  resolveNavigation?: (target: string) => {
-    anchor?: (doc: Document) => Node | Range;
-    index: number;
-  } | undefined;
-  next: (distance?: number) => Promise<void>;
-  goLeft: () => Promise<void>;
-  goRight: () => Promise<void>;
-  goTo: (target: string | number | { fraction: number }) => Promise<void>;
+  destroy: () => void;
+  open: (book: FoliateBook, navigation: Navigation) => Promise<void>;
   addAnnotation?: (annotation: Annotation, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
   deleteAnnotation?: (annotation: Annotation) => Promise<{ index: number; label: string } | undefined>;
-  deselect?: () => void;
-  getCFI?: (index: number, range?: Range) => string;
-  getSectionFractions?: () => number[];
   showAnnotation?: (annotation: Annotation) => Promise<void>;
   search?: (options: {
     index?: number;
@@ -167,5 +150,4 @@ export interface FoliateViewElement<Annotation extends FoliateAnnotation = Folia
     matchDiacritics?: boolean;
     query: string;
   }) => AsyncIterable<unknown>;
-  select?: (target: string) => Promise<void>;
 }

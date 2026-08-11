@@ -19,12 +19,12 @@ const normalizedMathDocuments = new WeakSet<Document>();
 let mathRendererReady: Promise<MathJaxSvgRenderer> | null = null;
 let mathRenderQueue = Promise.resolve();
 
-export function clearMathSvgCache() {
+export async function clearMathSvgCache() {
   clearBookMathSvgCache();
   const rendererReady = mathRendererReady;
   if (!rendererReady) return;
 
-  void enqueueMathRender(async () => {
+  await enqueueMathRender(async () => {
     const renderer = await rendererReady;
     renderer.reset();
     clearBookMathSvgCache();

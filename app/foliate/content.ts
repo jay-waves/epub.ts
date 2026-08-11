@@ -11,16 +11,16 @@ const footnotesLabeledDocs = new WeakSet<Document>();
 
 export async function prepareReaderContentDocument(doc: Document, options: {
   fontQueries: string[];
-  isCurrent: () => boolean;
   reflowable: boolean;
+  signal: AbortSignal;
 }) {
-  if (!options.isCurrent()) return;
+  if (options.signal.aborted) return;
 
   if (!options.reflowable) return;
 
   markReaderSemantics(doc);
   labelFootnotes(doc);
-  enhanceReaderImages(doc);
+  enhanceReaderImages(doc, options.signal);
 
   const codeBlocks = prepareReaderCodeBlocks(doc);
   const fontsReady = loadReaderDocumentFonts(doc, options.fontQueries);
@@ -32,12 +32,14 @@ export async function prepareReaderContentDocument(doc: Document, options: {
     : null;
 
   await fontsReady;
-  if (!options.isCurrent()) return;
+  if (options.signal.aborted) return;
+
+  const isCurrent = () => !options.signal.aborted;
 
   await Promise.all([
-    renderMathDocument(doc, options.isCurrent, mathReady ?? undefined),
+    renderMathDocument(doc, isCurrent, mathReady ?? undefined),
     highlighterReady?.then((highlighter) => {
-      highlighter.highlightReaderCodeBlocks(doc, codeBlocks, options.isCurrent);
+      highlighter.highlightReaderCodeBlocks(doc, codeBlocks, isCurrent);
     }).catch((error) => {
       console.warn("Failed to load syntax highlighting; keeping the original code blocks.", error);
     }),

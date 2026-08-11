@@ -64,12 +64,13 @@ import type { DockAction } from "./viewer-events";
 import { createDebouncedTask, DEFAULT_READER_SETTINGS, readerSettings, runWhenIdle } from "./reader";
 import { createBookSession, resetBookSession } from "./viewer-session";
 import { createReaderRenderController } from "./reader-render";
+import { Navigation } from "./reader/navigation";
+import { ReaderDocument } from "./reader/lifecycle";
 import { platform } from "#platform";
 import type { PlatformDocument } from "./platform/types";
 import "./viewer.css";
 
 type ViewerRuntime = {
-  bookOpenToken: number;
   criticalInteractions: AbortController | null;
   disposed: boolean;
   extraInteractionsDispose: (() => void) | null;
@@ -78,18 +79,14 @@ type ViewerRuntime = {
   interactions: ReturnType<typeof createReaderInteractions> | null;
   keybindings: ReturnType<typeof setupViewerKeybindings> | null;
   lastScrollEdgeFeedbackAt: number;
-  postLoadTaskToken: number;
+  reader: ReaderDocument | null;
   readerFontsReady: Promise<void> | null;
-  readerEvents: AbortController | null;
-  readerView: FoliateViewElement | null;
-  readerViewReady: Promise<FoliateViewElement> | null;
   readingProgressController: ReturnType<typeof createReadingProgressController> | null;
   searchController: ReturnType<typeof createSearchController> | null;
   scrollEdgeFeedbackTimer?: number;
 };
 
 const runtime: ViewerRuntime = {
-  bookOpenToken: 0,
   criticalInteractions: null,
   disposed: false,
   extraInteractionsDispose: null,
@@ -98,14 +95,14 @@ const runtime: ViewerRuntime = {
   interactions: null,
   keybindings: null,
   lastScrollEdgeFeedbackAt: 0,
-  postLoadTaskToken: 0,
+  reader: null,
   readerFontsReady: null,
-  readerEvents: null,
-  readerView: null,
-  readerViewReady: null,
   readingProgressController: null,
   searchController: null,
 };
+
+const getReaderView = () => runtime.reader?.view ?? null;
+const getNavigation = () => runtime.reader?.navigation ?? null;
 
 const appRoot = queryRequired<HTMLElement>("#app");
 
@@ -118,14 +115,14 @@ function mountReadingProgressController(elements: ReadingProgressElements | null
 
   runtime.readingProgressController = createReadingProgressController({
     ...elements,
-    canSeek: () => Boolean(runtime.readerView?.book),
+    canSeek: () => Boolean(getNavigation()),
     onSeek: goToProgress,
   });
 }
 
 function goToProgress(progress: number) {
   if (isReaderRenderPending()) return;
-  void readerRender.run(() => runtime.readerView?.goTo({ fraction: progress })).catch((error) => {
+  void readerRender.run(() => getNavigation()?.go({ fraction: progress })).catch((error) => {
     console.warn("Failed to navigate to reading progress.", error);
   });
 }
@@ -149,13 +146,14 @@ const initialDocumentTitle = document.title;
 const session = createBookSession();
 const readerLayoutTarget = {
   root: readerRoot,
-  get view() { return runtime.readerView; },
+  get view() { return getReaderView(); },
 };
 const readerRender = createReaderRenderController({
   root: readerRoot,
 });
 runtime.interactions = createReaderInteractions({
   getFlow: () => readerSettings.flow,
+  getNavigation,
   onEdgeClick: (direction) => emitViewerEvent(VIEWER_EVENTS.pageTurn, direction),
   openExternal: platform.openExternal,
   root: readerRoot,
@@ -188,19 +186,25 @@ function renderDocumentTitle() {
 
 const SCROLL_EDGE_FEEDBACK_COOLDOWN_MS = 900;
 
-function scheduleIdle(callback: () => void, timeout?: number) {
+function scheduleIdle(callback: () => void, timeout?: number, signal?: AbortSignal) {
+  if (signal?.aborted) return;
   let cancel = () => {};
   cancel = runWhenIdle(() => {
     runtime.idleTasks.delete(cancel);
-    if (!runtime.disposed) callback();
+    if (!runtime.disposed && !signal?.aborted) callback();
   }, timeout);
   runtime.idleTasks.add(cancel);
+  signal?.addEventListener("abort", () => {
+    cancel();
+    runtime.idleTasks.delete(cancel);
+  }, { once: true });
 }
 
 const highlightController = createHighlightController({
   getBookKey: () => session.bookKey,
+  getNavigation,
   getProgress: () => runtime.readingProgressController?.getProgress() ?? 0,
-  getReaderView: () => runtime.readerView,
+  getReaderView,
   openExternal: platform.openExternal,
   runWhenIdle: scheduleIdle,
   translationModelPolicy: platform.translationModelPolicy,
@@ -208,7 +212,8 @@ const highlightController = createHighlightController({
 
 function ensureKeybindings() {
   runtime.keybindings ??= setupViewerKeybindings({
-    getReaderView: () => runtime.readerView,
+    getReaderView,
+    getNavigation,
     getFlow: () => readerSettings.flow,
     canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
     beforeSectionTurn: handleBeforeSectionTurn,
@@ -218,14 +223,16 @@ function ensureKeybindings() {
     closeSearch: clearSearchState,
     saveBook: () => { void saveAnnotatedBook(); },
   });
-  if (runtime.readerView) runtime.keybindings.bindReaderView(runtime.readerView);
+  const view = getReaderView();
+  if (view) runtime.keybindings.bindReaderView(view);
   return runtime.keybindings;
 }
 
 function ensureSearchController() {
   runtime.searchController ??= createSearchController({
     getBookKey: () => session.bookKey,
-    getReaderView: () => runtime.readerView,
+    getNavigation,
+    getReaderView,
     runWithReaderRenderPending: readerRender.run,
   });
   return runtime.searchController;
@@ -243,7 +250,7 @@ function emitBookInfoUpdate() {
   emitViewerEvent(
     VIEWER_EVENTS.bookInfoUpdate,
     createBookInfo({
-      book: runtime.readerView?.book,
+      book: getReaderView()?.book,
       sourceLabel,
       sourceUrl,
     }),
@@ -286,7 +293,7 @@ function preloadReaderFonts() {
 function getCurrentScrolledSectionAnchor() {
   if (readerSettings.flow !== "scrolled") return null;
 
-  const renderer = runtime.readerView?.renderer;
+  const renderer = getReaderView()?.renderer;
   const { start, viewSize } = renderer ?? {};
   if (typeof start !== "number" || typeof viewSize !== "number" || viewSize <= 0) return null;
 
@@ -325,7 +332,7 @@ function restoreScrolledSectionProgress(sectionIndex: number | undefined) {
   requestAnimationFrame(() => {
     if (readerSettings.flow !== "scrolled" || session.scrolledSectionIndex !== sectionIndex) return;
 
-    void runtime.readerView?.renderer?.scrollToAnchor?.(anchor).catch((error) => {
+    void getReaderView()?.renderer?.scrollToAnchor?.(anchor).catch((error) => {
       console.warn("Failed to restore section reading progress.", error);
     });
   });
@@ -342,14 +349,12 @@ function queuePositionSave(detail: RelocateDetail) {
   savePositionTask.schedule(detail);
 }
 
-function wireReaderEvents(view: FoliateViewElement) {
-  runtime.readerEvents?.abort();
-  const events = new AbortController();
-  runtime.readerEvents = events;
-  const listenerOptions = { signal: events.signal };
+function wireReaderEvents(reader: ReaderDocument) {
+  const { signal, view } = reader;
+  const listenerOptions = { signal };
 
   view.addEventListener("load", () => {
-    if (runtime.readerView === view) {
+    if (!signal.aborted) {
       void readerRender.revealAfterPaint();
       highlightController.bindContextTargets();
     }
@@ -358,7 +363,8 @@ function wireReaderEvents(view: FoliateViewElement) {
     highlightController.unbindContextDocument(event.detail.doc);
   }, listenerOptions);
   view.addEventListener("relocate", (event) => {
-    const { detail } = event;
+    const detail = reader.navigation?.location(event.detail);
+    if (!detail) return;
     const sectionIndex = detail.index;
 
     const currentHref = detail.tocItem?.href ?? "";
@@ -394,7 +400,7 @@ function emitDockUpdate() {
   const isPaginated = readerSettings.flow === "paginated";
 
   emitViewerEvent(VIEWER_EVENTS.dockUpdate, {
-    canSearch: Boolean(runtime.readerView?.search),
+    canSearch: Boolean(getReaderView()?.search),
     flowActive: !isPaginated,
     flowLabel: isPaginated ? "Switch to scrolling" : "Switch to paginated",
     hasUnsavedChanges: session.dirty,
@@ -457,20 +463,21 @@ function toggleSearch() {
   openSearch();
 }
 
-async function resetBookState(source: Parameters<typeof resetBookSession>[1], openToken: number) {
-  ++runtime.postLoadTaskToken;
+async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
   savePositionTask.cancel();
   emitViewerEvent(VIEWER_EVENTS.annotationClose);
   await highlightController.flushPendingAnnotationSave();
-  if (!isCurrentBookOpen(openToken)) return false;
 
-  if (runtime.readerView) runtime.keybindings?.unbindReaderView(runtime.readerView);
+  const reader = runtime.reader;
+  runtime.reader = null;
+  if (reader) {
+    runtime.keybindings?.unbindReaderView(reader.view);
+    runtime.interactions?.unbindView(reader.view);
+  }
   highlightController.reset();
   await closeReaderContentOverlays();
-  if (!isCurrentBookOpen(openToken)) return false;
-  clearMathSvgCache();
-  runtime.readerView?.close();
-  if (session.document && session.document !== source.document) session.document.release?.();
+  await clearMathSvgCache();
+  await reader?.dispose();
   resetBookSession(session, source);
   clearSearchState();
   renderDocumentTitle();
@@ -478,12 +485,11 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1], op
   emitBookInfoUpdate();
   runtime.readingProgressController?.setProgress(0);
   runtime.readingProgressController?.setHistoryProgress(null);
-  return true;
 }
 
 function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
   const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings };
-  const flow = runtime.readerView?.isFixedLayout ? "paginated" : nextSettings.flow;
+  const flow = getReaderView()?.isFixedLayout ? "paginated" : nextSettings.flow;
 
   applyReaderTheme(nextSettings.theme);
   applyReaderFlow(flow, { root: readerRoot, view: null });
@@ -494,43 +500,25 @@ function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
 
 async function createView() {
   const view = await createFoliateView();
-  if (runtime.disposed) {
-    view.close();
-    return view;
-  }
-  view.enhanceRenderedDocument = (doc) => enhanceRenderedReaderDocument(doc, view);
+  view.enhanceRenderedDocument = (doc, _index, signal) =>
+    enhanceRenderedReaderDocument(doc, view, signal);
   readerRoot.replaceChildren(view);
-  wireReaderEvents(view);
   runtime.interactions?.bindView(view);
   runtime.keybindings?.bindReaderView(view);
   return view;
 }
 
-async function getReaderView() {
-  if (runtime.readerView) return runtime.readerView;
-
-  const pendingView = runtime.readerViewReady ??= createView();
-  try {
-    const view = await pendingView;
-    if (runtime.disposed) {
-      view.close();
-      return null;
-    }
-    return runtime.readerView ??= view;
-  } finally {
-    if (runtime.readerViewReady === pendingView) runtime.readerViewReady = null;
-  }
-}
-
-async function enhanceRenderedReaderDocument(doc: Document, view: FoliateViewElement) {
-  if (runtime.readerView === view) readerRender.begin();
-  const isCurrent = () => runtime.readerView === view
-    && (view.renderer?.getContents?.() ?? []).some((content) => content.doc === doc);
+async function enhanceRenderedReaderDocument(
+  doc: Document,
+  view: FoliateViewElement,
+  signal: AbortSignal,
+) {
+  if (getReaderView() === view) readerRender.begin();
   try {
     await prepareReaderContentDocument(doc, {
       fontQueries: getReaderFontQueries(),
-      isCurrent,
       reflowable: !view.isFixedLayout,
+      signal,
     });
   } catch (error) {
     console.warn("Failed to enhance reader content.", error);
@@ -558,10 +546,10 @@ function showScrollEdgeFeedback(direction: number) {
   }, 360);
 }
 
-async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: ReadingPosition) {
+async function restoreSavedPosition(navigation: Navigation, savedPosition?: ReadingPosition) {
   session.restoring = true;
   try {
-    const attempts: Array<Parameters<FoliateViewElement["init"]>[0]> = [];
+    const attempts: Array<Parameters<Navigation["init"]>[0]> = [];
     if (savedPosition?.cfi) attempts.push({ lastLocation: savedPosition.cfi });
     if (typeof savedPosition?.fraction === "number") {
       attempts.push({ lastLocation: { fraction: savedPosition.fraction } });
@@ -571,7 +559,7 @@ async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: Re
     let lastError: unknown;
     for (const attempt of attempts) {
       try {
-        await view.init(attempt);
+        await navigation.init(attempt);
         return;
       } catch (error) {
         lastError = error;
@@ -581,64 +569,84 @@ async function restoreSavedPosition(view: FoliateViewElement, savedPosition?: Re
     if (lastError) throw lastError;
   } catch (error) {
     console.warn("Failed to restore saved reading position.", error);
-    await view.init({ showTextStart: true });
+    await navigation.init({ showTextStart: true });
   } finally {
     session.restoring = false;
   }
 }
 
-function isCurrentBookOpen(openToken: number) {
-  return !runtime.disposed && openToken === runtime.bookOpenToken;
+let openBookTask = Promise.resolve();
+
+function openBook(platformDocument: PlatformDocument) {
+  const task = openBookTask.then(() => replaceBook(platformDocument));
+  openBookTask = task.catch(() => undefined);
+  return task;
 }
 
-async function openBook(platformDocument: PlatformDocument) {
-  const openToken = ++runtime.bookOpenToken;
+async function replaceBook(platformDocument: PlatformDocument) {
   if (runtime.disposed) {
     platformDocument.release?.();
     return;
   }
 
+  let reader: ReaderDocument | null = null;
+  let view: FoliateViewElement | null = null;
   try {
-    const didReset = await resetBookState({
+    await resetBookState({
       bookKey: platformDocument.key,
       document: platformDocument,
-    }, openToken);
-    if (!didReset) {
-      if (session.document !== platformDocument) platformDocument.release?.();
-      return;
-    }
+    });
+    if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
 
-    const view = await getReaderView();
-    if (!view || !isCurrentBookOpen(openToken)) return;
+    view = await createView();
+    if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
     readerRender.begin();
     await preloadReaderFonts();
-    if (!isCurrentBookOpen(openToken)) return;
-    await view.open(platformDocument.input);
-    if (!isCurrentBookOpen(openToken)) return;
+    if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
+    reader = await ReaderDocument.open(platformDocument, view, (openingReader) => {
+      reader = openingReader;
+      runtime.reader = openingReader;
+      wireReaderEvents(openingReader);
+    });
+    reader.signal.throwIfAborted();
+    const { navigation } = reader;
     emitViewerEvent(VIEWER_EVENTS.documentOpen);
     session.bookKey = await deriveBookKey(view.book, platformDocument.key);
-    if (!isCurrentBookOpen(openToken)) return;
+    reader.signal.throwIfAborted();
     const bookKey = session.bookKey;
     const savedPosition = await getSavedPosition(bookKey);
-    if (!isCurrentBookOpen(openToken)) return;
+    reader.signal.throwIfAborted();
     applyReaderSettings(savedPosition?.settings);
 
     emitBookInfoUpdate();
-    await restoreSavedPosition(view, savedPosition);
-    if (!isCurrentBookOpen(openToken)) return;
+    await restoreSavedPosition(navigation, savedPosition);
+    reader.signal.throwIfAborted();
     await readerRender.revealAfterPaint();
-    if (!isCurrentBookOpen(openToken)) return;
+    reader.signal.throwIfAborted();
     schedulePostLoadTasks({
       bookKey,
+      reader,
       sourceUrl: platformDocument.sourceUrl,
-      view,
     });
   } catch (error) {
-    if (!isCurrentBookOpen(openToken)) return;
     readerRender.end();
-    console.error(`Failed to open ${platformDocument.sourceLabel}`, error);
-    if (session.document === platformDocument) {
+    if (runtime.reader === reader) runtime.reader = null;
+    if (reader) {
+      runtime.keybindings?.unbindReaderView(reader.view);
+      runtime.interactions?.unbindView(reader.view);
+      await reader.dispose();
+    } else {
+      if (view) {
+        runtime.keybindings?.unbindReaderView(view);
+        runtime.interactions?.unbindView(view);
+        view.destroy();
+      }
       platformDocument.release?.();
+    }
+    if ((error as DOMException).name !== "AbortError") {
+      console.error(`Failed to open ${platformDocument.sourceLabel}`, error);
+    }
+    if (session.document === platformDocument) {
       session.document = null;
       renderDocumentTitle();
     }
@@ -661,7 +669,7 @@ function setupExtraInteractions() {
   const disposers = [
     listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
       if (!href || isReaderRenderPending()) return;
-      void readerRender.run(() => runtime.readerView?.goTo(href));
+      void readerRender.run(() => getNavigation()?.go(href));
     }),
     listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
       void ensureSearchController().collect(query, { highlightedOnly });
@@ -720,7 +728,7 @@ async function handleDockAction(action: DockAction) {
     case "toggle-theme":
       await runReaderStyleChange(() => {
         applyReaderTheme(getNextReaderThemeId());
-        runtime.readerView?.renderer?.setStyles?.(getBookStyles());
+        getReaderView()?.renderer?.setStyles?.(getBookStyles());
       });
       saveCurrentReaderSettings();
       emitDockUpdate();
@@ -730,7 +738,7 @@ async function handleDockAction(action: DockAction) {
       const delta = action === "decrease-font" ? -READER_FONT_SIZE_STEP : READER_FONT_SIZE_STEP;
       if (!canChangeReaderFontSize(delta)) return;
       await runReaderStyleChange(() => {
-        applyReaderFontSize(readerSettings.fontSize + delta, runtime.readerView);
+        applyReaderFontSize(readerSettings.fontSize + delta, getReaderView());
       });
       saveCurrentReaderSettings();
       return;
@@ -760,50 +768,48 @@ function setupExtraUi() {
 
 type PostLoadTaskOptions = {
   bookKey: string;
+  reader: ReaderDocument;
   sourceUrl: string;
-  view: FoliateViewElement;
 };
 
 type EmbeddedHighlightImportOptions = Pick<PostLoadTaskOptions, "bookKey" | "sourceUrl"> & {
-  taskToken: number;
+  signal: AbortSignal;
 };
 
-function schedulePostLoadTasks({ bookKey, sourceUrl, view }: PostLoadTaskOptions) {
-  const taskToken = ++runtime.postLoadTaskToken;
+function schedulePostLoadTasks({ bookKey, reader, sourceUrl }: PostLoadTaskOptions) {
+  const { signal, view } = reader;
 
   requestAnimationFrame(() => {
-    if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
+    if (signal.aborted) return;
 
-    scheduleIdle(setupExtraUi, 1000);
+    scheduleIdle(setupExtraUi, 1000, signal);
 
     scheduleIdle(() => {
-      if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
-      void importEmbeddedHighlights({ bookKey, sourceUrl, taskToken })
+      void importEmbeddedHighlights({ bookKey, sourceUrl, signal })
         .finally(() => {
-          if (runtime.readerView === view && runtime.postLoadTaskToken === taskToken) {
+          if (!signal.aborted) {
             highlightController.scheduleRestore(view, bookKey);
           }
         });
-    }, 1500);
+    }, 1500, signal);
 
     scheduleIdle(() => {
-      if (runtime.readerView !== view || runtime.postLoadTaskToken !== taskToken) return;
       session.tocItems = view.book?.toc ?? [];
       emitTocUpdate();
-    }, 2000);
+    }, 2000, signal);
   });
 }
 
 async function importEmbeddedHighlights({
   bookKey,
+  signal,
   sourceUrl,
-  taskToken,
 }: EmbeddedHighlightImportOptions) {
-  if (runtime.postLoadTaskToken !== taskToken) return;
+  if (signal.aborted) return;
 
   try {
     const highlights = await readEmbeddedHighlights(sourceUrl);
-    if (runtime.postLoadTaskToken !== taskToken) return;
+    if (signal.aborted) return;
     await setSavedHighlights(bookKey, highlights);
   } catch (error) {
     console.warn("Failed to read embedded EPUB overlays.", error);
@@ -817,7 +823,10 @@ async function bootstrap() {
   try {
     const initialDocument = await platform.loadInitialDocument();
     if (initialDocument) {
-      if (runtime.disposed) return;
+      if (runtime.disposed) {
+        initialDocument.release?.();
+        return;
+      }
       void openBook(initialDocument);
       return;
     }
@@ -833,8 +842,8 @@ async function bootstrap() {
 async function disposeViewer() {
   if (runtime.disposed) return;
   runtime.disposed = true;
-  ++runtime.bookOpenToken;
-  ++runtime.postLoadTaskToken;
+  const reader = runtime.reader;
+  runtime.reader = null;
   savePositionTask.cancel();
   runtime.idleTasks.forEach((cancel) => cancel());
   runtime.idleTasks.clear();
@@ -845,7 +854,6 @@ async function disposeViewer() {
   await highlightController.flushPendingAnnotationSave();
 
   runtime.criticalInteractions?.abort();
-  runtime.readerEvents?.abort();
   runtime.extraInteractionsDispose?.();
   runtime.keybindings?.destroy();
   runtime.interactions?.destroy();
@@ -853,12 +861,10 @@ async function disposeViewer() {
   runtime.searchController?.clear();
   runtime.readingProgressController?.destroy();
   await disposeReaderContent();
-  clearMathSvgCache();
-  runtime.readerView?.close();
-  session.document?.release?.();
+  await clearMathSvgCache();
+  await reader?.dispose();
   session.document = null;
 
-  runtime.readerView = null;
   runtime.readingProgressController = null;
   reactRoot.unmount();
   window.removeEventListener("pagehide", handlePageHide);

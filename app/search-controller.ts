@@ -2,6 +2,7 @@ import type { FoliateViewElement, SearchHit } from "./foliate";
 import { emitViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { normalizeInlineText } from "./reader";
 import { getSavedHighlights } from "./viewer-storage";
+import type { Navigation } from "./reader/navigation";
 
 const LONG_SEARCH_QUERY_THRESHOLD = 24;
 const MAX_SEARCH_QUERY_LENGTH = 120;
@@ -10,6 +11,7 @@ const SECTION_DISTANCE_WEIGHT = 1_000_000;
 
 type SearchControllerOptions = {
   getBookKey: () => string;
+  getNavigation: () => Navigation | null;
   getReaderView: () => FoliateViewElement | null;
   runWithReaderRenderPending: (action: () => Promise<unknown> | undefined) => Promise<void>;
 };
@@ -61,7 +63,7 @@ export function createSearchController(options: SearchControllerOptions) {
     if (!hit) return;
 
     try {
-      const navigate = () => readerView.select?.(hit.cfi) ?? readerView.goTo(hit.cfi);
+      const navigate = () => options.getNavigation()?.select(hit.cfi);
       await options.runWithReaderRenderPending(navigate);
     } catch (error) {
       console.warn("Failed to navigate to search hit.", error);
@@ -81,13 +83,16 @@ export function createSearchController(options: SearchControllerOptions) {
     let closestIndex = 0;
     let closestDistance = Infinity;
     for (const [index, hit] of searchHits.entries()) {
-      const resolved = readerView.resolveNavigation?.(hit.cfi);
+      const resolved = options.getNavigation()?.resolve(hit.cfi);
       if (!resolved) continue;
 
       let distance = Math.abs(resolved.index - currentSection) * SECTION_DISTANCE_WEIGHT;
-      if (resolved.index === currentSection && resolved.anchor) {
+      if (resolved.index === currentSection && typeof resolved.anchor === "function") {
         const anchor = resolved.anchor(doc);
-        const rects = getAnchorRects(anchor, view);
+        const rects = anchor instanceof view.Range || anchor instanceof view.Node
+          ? getAnchorRects(anchor, view)
+          : [];
+        if (!rects.length) continue;
         distance = Math.min(...rects.map((rect) => {
           const start = vertical ? rect.top : rect.left;
           const end = vertical ? rect.bottom : rect.right;

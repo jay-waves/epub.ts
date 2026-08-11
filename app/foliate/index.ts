@@ -6,6 +6,7 @@ export type FoliateViewElement = BaseFoliateViewElement<ReaderHighlight>;
 
 export { Overlay, Overlayer } from "./overlay";
 export type {
+  FoliateBook,
   BookSection,
   FoliateContent,
   RelocateDetail,

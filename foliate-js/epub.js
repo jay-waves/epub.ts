@@ -1,4 +1,4 @@
-import * as CFI from './epubcfi.js'
+import * as CFI from '../app/epub/cfi.js'
 import { ResourceCache } from './resource-cache.js'
 
 const NS = {
@@ -1073,9 +1073,12 @@ ${doc.querySelector('parsererror').innerText}`)
             return JSON.parse(json)
         }
     }
-    destroy() {
+    async destroy() {
         this.#loader?.destroy()
-        void Promise.resolve(this.#destroySource?.()).catch(error =>
-            console.warn('Failed to close EPUB source.', error))
+        try {
+            await this.#destroySource?.()
+        } catch (error) {
+            console.warn('Failed to close EPUB source.', error)
+        }
     }
 }

@@ -2,6 +2,7 @@ import { WheelGestures } from "wheel-gestures";
 import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import type { PageTurnDirection } from "./viewer-events";
 import type { FoliateViewElement } from "./foliate";
+import type { Navigation } from "./reader/navigation";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const HOLD_SCROLL_SPEED_RATIO = 1.75;
@@ -33,6 +34,7 @@ function isScrollDownKey(key: string) {
 
 type ViewerKeybindingOptions = {
   getReaderView: () => FoliateViewElement | null;
+  getNavigation: () => Navigation | null;
   getFlow: () => "paginated" | "scrolled";
   canTurnPage: () => boolean;
   beforeSectionTurn: () => void;
@@ -148,7 +150,8 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
       const shouldGoNext = direction === "left" ? isRtl : !isRtl;
       const isSectionEdge = shouldGoNext ? readerView?.renderer?.atEnd : readerView?.renderer?.atStart;
       if (isSectionEdge) options.beforeSectionTurn();
-      void (direction === "left" ? readerView?.goLeft?.() : readerView?.goRight?.());
+      const navigation = options.getNavigation();
+      void (direction === "left" ? navigation?.left() : navigation?.right());
       return;
     }
 

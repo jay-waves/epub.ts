@@ -9,11 +9,13 @@ import type { ReaderHighlight } from "./reader";
 import type { FoliateContent, FoliateViewElement } from "./foliate";
 import { createTranslationController } from "./translation-controller";
 import { copyReaderMedia } from "./media-clipboard";
+import type { Navigation } from "./reader/navigation";
 
 type PointerCoordinateSpace = "content" | "viewport";
 
 type HighlightControllerOptions = {
   getBookKey: () => string;
+  getNavigation: () => Navigation | null;
   getProgress: () => number;
   getReaderView: () => FoliateViewElement | null;
   openExternal: (url: string) => void;
@@ -178,13 +180,12 @@ export function createHighlightController(options: HighlightControllerOptions) {
   };
 
   const getSelectedReaderContext = () => {
-    const readerView = options.getReaderView();
-    if (!readerView) return null;
+    const navigation = options.getNavigation();
+    if (!navigation) return null;
 
     const selection = getSelectedReaderRange();
     if (!selection) return null;
-    const value = readerView.getCFI?.(selection.index, selection.range);
-    if (!value) return null;
+    const value = navigation.cfi(selection.index, selection.range);
     return { ...selection, value };
   };
 
@@ -431,7 +432,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
     if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
 
     let shouldPersist = false;
-    const sectionFractions = view.getSectionFractions?.() ?? [];
+    const sectionFractions = options.getNavigation()?.fractions() ?? [];
 
     const restoredHighlights = await Promise.all(
       savedHighlights.map(async (annotation) => {
@@ -472,7 +473,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
     if (!text) return;
 
     await navigator.clipboard.writeText(text);
-    options.getReaderView()?.deselect?.();
+    options.getNavigation()?.clearSelection();
     close();
   };
 
@@ -499,7 +500,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
       x: point.x,
       y: point.y,
     });
-    options.getReaderView()?.deselect?.();
+    options.getNavigation()?.clearSelection();
     close();
   };
 
@@ -580,7 +581,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
     const { value } = selection;
     const existing = currentHighlights.find((item) => item.value === value);
     if (existing) {
-      readerView.deselect?.();
+      options.getNavigation()?.clearSelection();
       close();
       return existing;
     }
@@ -595,7 +596,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
     };
 
     await persistHighlight(annotation);
-    readerView.deselect?.();
+    options.getNavigation()?.clearSelection();
     close();
     return annotation;
   };
@@ -635,7 +636,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
         };
 
     if (!existing) await persistHighlight(annotation);
-    readerView.deselect?.();
+    options.getNavigation()?.clearSelection();
     openAnnotationPopover(annotation, point);
     close();
   };
