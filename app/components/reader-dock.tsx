@@ -42,12 +42,14 @@ export function ReaderDock() {
         {dockItems.map((item) => {
           const label = getDockItemLabel(item.action, item.label, dockState);
           const Icon = getDockItemIcon(item.action, item.icon, dockState);
+          const disabled = item.action === "toggle-search" && !dockState.canSearch
+            || item.action === "save-book" && !dockState.hasUnsavedChanges;
 
           return (
             <Tooltip key={item.action} label={label} side="right">
               <Button
                 aria-label={label}
-                disabled={item.action === "toggle-search" && !dockState.canSearch}
+                disabled={disabled}
                 onClick={() => emitViewerEvent(VIEWER_EVENTS.dockAction, item.action)}
               >
                 <span className="dock-button-content">

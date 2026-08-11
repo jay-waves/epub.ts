@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { TocItem } from "../foliate";
+import type { TocItem } from "../renderer";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { TocUpdateDetail } from "../viewer-events";
-import { normalizeTocHref } from "../foliate";
+import { normalizeTocHref } from "../epub/metadata";
 import { Dialog } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 

@@ -1,15 +1,12 @@
-export type TocItem = {
-  href?: string;
-  label?: string;
-  subitems?: TocItem[];
-};
+import type { TocItem } from "../renderer/view.js";
+
+export type { TocItem } from "../renderer/view.js";
 
 export type Section = {
   linear?: string;
   size?: number;
 };
 
-type TocNode = TocItem & { id?: number };
 type SplitHref = (href?: string) => [unknown, string?] | Promise<[unknown, string?]>;
 type GetFragment = (doc: Document, id?: string) => Element | null;
 
@@ -20,7 +17,7 @@ export type SectionLocation = {
   time: { section: number; total: number };
 };
 
-function flatten(items: TocNode[]): TocNode[] {
+function flatten(items: TocItem[]): TocItem[] {
   return items.flatMap((item) => item.subitems?.length
     ? [item, ...flatten(item.subitems)]
     : item);
@@ -29,7 +26,7 @@ function flatten(items: TocNode[]): TocNode[] {
 /** Resolves the nearest TOC or page-list item for a rendered range. */
 export class TocIndex {
   #ids?: unknown[];
-  #map = new Map<unknown, { items?: Array<{ fragment?: string; item: TocNode }>; prev?: TocNode }>();
+  #map = new Map<unknown, { items?: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem }>();
   #getFragment?: GetFragment;
 
   async init({
@@ -38,20 +35,13 @@ export class TocIndex {
     splitHref,
     getFragment,
   }: {
-    toc: TocNode[];
+    toc: TocItem[];
     ids: unknown[];
     splitHref: SplitHref;
     getFragment: GetFragment;
   }) {
-    let nextId = 0;
-    const assignId = (item: TocNode) => {
-      item.id = nextId++;
-      item.subitems?.forEach(assignId);
-    };
-    toc.forEach(assignId);
-
     const items = flatten(toc);
-    const grouped = new Map<unknown, { items: Array<{ fragment?: string; item: TocNode }>; prev?: TocNode }>();
+    const grouped = new Map<unknown, { items: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem }>();
     for (const [index, item] of items.entries()) {
       const [id, fragment] = await splitHref(item.href) ?? [];
       const value = { fragment, item };
@@ -60,7 +50,7 @@ export class TocIndex {
       else grouped.set(id, { prev: items[index - 1], items: [value] });
     }
 
-    const map = new Map<unknown, { items?: Array<{ fragment?: string; item: TocNode }>; prev?: TocNode }>();
+    const map = new Map<unknown, { items?: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem }>();
     for (const [index, id] of ids.entries()) {
       map.set(id, grouped.get(id) ?? map.get(ids[index - 1]) ?? {});
     }
@@ -132,7 +122,7 @@ export class SectionIndex {
       : 0;
     const page = Number.isFinite(pageFraction) ? Math.max(0, pageFraction) : 0;
     const sectionSize = this.#sizes[index] ?? 0;
-    const sizeBefore = this.#sizes.slice(0, index).reduce((sum, size) => sum + size, 0);
+    const sizeBefore = (this.fractions[index] ?? 0) * this.#total;
     const size = sizeBefore + fraction * sectionSize;
     const nextSize = size + page * sectionSize;
 

@@ -1,4 +1,4 @@
-import type { TocItem } from "./foliate";
+import type { TocItem } from "./renderer";
 import type { PlatformDocument } from "./platform/types";
 
 type BookSession = ReturnType<typeof createBookSession>;
@@ -9,6 +9,7 @@ export function createBookSession() {
     document: null as PlatformDocument | null,
     dirty: false,
     href: "",
+    progress: 0,
     restoring: false,
     restoreScrollPending: false,
     scrolledSectionIndex: null as number | null,

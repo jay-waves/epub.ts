@@ -204,20 +204,28 @@ const makeMarginals = (length, part) => Array.from({ length }, () => {
 
 const setStylesImportant = (el, styles) => {
     const { style } = el
-    for (const [k, v] of Object.entries(styles)) style.setProperty(k, v, 'important')
+    for (const [k, v] of Object.entries(styles)) {
+        if (style.getPropertyValue(k) !== String(v)
+        || style.getPropertyPriority(k) !== 'important')
+            style.setProperty(k, v, 'important')
+    }
 }
 
 class View {
-    #observer = new ResizeObserver(() => this.expand())
+    #observer = new ResizeObserver(() => this.#scheduleExpand())
     #element = document.createElement('div')
     #iframe = document.createElement('iframe')
     #contentRange = document.createRange()
-    #overlayer
+    #expandFrame
+    #media
+    #mediaLimits = new WeakMap()
+    #overlay
     #vertical = false
     #rtl = false
     #column = true
     #size
     #layout = {}
+    #destroyed = false
     constructor({ container, onExpand }) {
         this.container = container
         this.onExpand = onExpand
@@ -258,6 +266,8 @@ class View {
                     // layout measurements (for example, MathJax line breaking).
                     this.#iframe.style.display = 'block'
                     await afterLoad?.(doc)
+                    if (this.#destroyed)
+                        throw new DOMException('View destroyed', 'AbortError')
 
                     // it needs to be visible for Firefox to get computed style
                     const { vertical, rtl } = getDirection(doc)
@@ -276,7 +286,9 @@ class View {
                     // the resize observer above doesn't work in Firefox
                     // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
                     // until the bug is fixed we can at least account for font load
-                    doc.fonts.ready.then(() => this.expand())
+                    doc.fonts.ready.then(() => {
+                        this.#scheduleExpand()
+                    })
 
                     resolve()
                 } catch (error) {
@@ -346,9 +358,16 @@ class View {
         const { width, height, margin } = this.#layout
         const vertical = this.#vertical
         const doc = this.document
-        for (const el of doc.body.querySelectorAll('img, svg, video')) {
+        this.#media ??= Array.from(doc.body.querySelectorAll('img, svg, video'))
+        for (const el of this.#media) {
             // preserve max size if they are already set
-            const { maxHeight, maxWidth } = doc.defaultView.getComputedStyle(el)
+            let limits = this.#mediaLimits.get(el)
+            if (!limits) {
+                const { maxHeight, maxWidth } = doc.defaultView.getComputedStyle(el)
+                limits = { maxHeight, maxWidth }
+                this.#mediaLimits.set(el, limits)
+            }
+            const { maxHeight, maxWidth } = limits
             setStylesImportant(el, {
                 'max-height': vertical
                     ? (maxHeight !== 'none' && maxHeight !== '0px' ? maxHeight : '100%')
@@ -363,7 +382,15 @@ class View {
             })
         }
     }
+    #scheduleExpand() {
+        if (this.#destroyed || this.#expandFrame) return
+        this.#expandFrame = requestAnimationFrame(() => {
+            this.#expandFrame = null
+            this.expand()
+        })
+    }
     expand() {
+        if (this.#destroyed) return
         const { documentElement } = this.document
         if (this.#column) {
             const side = this.#vertical ? 'height' : 'width'
@@ -383,12 +410,12 @@ class View {
             this.#iframe.style[otherSide] = '100%'
             this.#element.style[otherSide] = '100%'
             documentElement.style[side] = `${this.#size}px`
-            if (this.#overlayer) {
-                this.#overlayer.element.style.margin = '0'
-                this.#overlayer.element.style.left = this.#vertical ? '0' : `${this.#size}px`
-                this.#overlayer.element.style.top = this.#vertical ? `${this.#size}px` : '0'
-                this.#overlayer.element.style[side] = `${expandedSize}px`
-                this.#overlayer.redraw()
+            if (this.#overlay) {
+                this.#overlay.element.style.margin = '0'
+                this.#overlay.element.style.left = this.#vertical ? '0' : `${this.#size}px`
+                this.#overlay.element.style.top = this.#vertical ? `${this.#size}px` : '0'
+                this.#overlay.element.style[side] = `${expandedSize}px`
+                this.#overlay.redraw()
             }
         } else {
             const side = this.#vertical ? 'width' : 'height'
@@ -402,25 +429,30 @@ class View {
             this.#element.style[side] = `${expandedSize}px`
             this.#iframe.style[otherSide] = '100%'
             this.#element.style[otherSide] = '100%'
-            if (this.#overlayer) {
-                this.#overlayer.element.style.margin = padding
-                this.#overlayer.element.style.left = '0'
-                this.#overlayer.element.style.top = '0'
-                this.#overlayer.element.style[side] = `${expandedSize}px`
-                this.#overlayer.redraw()
+            if (this.#overlay) {
+                this.#overlay.element.style.margin = padding
+                this.#overlay.element.style.left = '0'
+                this.#overlay.element.style.top = '0'
+                this.#overlay.element.style[side] = `${expandedSize}px`
+                this.#overlay.redraw()
             }
         }
         this.onExpand()
     }
-    set overlayer(overlayer) {
-        this.#overlayer = overlayer
-        this.#element.append(overlayer.element)
+    set overlay(overlay) {
+        this.#overlay = overlay
+        this.#element.append(overlay.element)
     }
-    get overlayer() {
-        return this.#overlayer
+    get overlay() {
+        return this.#overlay
     }
     destroy() {
-        if (this.document) this.#observer.unobserve(this.document.body)
+        if (this.#destroyed) return
+        this.#destroyed = true
+        cancelAnimationFrame(this.#expandFrame)
+        this.#observer.disconnect()
+        this.#media = null
+        this.#overlay = null
     }
 }
 
@@ -431,7 +463,7 @@ export class Paginator extends HTMLElement {
         'max-inline-size', 'max-block-size', 'max-column-count',
     ]
     #root = this.attachShadow({ mode: 'closed' })
-    #observer = new ResizeObserver(() => this.render())
+    #observer = new ResizeObserver(() => this.#scheduleRender())
     #top
     #background
     #container
@@ -451,8 +483,9 @@ export class Paginator extends HTMLElement {
     #mediaQueryListener
     #scrollBounds
     #touchState
-    #touchScrolled
     #lastVisibleRange
+    #renderFrame
+    #destroyed = false
     constructor() {
         super()
         this.#root.innerHTML = `<style>
@@ -510,6 +543,7 @@ export class Paginator extends HTMLElement {
         #container {
             grid-column: 2 / 5;
             grid-row: 2;
+            position: relative;
             overflow: hidden;
             scrollbar-width: none;
             -ms-overflow-style: none;
@@ -579,10 +613,12 @@ export class Paginator extends HTMLElement {
         this.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
         this.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
         this.addEventListener('touchend', this.#onTouchEnd.bind(this))
+        this.addEventListener('touchcancel', this.#onTouchCancel.bind(this))
         this.addEventListener('load', ({ detail: { doc } }) => {
             doc.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
             doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
             doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
+            doc.addEventListener('touchcancel', this.#onTouchCancel.bind(this))
         })
 
         this.addEventListener('relocate', ({ detail }) => {
@@ -639,7 +675,7 @@ export class Paginator extends HTMLElement {
     attributeChangedCallback(name, _, value) {
         switch (name) {
             case 'flow':
-                this.render()
+                this.#scheduleRender()
                 break
             case 'gap':
             case 'margin':
@@ -650,7 +686,7 @@ export class Paginator extends HTMLElement {
             case 'max-inline-size':
                 // needs explicit `render()` as it doesn't necessarily resize
                 this.#top.style.setProperty('--_' + name, value)
-                this.render()
+                this.#scheduleRender()
                 break
         }
     }
@@ -675,21 +711,22 @@ export class Paginator extends HTMLElement {
         })
     }
     #createView() {
-        this.#destroyView()
-        this.#view = new View({
+        const view = new View({
             container: this,
-            onExpand: () => this.#scrollToAnchor(this.#anchor),
+            onExpand: () => {
+                if (this.#view === view) this.#scrollToAnchor(this.#anchor)
+            },
         })
-        this.#container.append(this.#view.element)
-        return this.#view
+        this.#container.append(view.element)
+        return view
     }
-    #destroyView() {
-        if (!this.#view) return
-        const doc = this.#view.document
+    #destroyView(view = this.#view) {
+        if (!view) return
+        const doc = view.document
         if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
-        this.#view.destroy()
-        this.#view.element.remove()
-        this.#view = null
+        view.destroy()
+        view.element.remove()
+        if (this.#view === view) this.#view = null
     }
     #beforeRender({ vertical, rtl, background }) {
         this.#vertical = vertical
@@ -775,6 +812,13 @@ export class Paginator extends HTMLElement {
         }))
         this.#scrollToAnchor(this.#anchor)
     }
+    #scheduleRender() {
+        if (this.#destroyed || this.#renderFrame) return
+        this.#renderFrame = requestAnimationFrame(() => {
+            this.#renderFrame = null
+            this.render()
+        })
+    }
     get scrolled() {
         return this.getAttribute('flow') === 'scrolled'
     }
@@ -834,23 +878,28 @@ export class Paginator extends HTMLElement {
                 index: this.#adjacentIndex(dir),
                 anchor: dir < 0 ? () => 1 : () => 0,
             })
-        })
+        }).catch(error => console.warn('Failed to snap reader page.', error))
     }
     #onTouchStart(e) {
         const touch = e.changedTouches[0]
+        const target = e.target?.nodeType === Node.ELEMENT_NODE ? e.target : null
         this.#touchState = {
             x: touch?.screenX, y: touch?.screenY,
             t: e.timeStamp,
             vx: 0, vy: 0,
+            moved: false,
+            interactive: Boolean(target?.closest(
+                'a[href], button, input, select, textarea, label, summary, '
+                + '[contenteditable="true"], audio[controls], video[controls]')),
         }
     }
     #onTouchMove(e) {
         const state = this.#touchState
-        if (state.pinched) return
+        if (!state || state.interactive || state.pinched) return
         state.pinched = globalThis.visualViewport.scale > 1
         if (this.scrolled || state.pinched) return
         if (e.touches.length > 1) {
-            if (this.#touchScrolled) e.preventDefault()
+            if (state.moved) e.preventDefault()
             return
         }
         e.preventDefault()
@@ -863,20 +912,24 @@ export class Paginator extends HTMLElement {
         state.t = e.timeStamp
         state.vx = dx / dt
         state.vy = dy / dt
-        this.#touchScrolled = true
+        state.moved = true
         this.scrollBy(dx, dy)
     }
     #onTouchEnd() {
-        this.#touchScrolled = false
-        if (this.scrolled) return
+        const state = this.#touchState
+        this.#touchState = null
+        if (!state?.moved || this.scrolled || state.interactive) return
 
         // XXX: Firefox seems to report scale as 1... sometimes...?
         // at this point I'm basically throwing `requestAnimationFrame` at
         // anything that doesn't work
         requestAnimationFrame(() => {
             if (globalThis.visualViewport.scale === 1)
-                this.snap(this.#touchState.vx, this.#touchState.vy)
+                this.snap(state.vx, state.vy)
         })
+    }
+    #onTouchCancel() {
+        this.#touchState = null
     }
     // allows one to process rects as if they were LTR and horizontal
     #getRectMapper() {
@@ -986,10 +1039,17 @@ export class Paginator extends HTMLElement {
     }
     async #display(promise) {
         const { index, src, anchor, onLoad, select } = await promise
-        this.#index = index
         const hasFocus = this.#view?.document?.hasFocus()
+        let resolvedAnchor
         if (src) {
+            const previousView = this.#view
             const view = this.#createView()
+            if (previousView) Object.assign(view.element.style, {
+                inset: '0',
+                opacity: '0',
+                pointerEvents: 'none',
+                position: 'absolute',
+            })
             const afterLoad = async doc => {
                 if (doc.head) {
                     const $styleBefore = doc.createElement('style')
@@ -1000,20 +1060,35 @@ export class Paginator extends HTMLElement {
                     this.#applyStyles(doc, this.#styles)
                 }
                 await this.beforeRenderDocument?.(doc, index)
-                onLoad?.({ doc, index })
             }
             const beforeRender = this.#beforeRender.bind(this)
-            await view.load(src, afterLoad, beforeRender)
-            this.dispatchEvent(new CustomEvent('create-overlayer', {
+            try {
+                await view.load(src, afterLoad, beforeRender)
+                resolvedAnchor = typeof anchor === 'function'
+                    ? anchor(view.document) : anchor
+            } catch (error) {
+                this.#destroyView(view)
+                throw error
+            }
+            this.#destroyView(previousView)
+            this.#view = view
+            view.element.style.removeProperty('inset')
+            view.element.style.removeProperty('opacity')
+            view.element.style.removeProperty('pointer-events')
+            view.element.style.removeProperty('position')
+            onLoad?.({ doc: view.document, index })
+            this.dispatchEvent(new CustomEvent('request-overlay', {
                 detail: {
                     doc: view.document, index,
-                    attach: overlayer => view.overlayer = overlayer,
+                    attach: overlay => view.overlay = overlay,
                 },
             }))
-            this.#view = view
+        } else if (index !== this.#index) {
+            throw new Error(`Section ${index} has no renderable content`)
         }
-        await this.scrollToAnchor((typeof anchor === 'function'
-            ? anchor(this.#view.document) : anchor) ?? 0, select)
+        this.#index = index
+        await this.scrollToAnchor((src ? resolvedAnchor
+            : typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select)
         if (hasFocus) this.focusView()
     }
     #canGoToIndex(index) {
@@ -1023,17 +1098,18 @@ export class Paginator extends HTMLElement {
         if (index === this.#index) await this.#display({ index, anchor, select })
         else {
             const oldIndex = this.#index
+            const section = this.sections[index]
             const onLoad = detail => {
                 this.sections[oldIndex]?.unload?.()
                 this.dispatchEvent(new CustomEvent('load', { detail }))
             }
-            await this.#display(Promise.resolve(this.sections[index].load())
-                .then(src => ({ index, src, anchor, onLoad, select }))
-                .catch(e => {
-                    console.warn(e)
-                    console.warn(new Error(`Failed to load section ${index}`))
-                    return {}
-                }))
+            try {
+                await this.#display(Promise.resolve(section.load())
+                    .then(src => ({ index, src, anchor, onLoad, select })))
+            } catch (error) {
+                section.unload?.()
+                throw error
+            }
         }
     }
     async goTo(target) {
@@ -1077,14 +1153,17 @@ export class Paginator extends HTMLElement {
     async #turnPage(dir, distance) {
         if (this.#locked) return
         this.#locked = true
-        const prev = dir === -1
-        const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-        if (shouldGo) await this.#goTo({
-            index: this.#adjacentIndex(dir),
-            anchor: prev ? () => 1 : () => 0,
-        })
-        if (shouldGo || !this.hasAttribute('animated')) await wait(100)
-        this.#locked = false
+        try {
+            const prev = dir === -1
+            const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
+            if (shouldGo) await this.#goTo({
+                index: this.#adjacentIndex(dir),
+                anchor: prev ? () => 1 : () => 0,
+            })
+            if (shouldGo || !this.hasAttribute('animated')) await wait(100)
+        } finally {
+            this.#locked = false
+        }
     }
     prev(distance) {
         return this.#turnPage(-1, distance)
@@ -1109,7 +1188,7 @@ export class Paginator extends HTMLElement {
     getContents() {
         if (this.#view) return [{
             index: this.#index,
-            overlayer: this.#view.overlayer,
+            overlay: this.#view.overlay,
             doc: this.#view.document,
         }]
         return []
@@ -1138,18 +1217,21 @@ export class Paginator extends HTMLElement {
 
         // needed because the resize observer doesn't work in Firefox
         doc.fonts?.ready?.then(() => {
-            if (this.#view?.document === doc) this.#view.expand()
+            if (this.#view?.document === doc) this.#scheduleRender()
         })
     }
     focusView() {
         this.#view.document.defaultView.focus()
     }
     destroy() {
-        this.#observer.unobserve(this)
+        if (this.#destroyed) return
+        this.#destroyed = true
+        cancelAnimationFrame(this.#renderFrame)
+        this.#observer.disconnect()
         this.#destroyView()
         this.sections[this.#index]?.unload?.()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
     }
 }
 
-customElements.define('foliate-paginator', Paginator)
+customElements.define('epub-paginator', Paginator)

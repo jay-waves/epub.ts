@@ -1,4 +1,5 @@
-import type { BookSection, FoliateViewElement } from "./foliate";
+import type { BookSection } from "./renderer";
+import type { ReaderView } from "./reader/model";
 
 export type BookInfo = {
   metadataRows: BookInfoRow[];
@@ -16,7 +17,7 @@ const WORDS_PER_MINUTE = 250;
 const CHARS_PER_WORD = 6;
 
 type BookInfoSource = {
-  book: FoliateViewElement["book"];
+  book: ReaderView["book"];
   sourceLabel: string;
   sourceUrl: string;
 };

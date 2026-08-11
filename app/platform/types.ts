@@ -1,4 +1,4 @@
-import type { ReaderHighlight } from "../reader";
+import type { ReaderHighlight } from "../reader/model";
 
 type EpubFileWriter =
   | { save(blob: Blob): Promise<boolean> }

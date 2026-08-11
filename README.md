@@ -113,7 +113,7 @@ Create the iframe Document and inject reader styles
 
 ## 致谢 / Acknowledgements
 
-- foliate-js
+- [foliate-js](https://github.com/johnfactotum/foliate-js)（初始 renderer 与 EPUB parser）
 - EB Garamond font
 - LXGW font
 - Monaspace Argon

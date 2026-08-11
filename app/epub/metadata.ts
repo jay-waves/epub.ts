@@ -1,23 +1,5 @@
-import type { FoliateViewElement as BaseFoliateViewElement } from "../../foliate-js/view.js";
-import { normalizeInlineText } from "../reader";
-import type { ReaderHighlight } from "../reader";
-
-export type FoliateViewElement = BaseFoliateViewElement<ReaderHighlight>;
-
-export { Overlay, Overlayer } from "./overlay";
-export type {
-  FoliateBook,
-  BookSection,
-  FoliateContent,
-  RelocateDetail,
-  SearchHit,
-  TocItem,
-} from "../../foliate-js/view.js";
-
-export async function createFoliateView() {
-  await import("../../foliate-js/view.js");
-  return document.createElement("foliate-view") as FoliateViewElement;
-}
+import { normalizeInlineText } from "../reader/model";
+import type { Book } from "../renderer";
 
 export function normalizeTocHref(href?: string) {
   if (!href) return "";
@@ -46,36 +28,36 @@ function formatContributor(
   return formatLocalized(value.name);
 }
 
-function collectIdentifierCandidates(value: unknown, candidates: string[] = []) {
-  if (!value) return candidates;
+function collectIdentifiers(value: unknown, identifiers: string[] = []) {
+  if (!value) return identifiers;
   if (typeof value === "string") {
     const normalized = value.trim();
-    if (normalized) candidates.push(normalized);
+    if (normalized) identifiers.push(normalized);
   } else if (Array.isArray(value)) {
-    value.forEach((item) => collectIdentifierCandidates(item, candidates));
+    value.forEach((item) => collectIdentifiers(item, identifiers));
   } else if (typeof value === "object") {
-    Object.values(value as Record<string, unknown>).forEach((item) => collectIdentifierCandidates(item, candidates));
+    Object.values(value as Record<string, unknown>).forEach((item) => collectIdentifiers(item, identifiers));
   }
-  return candidates;
+  return identifiers;
 }
 
-async function sha256Hex(value: string) {
+async function hash(value: string) {
   const data = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function deriveBookKey(book: FoliateViewElement["book"], fallbackKey: string) {
+export async function getBookKey(book: Book | undefined, fallback: string) {
   const metadata = book?.metadata;
-  const stableIdentifier = [
-    ...collectIdentifierCandidates(metadata?.identifier),
-    ...collectIdentifierCandidates(metadata?.altIdentifier),
+  const identifier = [
+    ...collectIdentifiers(metadata?.identifier),
+    ...collectIdentifiers(metadata?.altIdentifier),
   ].map(normalizeInlineText).find(Boolean);
 
-  if (stableIdentifier) return `book:id:${stableIdentifier.toLocaleLowerCase()}`;
+  if (identifier) return `book:id:${identifier.toLocaleLowerCase()}`;
 
   const sections = book?.sections ?? [];
-  const fingerprintParts = {
+  const fingerprint = {
     author: formatContributor(metadata?.author),
     sectionCount: sections.length,
     sectionSignature: sections.slice(0, 4)
@@ -86,7 +68,7 @@ export async function deriveBookKey(book: FoliateViewElement["book"], fallbackKe
       .map((item) => normalizeTocHref(item.href) || item.label || "")
       .join("|"),
   };
-  if (!Object.values(fingerprintParts).some(Boolean)) return fallbackKey;
+  if (!Object.values(fingerprint).some(Boolean)) return fallback;
 
-  return `book:fingerprint:${(await sha256Hex(JSON.stringify(fingerprintParts))).slice(0, 24)}`;
+  return `book:fingerprint:${(await hash(JSON.stringify(fingerprint))).slice(0, 24)}`;
 }

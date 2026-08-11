@@ -1,8 +1,10 @@
 import { platform } from "#platform";
+import type { View } from "../renderer";
 
 type ReaderThemeMode = "light" | "dark";
 export type ReaderFlow = "paginated" | "scrolled";
-export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark";
+export type PageTurnDirection = "left" | "right";
+export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark" | "gruvbox";
 
 export type ReaderSettings = {
   flow: ReaderFlow;
@@ -18,6 +20,9 @@ export type ReaderTheme = {
   background: string;
   foreground: string;
   link: string;
+  primary: string;
+  secondary: string;
+  secondaryInk: string;
 };
 
 export type ReadingPosition = {
@@ -36,6 +41,8 @@ export type ReaderHighlight = {
   createdAt: number;
 };
 
+export type ReaderView = View<ReaderHighlight>;
+
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   flow: "paginated",
   fontSize: platform.readerProfile.defaultFontSize,
@@ -49,30 +56,33 @@ export function normalizeInlineText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-export function runWhenIdle(callback: () => void, timeout = 500, fallbackDelay = 0) {
-  const requestIdle = globalThis.requestIdleCallback;
-  if (requestIdle) {
-    const handle = requestIdle(callback, { timeout });
-    return () => globalThis.cancelIdleCallback(handle);
-  }
-  const handle = globalThis.setTimeout(callback, fallbackDelay);
-  return () => globalThis.clearTimeout(handle);
-}
-
-export function createDebouncedTask<Args extends unknown[]>(
-  callback: (...args: Args) => void,
+export function createDebouncedTask<Args extends unknown[], Result>(
+  callback: (...args: Args) => Result,
   delay: number,
 ) {
   let timer: number | undefined;
+  let pendingArgs: Args | undefined;
+
+  const cancel = () => {
+    window.clearTimeout(timer);
+    timer = undefined;
+    pendingArgs = undefined;
+  };
+
+  const flush = () => {
+    if (!pendingArgs) return;
+    const args = pendingArgs;
+    cancel();
+    callback(...args);
+  };
 
   return {
-    cancel: () => {
-      window.clearTimeout(timer);
-      timer = undefined;
-    },
+    cancel,
+    flush,
     schedule: (...args: Args) => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => callback(...args), delay);
+      pendingArgs = args;
+      timer = window.setTimeout(() => { void flush(); }, delay);
     },
   };
 }

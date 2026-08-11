@@ -6,7 +6,7 @@ import {
   ZipReader,
 } from "@zip.js/zip.js";
 import type { FileEntry } from "@zip.js/zip.js";
-import type { FoliateBook } from "../../foliate-js/view.js";
+import type { Book } from "../renderer/view.js";
 
 export class ResponseError extends Error {}
 export class NotFoundError extends Error {}
@@ -46,17 +46,23 @@ async function createZipSource(file: File) {
   };
 }
 
-export async function createBook(input: File | string): Promise<FoliateBook> {
+export async function createBook(input: File | string): Promise<Book> {
   const file = typeof input === "string" ? await fetchFile(input) : input;
   if (!file.size) throw new NotFoundError("File not found");
   if (!await isZip(file)) throw new UnsupportedTypeError("File type not supported");
 
   const source = await createZipSource(file);
+  let book: Book | undefined;
   try {
-    const { EPUB } = await import("../../foliate-js/epub.js");
-    return await new EPUB(source).init() as FoliateBook;
+    const { EPUB } = await import("./parser.js");
+    book = await new EPUB(source).init() as Book;
+    if (!book.sections.length) {
+      throw new UnsupportedTypeError("EPUB has no readable sections");
+    }
+    return book;
   } catch (error) {
-    await source.destroy();
+    if (book) await book.destroy?.();
+    else await source.destroy();
     throw error;
   }
 }

@@ -86,6 +86,7 @@ function ContextMenuItem({
   return (
     <button
       className={`reader-context-menu-item${destructive ? " is-destructive" : ""}`}
+      data-action={action}
       disabled={disabled}
       role="menuitem"
       type="button"

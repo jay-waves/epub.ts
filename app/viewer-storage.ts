@@ -2,12 +2,12 @@ import type {
   ReaderHighlight,
   ReaderSettings,
   ReadingPosition,
-} from "./reader";
-import type { RelocateDetail } from "./foliate";
+} from "./reader/model";
+import type { Location } from "./reader/navigation";
 import { platform } from "#platform";
 
 const queuePositionWrite = createWriteQueue();
-const queueHighlightWrite = createWriteQueue();
+const queueHighlightAccess = createWriteQueue();
 
 const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
 const getBookHighlightsKey = (bookKey: string) => `reading-highlights:${bookKey}`;
@@ -26,7 +26,7 @@ export async function getSavedPosition(bookKey: string) {
   return platform.readViewerMetadata<ReadingPosition>(getBookPositionKey(bookKey));
 }
 
-export async function saveReadingPosition(bookKey: string, detail: RelocateDetail) {
+export async function saveReadingPosition(bookKey: string, detail: Location) {
   if (!bookKey || (!detail.cfi && typeof detail.fraction !== "number")) return;
 
   await updateBookPosition(bookKey, (previous) => ({
@@ -48,12 +48,13 @@ export async function saveReaderSettings(bookKey: string, settings: ReaderSettin
 
 export async function getSavedHighlights(bookKey: string) {
   if (!bookKey) return [];
-  return (await platform.readViewerMetadata<ReaderHighlight[]>(getBookHighlightsKey(bookKey))) ?? [];
+  return queueHighlightAccess(async () =>
+    (await platform.readViewerMetadata<ReaderHighlight[]>(getBookHighlightsKey(bookKey))) ?? []);
 }
 
 export async function setSavedHighlights(bookKey: string, bookHighlights: ReaderHighlight[]) {
   if (!bookKey) return;
-  await queueHighlightWrite(() => platform.writeViewerMetadata(getBookHighlightsKey(bookKey), bookHighlights));
+  await queueHighlightAccess(() => platform.writeViewerMetadata(getBookHighlightsKey(bookKey), bookHighlights));
 }
 
 function createWriteQueue() {

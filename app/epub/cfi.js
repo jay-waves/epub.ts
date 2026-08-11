@@ -233,6 +233,7 @@ const indexChildNodes = (node, filter) => {
 }
 
 const partsToNode = (node, parts, filter) => {
+    if (!node || !parts?.length) return null
     const { id } = parts[parts.length - 1]
     if (id) {
         const el = node.ownerDocument.getElementById(id)
@@ -245,6 +246,7 @@ const partsToNode = (node, parts, filter) => {
         if (newNode === 'last') return { node: node.lastChild ?? node }
         if (newNode === 'before') return { node, before: true }
         if (newNode === 'after') return { node, after: true }
+        if (!newNode) return null
         node = newNode
     }
     const { offset } = parts[parts.length - 1]
@@ -256,6 +258,7 @@ const partsToNode = (node, parts, filter) => {
         if (sum + length >= offset) return { node: n, offset: offset - sum }
         sum += length
     }
+    return null
 }
 
 const nodeToParts = (node, offset, filter) => {
@@ -302,6 +305,9 @@ export const toRange = (doc, parts, filter) => {
     const start = partsToNode(root, startParts[0], filter)
     const end = partsToNode(root, endParts[0], filter)
 
+    if (!start?.node || !end?.node)
+        throw new Error('CFI does not resolve to a range in this document')
+
     const range = doc.createRange()
 
     if (start.before) range.setStartBefore(start.node)
@@ -328,7 +334,7 @@ export const fromElements = elements => {
 }
 
 export const toElement = (doc, parts) =>
-    partsToNode(doc.documentElement, collapse(parts)).node
+    partsToNode(doc.documentElement, collapse(parts))?.node
 
 // turn indices into standard CFIs when you don't have an actual package document
 export const fake = {

@@ -1,7 +1,7 @@
 import { get, set } from "idb-keyval";
 import { openExternal } from "./external";
 import { createBundledReaderProfile } from "./reader-profile";
-import type { ReaderHighlight } from "../reader";
+import type { ReaderHighlight } from "../reader/model";
 import type {
   EpubFileHandle,
   PlatformDocument,

@@ -1,4 +1,4 @@
-import type { TocItem } from "./foliate";
+import type { TocItem } from "./renderer";
 import type { BookInfo } from "./book-info";
 
 export const VIEWER_EVENTS = {
@@ -16,11 +16,11 @@ export const VIEWER_EVENTS = {
   dockAction: "reader:dock-action",
   dockUpdate: "reader:dock-update",
   documentOpen: "reader:document-open",
-  pageTurn: "reader:page-turn",
+  progressSeek: "reader:progress-seek",
+  progressUpdate: "reader:progress-update",
   searchClear: "reader:search-clear",
   searchCollect: "reader:search-collect",
   searchNext: "reader:search-next",
-  searchOpen: "reader:search-open",
   searchPrevious: "reader:search-previous",
   searchUpdate: "reader:search-update",
   bookInfoOpen: "reader:book-info-open",
@@ -32,7 +32,6 @@ export const VIEWER_EVENTS = {
 
 export type HighlightContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
 type TranslationStatus = "error" | "loading" | "success";
-export type PageTurnDirection = "left" | "right";
 
 export type HighlightContextOpenDetail = {
   canCopy: boolean;
@@ -95,6 +94,12 @@ export type SearchUpdateDetail = {
   visible: boolean;
 };
 
+export type ProgressUpdateDetail = {
+  fraction: number;
+  index?: number;
+  reset?: boolean;
+};
+
 export type TocUpdateDetail = {
   currentHref: string;
   items: TocItem[];
@@ -115,11 +120,11 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.dockAction]: DockAction;
   [VIEWER_EVENTS.dockUpdate]: DockUpdateDetail;
   [VIEWER_EVENTS.documentOpen]: void;
-  [VIEWER_EVENTS.pageTurn]: PageTurnDirection;
+  [VIEWER_EVENTS.progressSeek]: number;
+  [VIEWER_EVENTS.progressUpdate]: ProgressUpdateDetail;
   [VIEWER_EVENTS.searchClear]: void;
   [VIEWER_EVENTS.searchCollect]: SearchCollectDetail;
   [VIEWER_EVENTS.searchNext]: void;
-  [VIEWER_EVENTS.searchOpen]: void;
   [VIEWER_EVENTS.searchPrevious]: void;
   [VIEWER_EVENTS.searchUpdate]: SearchUpdateDetail;
   [VIEWER_EVENTS.bookInfoOpen]: void;
@@ -129,11 +134,13 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
 };
 
+const viewerEvents = new EventTarget();
+
 export function emitViewerEvent<EventName extends keyof ViewerEventDetailMap>(
   eventName: EventName,
   ...detail: ViewerEventDetailMap[EventName] extends void ? [] : [ViewerEventDetailMap[EventName]]
 ) {
-  window.dispatchEvent(new CustomEvent(eventName, { detail: detail[0] }));
+  viewerEvents.dispatchEvent(new CustomEvent(eventName, { detail: detail[0] }));
 }
 
 export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(
@@ -143,6 +150,6 @@ export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(
   const listener = (event: Event) => {
     handler((event as CustomEvent<ViewerEventDetailMap[EventName]>).detail);
   };
-  window.addEventListener(eventName, listener);
-  return () => window.removeEventListener(eventName, listener);
+  viewerEvents.addEventListener(eventName, listener);
+  return () => viewerEvents.removeEventListener(eventName, listener);
 }

@@ -157,7 +157,7 @@ export class Overlay {
     if (writingMode === "vertical-rl" || writingMode === "vertical-lr") {
       for (const { right, top, height } of rects) {
         const path = svg("path");
-        const count = Math.round(height / block / 1.5);
+        const count = Math.max(1, Math.round(height / block / 1.5));
         const inline = height / count;
         const lines = Array.from(
           { length: count },
@@ -169,7 +169,7 @@ export class Overlay {
     } else {
       for (const { left, bottom, width: rectWidth } of rects) {
         const path = svg("path");
-        const count = Math.round(rectWidth / block / 1.5);
+        const count = Math.max(1, Math.round(rectWidth / block / 1.5));
         const inline = rectWidth / count;
         const lines = Array.from(
           { length: count },
@@ -186,8 +186,8 @@ export class Overlay {
     const { color = "red" } = options;
     const group = svg("g");
     group.setAttribute("fill", color);
-    group.style.opacity = "var(--overlayer-highlight-opacity, .3)";
-    group.style.mixBlendMode = "var(--overlayer-highlight-blend-mode, normal)";
+    group.style.opacity = "var(--reader-highlight-opacity, .3)";
+    group.style.mixBlendMode = "var(--reader-highlight-blend-mode, normal)";
     for (const { left, top, height, width } of rects) {
       const rect = svg("rect");
       rect.setAttribute("x", String(left));
@@ -230,6 +230,3 @@ export class Overlay {
     return image;
   }
 }
-
-// Keep the foliate-js public name while using the shorter project-side name.
-export { Overlay as Overlayer };

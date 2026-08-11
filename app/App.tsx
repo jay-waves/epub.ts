@@ -7,17 +7,14 @@ import { SearchBar } from "./components/search-bar";
 import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
-import type { ReadingProgressElements } from "./components/reading-progress";
 import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 
 export function App({
   onOpenLocalFile,
   onPickLocalFile,
-  onReadingProgressReady,
 }: {
   onOpenLocalFile?: (file: File) => void;
   onPickLocalFile?: () => Promise<void>;
-  onReadingProgressReady: (elements: ReadingProgressElements | null) => void;
 }) {
   const [showWelcome, setShowWelcome] = useState(Boolean(onOpenLocalFile));
 
@@ -35,7 +32,7 @@ export function App({
           <div id="reader-root" className="reader-frame" />
         </main>
 
-        <ReadingProgress onReady={onReadingProgressReady} />
+        <ReadingProgress />
 
         <SearchBar />
         <BookInfoPage />

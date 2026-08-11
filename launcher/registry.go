@@ -119,6 +119,13 @@ func (registry *Registry) Register(target string) (Document, error) {
 			continue
 		}
 		if sameDocumentPath(document.Path, canonical) {
+			previous := document
+			document.ExpiresAt = now.Add(documentCapabilityLifetime)
+			registry.state.Documents[id] = document
+			if err := registry.writeLocked(); err != nil {
+				registry.state.Documents[id] = previous
+				return Document{}, err
+			}
 			return document, nil
 		}
 	}

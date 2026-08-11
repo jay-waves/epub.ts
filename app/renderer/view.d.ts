@@ -1,10 +1,4 @@
-import type {
-  Book as NavigationBook,
-  Location,
-  Navigation,
-  RawLocation,
-  Resolved,
-} from "../app/reader/navigation";
+import type { OverlayDraw, OverlayDrawOptions } from "./overlay";
 
 export type TocItem = {
   label?: string;
@@ -32,30 +26,45 @@ export type BookSection = {
   id?: number | string;
   linear?: string;
   load?: () => Promise<string | null>;
+  pageSpread?: string;
   resolveHref?: (href: string) => string;
   size?: number;
   unload?: () => void;
 };
 
-export type FoliateBook = Omit<NavigationBook, "sections" | "toc"> & {
+export type Anchor = number | ((doc: Document) => Node | Range | number | null);
+
+export type Resolved = { anchor?: Anchor; index: number; select?: boolean };
+
+export type Book = {
   dir?: string;
   destroy?: () => void | Promise<void>;
-  metadata?: BookMetadata;
+  getTOCFragment?: (doc: Document, id?: string) => Element | null;
   isExternal?: (href: string) => boolean;
+  landmarks?: Array<{ href?: string; type: string[] }>;
+  loadText?: (path: string) => Promise<string | null>;
+  media?: { activeClass?: string; playbackActiveClass?: string };
+  metadata?: BookMetadata;
+  pageList?: TocItem[];
+  rendition?: { layout?: string; spread?: string; viewport?: unknown };
+  resolveCFI?: (cfi: string, filter?: (node: Node) => number) => Resolved;
+  resolveHref?: (href: string) => Resolved | null;
   sections: BookSection[];
+  splitTOCHref?: (href?: string) => [unknown, string?] | Promise<[unknown, string?]>;
   toc?: TocItem[];
+  transformTarget?: EventTarget;
 };
 
-export type FoliateContent = {
+export type Content = {
   doc?: Document;
   index: number;
-  overlayer?: {
+  overlay?: {
     element?: SVGSVGElement;
     hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
   };
 };
 
-export type FoliateRenderer = HTMLElement & {
+export type Renderer = HTMLElement & {
   atEnd?: boolean;
   atStart?: boolean;
   beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
@@ -71,60 +80,60 @@ export type FoliateRenderer = HTMLElement & {
   setStyles?: (cssText: string | [string, string]) => void;
   start?: number;
   viewSize?: number;
-  getContents?: () => FoliateContent[];
+  getContents?: () => Content[];
   goTo: (target: Resolved) => Promise<unknown>;
 };
 
-export type RawRelocateDetail = RawLocation;
-export type RelocateDetail = Location;
-
-export type SearchHit = {
-  cfi: string;
-  excerpt?: string;
+export type RawRelocateDetail = {
+  fraction?: number;
+  index: number;
+  range?: Range;
+  reason?: string;
+  size?: number;
 };
 
-export type FoliateAnnotation = {
+export type ViewNavigation = {
+  go(target: string, options?: { select?: boolean }): Promise<Resolved>;
+  label(index: number): string;
+  resolve(target: string): Resolved | undefined;
+};
+
+export type Annotation = {
   value: string;
   color?: string;
   [key: string]: unknown;
 };
 
-export type FoliateAnnotationDrawOptions = {
-  annotationValue?: string;
-  color: string;
-  hasNote?: boolean;
-  onBadgeClick?: (event: MouseEvent) => void;
-  width?: number;
+export type AnnotationDrawOptions = OverlayDrawOptions;
+export type AnnotationDraw = OverlayDraw;
+
+export type Decoration = {
+  draw: OverlayDraw;
+  drawOptions?: OverlayDrawOptions;
+  key: string;
+  target: string | Anchor;
 };
 
-export type FoliateAnnotationDrawFunction = (
-  rects: DOMRectList,
-  options?: FoliateAnnotationDrawOptions,
-) => SVGElement;
-
-export type FoliateViewEventMap<Annotation extends FoliateAnnotation = FoliateAnnotation> = {
+export type ViewEvents<Item extends Annotation = Annotation> = {
   "create-overlay": { index: number };
   "draw-annotation": {
-    annotation: Annotation;
+    annotation: Item;
     doc: Document;
-    draw: (func: FoliateAnnotationDrawFunction, options: FoliateAnnotationDrawOptions) => void;
+    draw: <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, options?: Options) => void;
     range: Range;
   };
-  "edge-click": { x: number };
-  "external-link": { a: HTMLAnchorElement; href_: string };
-  link: { a: HTMLAnchorElement; href: string };
   load: { doc: Document; index: number };
   unload: { doc: Document };
   relocate: RawRelocateDetail;
   "show-annotation": { index: number; range?: Range; value: string };
 };
 
-export interface FoliateViewElement<Annotation extends FoliateAnnotation = FoliateAnnotation> extends HTMLElement {
-  addEventListener<EventName extends keyof FoliateViewEventMap<Annotation>>(
+export interface View<Item extends Annotation = Annotation> extends HTMLElement {
+  addEventListener<EventName extends keyof ViewEvents<Item>>(
     type: EventName,
     listener: (
-      this: FoliateViewElement<Annotation>,
-      event: CustomEvent<FoliateViewEventMap<Annotation>[EventName]>,
+      this: View<Item>,
+      event: CustomEvent<ViewEvents<Item>[EventName]>,
     ) => void,
     options?: boolean | AddEventListenerOptions,
   ): void;
@@ -133,21 +142,16 @@ export interface FoliateViewElement<Annotation extends FoliateAnnotation = Folia
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void;
-  book?: FoliateBook;
+  book?: Book;
   enhanceRenderedDocument?: (doc: Document, index: number, signal: AbortSignal) => Promise<void> | void;
   isFixedLayout: boolean;
-  navigation?: Navigation;
-  renderer: FoliateRenderer;
-  clearSearch?: () => void;
+  navigation?: ViewNavigation;
+  renderer: Renderer;
+  addDecoration: (index: number, decoration: Decoration) => void;
+  removeDecoration: (index: number, key: string) => void;
   destroy: () => void;
-  open: (book: FoliateBook, navigation: Navigation) => Promise<void>;
-  addAnnotation?: (annotation: Annotation, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
-  deleteAnnotation?: (annotation: Annotation) => Promise<{ index: number; label: string } | undefined>;
-  showAnnotation?: (annotation: Annotation) => Promise<void>;
-  search?: (options: {
-    index?: number;
-    matchCase?: boolean;
-    matchDiacritics?: boolean;
-    query: string;
-  }) => AsyncIterable<unknown>;
+  open: (book: Book, navigation: ViewNavigation) => Promise<void>;
+  addAnnotation?: (annotation: Item, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
+  deleteAnnotation?: (annotation: Item) => Promise<{ index: number; label: string } | undefined>;
+  showAnnotation?: (annotation: Item) => Promise<void>;
 }

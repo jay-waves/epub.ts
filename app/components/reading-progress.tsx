@@ -1,297 +1,142 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent } from "react";
+import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui";
+import { useViewerEvent } from "./use-viewer-event";
 
-export type ReadingProgressElements = {
-  currentMarker: HTMLSpanElement;
-  historyMarker: HTMLButtonElement;
-  root: HTMLSpanElement;
-  track: HTMLSpanElement;
-};
+const HISTORY_DISMISS_MS = 8_000;
+const SECTION_JUMP_THRESHOLD = 2;
 
-export function ReadingProgress({
-  onReady,
-}: {
-  onReady: (elements: ReadingProgressElements | null) => void;
-}) {
-  const rootRef = useRef<HTMLSpanElement>(null);
-  const trackRef = useRef<HTMLSpanElement>(null);
-  const thumbRef = useRef<HTMLSpanElement>(null);
-  const historyMarkerRef = useRef<HTMLButtonElement>(null);
+const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    const track = trackRef.current;
-    const currentMarker = thumbRef.current;
-    const historyMarker = historyMarkerRef.current;
-    if (!root || !track || !currentMarker || !historyMarker) return;
+export function ReadingProgress() {
+  const [progress, setProgressState] = useState(0);
+  const [history, setHistoryState] = useState<number | null>(null);
+  const [enabled, setEnabled] = useState(false);
+  const progressRef = useRef(0);
+  const sectionRef = useRef<number | null>(null);
+  const originRef = useRef<number | null>(null);
+  const pendingHistoryRef = useRef<number | null>(null);
+  const suppressJumpRef = useRef(false);
+  const dismissTimerRef = useRef<number | undefined>(undefined);
 
-    onReady({
-      currentMarker,
-      historyMarker,
-      root,
-      track,
-    });
+  const setProgress = (value: number) => {
+    const next = clamp(value);
+    progressRef.current = next;
+    setProgressState(next);
+  };
 
-    return () => onReady(null);
-  }, [onReady]);
+  const setHistory = (value: number | null) => {
+    window.clearTimeout(dismissTimerRef.current);
+    const next = value == null ? null : clamp(value);
+    setHistoryState(next);
+    if (next != null) {
+      dismissTimerRef.current = window.setTimeout(() => setHistoryState(null), HISTORY_DISMISS_MS);
+    }
+  };
 
+  useEffect(() => () => window.clearTimeout(dismissTimerRef.current), []);
+
+  useViewerEvent(VIEWER_EVENTS.progressUpdate, ({ fraction, index, reset }) => {
+    if (reset) {
+      setEnabled(false);
+      sectionRef.current = null;
+      originRef.current = null;
+      pendingHistoryRef.current = null;
+      suppressJumpRef.current = false;
+      setHistory(null);
+      setProgress(0);
+      return;
+    }
+
+    setEnabled(true);
+
+    if (pendingHistoryRef.current != null) {
+      setHistory(pendingHistoryRef.current);
+      pendingHistoryRef.current = null;
+    } else if (
+      index != null
+      && sectionRef.current != null
+      && Math.abs(index - sectionRef.current) > SECTION_JUMP_THRESHOLD
+      && !suppressJumpRef.current
+    ) {
+      setHistory(progressRef.current);
+    }
+
+    suppressJumpRef.current = false;
+    sectionRef.current = index ?? null;
+    setProgress(fraction);
+  });
+
+  const seek = (value: number) => {
+    const next = clamp(value);
+    const origin = originRef.current ?? progressRef.current;
+    originRef.current = null;
+    if (Math.abs(next - origin) > 0.001) {
+      pendingHistoryRef.current = origin;
+      suppressJumpRef.current = true;
+    }
+    setProgress(next);
+    emitViewerEvent(VIEWER_EVENTS.progressSeek, next);
+  };
+
+  const rememberOrigin = () => {
+    originRef.current ??= progressRef.current;
+  };
+
+  const isSeekKey = (key: string) => [
+    "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp",
+  ].includes(key);
+
+  const returnToHistory = () => {
+    if (history == null) return;
+    const target = history;
+    pendingHistoryRef.current = null;
+    suppressJumpRef.current = true;
+    setHistory(null);
+    setProgress(target);
+    emitViewerEvent(VIEWER_EVENTS.progressSeek, target);
+  };
+
+  const percentage = progress * 100;
   return (
     <div className="reader-progress-shell">
       <div className="reader-progress-float">
         <Slider
-          className="reader-progress"
           aria-label="Reading progress"
-          defaultValue={[0]}
+          className="reader-progress"
+          disabled={!enabled}
           max={100}
           min={0}
-          ref={rootRef}
+          onKeyDown={(event: KeyboardEvent) => {
+            if (event.key === "Escape" && history != null) {
+              event.preventDefault();
+              returnToHistory();
+            } else if (isSeekKey(event.key)) {
+              rememberOrigin();
+            }
+          }}
+          onPointerDown={(_event: PointerEvent) => rememberOrigin()}
+          onValueChange={([value = 0]) => setProgress(value / 100)}
+          onValueCommit={([value = 0]) => seek(value / 100)}
           step={1}
+          value={[percentage]}
         >
           <div className="reader-progress-join">
-            <SliderTrack className="reader-progress-track" ref={trackRef}>
+            <SliderTrack className="reader-progress-track">
               <SliderRange className="reader-progress-fill" />
             </SliderTrack>
-            <SliderThumb className="reader-progress-thumb" ref={thumbRef} />
+            <SliderThumb className="reader-progress-thumb" />
           </div>
         </Slider>
         <button
           aria-label="Return to previous reading position"
-          aria-hidden="true"
-          className="reader-progress-history-marker"
-          ref={historyMarkerRef}
+          aria-hidden={history == null}
+          className={`reader-progress-history-marker${history == null ? "" : " is-history-visible"}`}
+          onClick={returnToHistory}
           type="button"
         />
       </div>
     </div>
   );
-}
-
-const HISTORY_MARKER_DISMISS_MS = 8000;
-const HISTORY_SECTION_JUMP_THRESHOLD = 2;
-
-export function createReadingProgressController(options: {
-  currentMarker: HTMLElement;
-  historyMarker: HTMLButtonElement;
-  root: HTMLElement;
-  track: HTMLElement;
-  canSeek: () => boolean;
-  onSeek: (progress: number) => void;
-}) {
-  let currentProgress = 0;
-  let currentSectionIndex: number | null = null;
-  let dragStartProgress: number | null = null;
-  let historyProgress: number | null = null;
-  let historyDismissTimer: number | undefined;
-  let dispose: (() => void) | null = null;
-  let isDragging = false;
-  let pendingHistoryProgress: number | null = null;
-  let suppressNextHistoryJump = false;
-
-  const clampProgress = (progress: number) => Math.min(1, Math.max(0, progress));
-
-  const getProgressFromPointer = (event: PointerEvent) => {
-    const bounds = options.track.getBoundingClientRect();
-    if (bounds.width <= 0) return currentProgress;
-
-    return clampProgress((event.clientX - bounds.left) / bounds.width);
-  };
-
-  const setProgress = (progress: number) => {
-    currentProgress = clampProgress(progress);
-    const percentage = currentProgress * 100;
-    options.root.style.setProperty("--reader-progress", `${percentage}%`);
-    options.currentMarker.setAttribute("aria-valuenow", String(Math.round(percentage)));
-    options.root.setAttribute("aria-valuenow", String(Math.round(currentProgress * 100)));
-  };
-
-  const commitHistoryProgress = (progress: number) => {
-    setHistoryProgress(progress);
-    scheduleHistoryDismiss();
-  };
-
-  const seek = (progress: number, seekOptions: { historyOriginProgress?: number } = {}) => {
-    if (!options.canSeek()) return;
-
-    const nextProgress = clampProgress(progress);
-    const originProgress = typeof seekOptions.historyOriginProgress === "number"
-      ? clampProgress(seekOptions.historyOriginProgress)
-      : null;
-
-    if (originProgress != null && Math.abs(nextProgress - originProgress) > 0.001) {
-      pendingHistoryProgress = originProgress;
-      suppressNextHistoryJump = true;
-    }
-
-    setProgress(nextProgress);
-    options.onSeek(currentProgress);
-  };
-
-  const clearHistoryDismissTimer = () => {
-    window.clearTimeout(historyDismissTimer);
-    historyDismissTimer = undefined;
-  };
-
-  const scheduleHistoryDismiss = () => {
-    clearHistoryDismissTimer();
-    historyDismissTimer = window.setTimeout(() => {
-      setHistoryProgress(null);
-    }, HISTORY_MARKER_DISMISS_MS);
-  };
-
-  const setHistoryProgress = (progress: number | null) => {
-    historyProgress = typeof progress === "number" ? clampProgress(progress) : null;
-    if (historyProgress == null) {
-      clearHistoryDismissTimer();
-      options.historyMarker.classList.remove("is-history-visible");
-      options.historyMarker.setAttribute("aria-hidden", "true");
-      return;
-    }
-
-    clearHistoryDismissTimer();
-    options.historyMarker.classList.add("is-history-visible");
-    options.historyMarker.setAttribute("aria-hidden", "false");
-  };
-
-  const handleRelocate = (detail: { fraction?: number; index?: number }) => {
-    const nextProgress = typeof detail.fraction === "number" ? detail.fraction : currentProgress;
-    const nextIndex = typeof detail.index === "number" ? detail.index : null;
-
-    if (pendingHistoryProgress != null) {
-      commitHistoryProgress(pendingHistoryProgress);
-      pendingHistoryProgress = null;
-    } else if (
-      nextIndex != null
-      && currentSectionIndex != null
-      && Math.abs(nextIndex - currentSectionIndex) > HISTORY_SECTION_JUMP_THRESHOLD
-      && !isDragging
-      && !suppressNextHistoryJump
-    ) {
-      commitHistoryProgress(currentProgress);
-    }
-
-    suppressNextHistoryJump = false;
-    currentSectionIndex = nextIndex;
-    setProgress(nextProgress);
-  };
-
-  const returnToHistory = () => {
-    if (historyProgress == null || !options.canSeek()) return;
-
-    const targetProgress = historyProgress;
-    pendingHistoryProgress = null;
-    suppressNextHistoryJump = true;
-    setHistoryProgress(null);
-    setProgress(targetProgress);
-    options.onSeek(targetProgress);
-  };
-
-  const bind = () => {
-    if (dispose) return;
-
-    const clearFloatingFocus = () => {
-      const shell = options.root.closest(".reader-progress-shell");
-      const activeElement = document.activeElement;
-      if (shell && activeElement instanceof HTMLElement && shell.contains(activeElement)) {
-        activeElement.blur();
-      }
-      options.root.blur();
-      options.historyMarker.blur();
-    };
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) return;
-      if (event.target instanceof Element && event.target.closest(".reader-progress-history-marker")) {
-        return;
-      }
-
-      event.preventDefault();
-      dragStartProgress = currentProgress;
-      isDragging = true;
-      options.root.classList.add("is-dragging");
-      options.root.setPointerCapture(event.pointerId);
-      setProgress(getProgressFromPointer(event));
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!options.root.hasPointerCapture(event.pointerId)) return;
-      setProgress(getProgressFromPointer(event));
-    };
-
-    const finishDrag = (event: PointerEvent) => {
-      if (!options.root.hasPointerCapture(event.pointerId)) return;
-
-      const progress = getProgressFromPointer(event);
-      const originProgress = dragStartProgress;
-      dragStartProgress = null;
-      options.root.releasePointerCapture(event.pointerId);
-      isDragging = false;
-      options.root.classList.remove("is-dragging");
-      seek(progress, { historyOriginProgress: originProgress ?? currentProgress });
-    };
-
-    const handleHistoryPointerDown = (event: PointerEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    const handleHistoryClick = (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      returnToHistory();
-      clearFloatingFocus();
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
-        event.preventDefault();
-        seek(currentProgress - 0.01, { historyOriginProgress: currentProgress });
-      } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
-        event.preventDefault();
-        seek(currentProgress + 0.01, { historyOriginProgress: currentProgress });
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        seek(0, { historyOriginProgress: currentProgress });
-      } else if (event.key === "End") {
-        event.preventDefault();
-        seek(1, { historyOriginProgress: currentProgress });
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        returnToHistory();
-      }
-    };
-
-    options.root.addEventListener("pointerdown", handlePointerDown);
-    options.root.addEventListener("pointermove", handlePointerMove);
-    options.root.addEventListener("pointerup", finishDrag);
-    options.root.addEventListener("pointercancel", finishDrag);
-    options.historyMarker.addEventListener("pointerdown", handleHistoryPointerDown);
-    options.historyMarker.addEventListener("click", handleHistoryClick);
-    options.root.addEventListener("keydown", handleKeyDown);
-
-    dispose = () => {
-      clearHistoryDismissTimer();
-      options.root.removeEventListener("pointerdown", handlePointerDown);
-      options.root.removeEventListener("pointermove", handlePointerMove);
-      options.root.removeEventListener("pointerup", finishDrag);
-      options.root.removeEventListener("pointercancel", finishDrag);
-      options.historyMarker.removeEventListener("pointerdown", handleHistoryPointerDown);
-      options.historyMarker.removeEventListener("click", handleHistoryClick);
-      options.root.removeEventListener("keydown", handleKeyDown);
-      options.root.classList.remove("is-dragging");
-      dragStartProgress = null;
-      pendingHistoryProgress = null;
-      dispose = null;
-    };
-  };
-
-  bind();
-  return {
-    destroy: () => {
-      dispose?.();
-    },
-    getProgress: () => currentProgress,
-    handleRelocate,
-    setProgress,
-    setHistoryProgress,
-  };
 }

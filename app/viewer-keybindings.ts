@@ -1,7 +1,5 @@
 import { WheelGestures } from "wheel-gestures";
-import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
-import type { PageTurnDirection } from "./viewer-events";
-import type { FoliateViewElement } from "./foliate";
+import type { PageTurnDirection, ReaderView } from "./reader/model";
 import type { Navigation } from "./reader/navigation";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
@@ -14,10 +12,11 @@ const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
 const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 
 function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-
-  const tagName = target.tagName.toLowerCase();
-  return target.isContentEditable || tagName === "input" || tagName === "select" || tagName === "textarea";
+  if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
+  const element = target as HTMLElement;
+  return element.isContentEditable || Boolean(element.closest(
+    "input, select, textarea, button, summary, audio, video, a[href], [role='slider'], [contenteditable]:not([contenteditable='false'])",
+  ));
 }
 
 function getKeyboardScrollDistance() {
@@ -33,21 +32,21 @@ function isScrollDownKey(key: string) {
 }
 
 type ViewerKeybindingOptions = {
-  getReaderView: () => FoliateViewElement | null;
+  getView: () => ReaderView | null;
   getNavigation: () => Navigation | null;
   getFlow: () => "paginated" | "scrolled";
   canTurnPage: () => boolean;
   beforeSectionTurn: () => void;
   afterSectionTurn: () => void;
   onScrollEdge: (direction: number) => void;
-  openSearch: () => void;
-  closeSearch: () => void;
+  openSearch: () => boolean;
+  closeSearch: () => boolean;
   saveBook: () => void;
 };
 
 export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
   const keyTargets = new Map<Document, () => void>();
-  const boundReaderViews = new Map<FoliateViewElement, {
+  const bindings = new Map<ReaderView, {
     documents: Set<Document>;
     onLoad: EventListener;
     onUnload: EventListener;
@@ -88,7 +87,7 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
   const isWheelScrollSuppressed = () => performance.now() < suppressWheelScrollUntil;
 
   const getSectionScrollMetrics = () => {
-    const renderer = options.getReaderView()?.renderer;
+    const renderer = options.getView()?.renderer;
     const { end, start, viewSize } = renderer ?? {};
     if (!renderer || typeof end !== "number" || typeof start !== "number" || typeof viewSize !== "number") return null;
     return { end, renderer, start, viewSize };
@@ -109,17 +108,20 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
       return;
     }
 
-    void (direction < 0 ? metrics.renderer.prev?.(Math.min(distance, remaining)) : metrics.renderer.next?.(Math.min(distance, remaining)));
+    const navigation = options.getNavigation();
+    void (direction < 0
+      ? navigation?.prev(Math.min(distance, remaining))
+      : navigation?.next(Math.min(distance, remaining)));
   };
 
   const turnReaderSection = (direction: PageTurnDirection) => {
     if (sectionTurnInFlight) return;
 
-    const readerView = options.getReaderView();
-    const renderer = readerView?.renderer;
+    const view = options.getView();
+    const renderer = view?.renderer;
     if (!renderer) return;
 
-    const isRtl = readerView.book?.dir === "rtl";
+    const isRtl = view.book?.dir === "rtl";
     const shouldGoNext = direction === "left" ? isRtl : !isRtl;
     const isBookEdge = shouldGoNext ? renderer.atEnd : renderer.atStart;
     if (isBookEdge) {
@@ -130,7 +132,8 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     suppressWheelScroll();
     options.beforeSectionTurn();
     sectionTurnInFlight = true;
-    const turn = shouldGoNext ? renderer.nextSection?.() : renderer.prevSection?.();
+    const navigation = options.getNavigation();
+    const turn = shouldGoNext ? navigation?.nextSection() : navigation?.previousSection();
     void Promise.resolve(turn)
       .catch((error) => {
         console.warn("Failed to turn reader section.", error);
@@ -144,14 +147,10 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
   const turnPage = (direction: PageTurnDirection) => {
     if (!options.canTurnPage()) return;
 
-    const readerView = options.getReaderView();
     if (options.getFlow() === "paginated") {
-      const isRtl = readerView?.book?.dir === "rtl";
-      const shouldGoNext = direction === "left" ? isRtl : !isRtl;
-      const isSectionEdge = shouldGoNext ? readerView?.renderer?.atEnd : readerView?.renderer?.atStart;
-      if (isSectionEdge) options.beforeSectionTurn();
       const navigation = options.getNavigation();
-      void (direction === "left" ? navigation?.left() : navigation?.right());
+      void (direction === "left" ? navigation?.left() : navigation?.right())
+        ?.catch((error) => console.warn("Failed to turn reader page.", error));
       return;
     }
 
@@ -165,7 +164,7 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     holdScrollRefreshingBounds = true;
     holdScrollFrame = undefined;
     try {
-      await metrics.renderer.scrollToAnchor(metrics.start / metrics.viewSize);
+      await options.getNavigation()?.scrollTo(metrics.start / metrics.viewSize);
     } catch (error) {
       console.warn("Failed to refresh reader scroll bounds.", error);
     } finally {
@@ -179,8 +178,8 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
   };
 
   const stepHoldScroll = (time: number) => {
-    const readerView = options.getReaderView();
-    const renderer = readerView?.renderer;
+    const view = options.getView();
+    const renderer = view?.renderer;
     if (!holdScrollDirection || options.getFlow() !== "scrolled" || !renderer?.scrollBy) {
       stopHoldScroll();
       return;
@@ -210,7 +209,7 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
 
     const beforeStart = metrics.start;
     const scrollDelta = Math.sign(delta) * Math.min(Math.abs(delta), remaining);
-    renderer.scrollBy(scrollDelta, scrollDelta);
+    options.getNavigation()?.scrollBy(scrollDelta);
     const afterStart = renderer.start;
     if (typeof afterStart === "number" && Math.abs(afterStart - beforeStart) < 0.5) {
       void refreshHoldScrollBounds();
@@ -253,8 +252,7 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     }
 
     if (event.key === "Escape") {
-      event.preventDefault();
-      options.closeSearch();
+      if (options.closeSearch()) event.preventDefault();
       return;
     }
 
@@ -271,8 +269,7 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     } else if (options.getFlow() === "scrolled" && isScrollDownKey(event.key)) {
       handleScrollKeyDown(event, 1);
     } else if (event.key === "/") {
-      event.preventDefault();
-      options.openSearch();
+      if (options.openSearch()) event.preventDefault();
     }
   };
 
@@ -354,8 +351,8 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     keyTargets.delete(targetDocument);
   };
 
-  const bindReaderView = (view: FoliateViewElement) => {
-    if (boundReaderViews.has(view)) return;
+  const bindReaderView = (view: ReaderView) => {
+    if (bindings.has(view)) return;
     const documents = new Set<Document>();
     const bindDocument = (doc: Document) => {
       documents.add(doc);
@@ -376,32 +373,30 @@ export function setupViewerKeybindings(options: ViewerKeybindingOptions) {
     };
     view.addEventListener("load", onLoad);
     view.addEventListener("unload", onUnload);
-    boundReaderViews.set(view, { documents, onLoad, onUnload });
+    bindings.set(view, { documents, onLoad, onUnload });
   };
 
-  const unbindReaderView = (view: FoliateViewElement) => {
-    const binding = boundReaderViews.get(view);
+  const unbindReaderView = (view: ReaderView) => {
+    const binding = bindings.get(view);
     if (!binding) return;
     view.removeEventListener("load", binding.onLoad);
     view.removeEventListener("unload", binding.onUnload);
     binding.documents.forEach(unbindKeyTarget);
-    boundReaderViews.delete(view);
+    bindings.delete(view);
   };
 
   bindKeyTarget(document);
-  const stopPageTurnListener = listenViewerEvent(VIEWER_EVENTS.pageTurn, turnPage);
-
   return {
     bindReaderView,
     destroy: () => {
       stopHoldScroll();
-      boundReaderViews.forEach((_, view) => unbindReaderView(view));
+      bindings.forEach((_, view) => unbindReaderView(view));
       keyTargets.forEach((dispose) => dispose());
       keyTargets.clear();
-      stopPageTurnListener();
       stopWheelListener();
       wheelGestures.disconnect();
     },
+    turnPage,
     unbindReaderView,
   };
 }

@@ -1,17 +1,35 @@
-import type { FoliateViewElement } from "./foliate";
-import type { Navigation } from "./reader/navigation";
-import type { PageTurnDirection } from "./viewer-events";
+import type { PageTurnDirection, ReaderView } from "./model";
+import type { Resolved } from "./navigation";
 
 const EDGE_RATIO = 0.22;
 const CLICK_DISTANCE = 4;
 const CURSOR_DELAY = 1_000;
+const TARGET_CLASS = "reader-link-target";
+const TARGET_STYLE = `
+  @keyframes reader-link-target-flash {
+    0%, 22% {
+      background-color: color-mix(in srgb, var(--reader-accent-secondary) 34%, transparent);
+      outline-color: color-mix(in srgb, var(--reader-accent-secondary) 72%, transparent);
+    }
+    100% {
+      background-color: transparent;
+      outline-color: transparent;
+    }
+  }
+  .${TARGET_CLASS} {
+    animation: reader-link-target-flash 1.35s ease-out;
+    border-radius: 0.18em;
+    outline: 2px solid transparent;
+    outline-offset: 0.12em;
+  }
+`;
 
 type Point = { x: number; y: number };
 
 type InteractionOptions = {
   getFlow: () => "paginated" | "scrolled";
-  getNavigation: () => Navigation | null;
-  onEdgeClick: (direction: PageTurnDirection) => void;
+  navigate: (href: string) => Promise<Resolved | undefined>;
+  turn: (direction: PageTurnDirection) => void;
   openExternal: (href: string) => void;
   root: HTMLElement;
 };
@@ -20,6 +38,12 @@ type ViewBinding = {
   docs: Map<Document, AbortController>;
   events: AbortController;
 };
+
+function asElement(target: EventTarget | null) {
+  // Nodes from a rendered iframe belong to a different realm, so they are not
+  // instanceof the host window's Element constructor.
+  return target && (target as Node).nodeType === 1 ? target as Element : null;
+}
 
 function isPlainClick(event: MouseEvent | PointerEvent) {
   return event.button === 0
@@ -35,8 +59,38 @@ function isClick(start: Point | null, event: MouseEvent) {
     && Math.abs(event.clientY - start!.y) <= CLICK_DISTANCE;
 }
 
-function emit<T>(view: FoliateViewElement, type: string, detail: T, cancelable = false) {
-  return view.dispatchEvent(new CustomEvent(type, { cancelable, detail }));
+function isInteractiveTarget(target: EventTarget | null) {
+  return Boolean(asElement(target)?.closest(
+      'a[href], button, input, select, textarea, label, summary, [contenteditable="true"], audio[controls], video[controls]',
+    ));
+}
+
+function flashTarget(view: ReaderView, resolved?: Resolved) {
+  if (!resolved || typeof resolved.anchor !== "function") return;
+  const content = view.renderer?.getContents?.()
+    .find(({ index }) => index === resolved.index);
+  const doc = content?.doc;
+  if (!doc) return;
+
+  let target: Node | Range | number | null;
+  try {
+    target = resolved.anchor(doc);
+  } catch {
+    return;
+  }
+  if (!target || typeof target === "number") return;
+
+  const node = "startContainer" in target ? target.startContainer : target;
+  let element = node.nodeType === 1 ? node as Element : node.parentElement;
+  while (element && !element.getClientRects().length) element = element.parentElement;
+  if (!element) return;
+
+  element.classList.remove(TARGET_CLASS);
+  element.getBoundingClientRect();
+  element.classList.add(TARGET_CLASS);
+  element.addEventListener("animationend", () => {
+    element?.classList.remove(TARGET_CLASS);
+  }, { once: true });
 }
 
 function edgeAt(x: number, width: number): PageTurnDirection | null {
@@ -81,11 +135,15 @@ class CursorHider {
 }
 
 /** Owns pointer, link, and cursor behavior for both the reader shell and its documents. */
-export function createReaderInteractions(options: InteractionOptions) {
-  const views = new Map<FoliateViewElement, ViewBinding>();
+export function createInteractions(options: InteractionOptions) {
+  const views = new Map<ReaderView, ViewBinding>();
   const rootEvents = new AbortController();
   const cursor = new CursorHider();
   let rootStart: Point | null = null;
+  const edgeFromViewport = (x: number) => {
+    const rect = options.root.getBoundingClientRect();
+    return edgeAt(x - rect.left, rect.width);
+  };
 
   options.root.addEventListener("pointerdown", (event) => {
     rootStart = null;
@@ -100,11 +158,12 @@ export function createReaderInteractions(options: InteractionOptions) {
     if (options.getFlow() !== "scrolled" || !isPlainClick(event)) return;
     if (!(event.target instanceof Node) || !options.root.contains(event.target)) return;
     if (!isClick(start, event)) return;
-    const direction = edgeAt(event.clientX, window.innerWidth);
-    if (direction) options.onEdgeClick(direction);
+    if (isInteractiveTarget(event.target)) return;
+    const direction = edgeFromViewport(event.clientX);
+    if (direction) options.turn(direction);
   }, { signal: rootEvents.signal });
 
-  const bindDoc = (view: FoliateViewElement, doc: Document, index: number, binding: ViewBinding) => {
+  const bindDoc = (view: ReaderView, doc: Document, index: number, binding: ViewBinding) => {
     if (binding.docs.has(doc)) return;
     const events = new AbortController();
     binding.docs.set(doc, events);
@@ -112,6 +171,9 @@ export function createReaderInteractions(options: InteractionOptions) {
     let start: Point | null = null;
 
     cursor.add(doc.documentElement, () => view.hasAttribute("autohide-cursor"), signal);
+    const targetStyle = doc.createElement("style");
+    targetStyle.textContent = TARGET_STYLE;
+    doc.head?.append(targetStyle);
 
     doc.addEventListener("pointerdown", (event) => {
       start = null;
@@ -122,18 +184,34 @@ export function createReaderInteractions(options: InteractionOptions) {
     doc.addEventListener("click", (event) => {
       const clickStart = start;
       start = null;
-      if (!isPlainClick(event) || !isClick(clickStart, event)) return;
+      if (!isPlainClick(event)) return;
+
+      const anchor = asElement(event.target)?.closest<HTMLAnchorElement>("a[href]");
+      if (anchor) {
+        event.preventDefault();
+        const sourceHref = anchor.getAttribute("href");
+        if (!sourceHref) return;
+        const section = view.book?.sections?.[index];
+        const href = section?.resolveHref?.(sourceHref) ?? sourceHref;
+        if (view.book?.isExternal?.(href)) {
+          options.openExternal(href);
+        } else {
+          void options.navigate(href)
+            .then((resolved) => flashTarget(view, resolved))
+            .catch((error) => {
+              console.warn("Failed to open reader link.", error);
+            });
+        }
+        return;
+      }
+      if (!isClick(clickStart, event)) return;
+      if (isInteractiveTarget(event.target)) return;
 
       const frame = doc.defaultView?.frameElement;
-      const x = frame instanceof Element
-        ? frame.getBoundingClientRect().left + event.clientX
-        : event.clientX;
-      const width = doc.defaultView?.top?.innerWidth
-        || doc.defaultView?.parent?.innerWidth
-        || doc.defaultView?.innerWidth
-        || doc.documentElement.clientWidth;
-      if (!width) return;
-      const direction = edgeAt(x, width);
+      const frameLeft = frame?.nodeType === Node.ELEMENT_NODE
+        ? (frame as Element).getBoundingClientRect().left
+        : 0;
+      const direction = edgeFromViewport(frameLeft + event.clientX);
       if (!direction) return;
 
       if (view.renderer?.getAttribute("flow") !== "scrolled") {
@@ -141,30 +219,8 @@ export function createReaderInteractions(options: InteractionOptions) {
         event.stopPropagation();
         event.stopImmediatePropagation();
       }
-      emit(view, "edge-click", { x });
-      options.onEdgeClick(direction);
+      options.turn(direction);
     }, { capture: true, signal });
-
-    doc.addEventListener("click", (event) => {
-      const anchor = event.target instanceof Element
-        ? event.target.closest<HTMLAnchorElement>("a[href]")
-        : null;
-      if (!anchor) return;
-      event.preventDefault();
-      const sourceHref = anchor.getAttribute("href");
-      if (!sourceHref) return;
-      const section = view.book?.sections?.[index];
-      const href = section?.resolveHref?.(sourceHref) ?? sourceHref;
-      if (view.book?.isExternal?.(href)) {
-        if (emit(view, "external-link", { a: anchor, href_: sourceHref }, true)) {
-          options.openExternal(sourceHref);
-        }
-      } else if (emit(view, "link", { a: anchor, href }, true)) {
-        void options.getNavigation()?.go(href).catch((error) => {
-          console.warn("Failed to open reader link.", error);
-        });
-      }
-    }, { signal });
   };
 
   const unbindDoc = (binding: ViewBinding, doc: Document) => {
@@ -172,7 +228,7 @@ export function createReaderInteractions(options: InteractionOptions) {
     binding.docs.delete(doc);
   };
 
-  const bindView = (view: FoliateViewElement) => {
+  const bindView = (view: ReaderView) => {
     if (views.has(view)) return;
     const binding: ViewBinding = { docs: new Map(), events: new AbortController() };
     views.set(view, binding);
@@ -189,7 +245,7 @@ export function createReaderInteractions(options: InteractionOptions) {
     }, { signal: binding.events.signal });
   };
 
-  const unbindView = (view: FoliateViewElement) => {
+  const unbindView = (view: ReaderView) => {
     const binding = views.get(view);
     if (!binding) return;
     binding.events.abort();

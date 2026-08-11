@@ -1,34 +1,35 @@
-import type { FoliateBook, FoliateViewElement } from "../foliate";
+import type { Book } from "../renderer";
+import type { ReaderView } from "./model";
 import { createBook } from "../epub/book";
 import type { PlatformDocument } from "../platform/types";
 import { Navigation } from "./navigation";
 
 /** All resources that belong to one document, in their ownership order. */
-export class ReaderDocument {
+export class Reader {
   readonly signal: AbortSignal;
-  readonly view: FoliateViewElement;
-  readonly document: PlatformDocument;
-  book!: FoliateBook;
+  readonly view: ReaderView;
+  readonly source: PlatformDocument;
+  book!: Book;
   navigation!: Navigation;
 
   readonly #abort = new AbortController();
   #disposed = false;
 
-  private constructor(document: PlatformDocument, view: FoliateViewElement) {
-    this.document = document;
+  private constructor(source: PlatformDocument, view: ReaderView) {
+    this.source = source;
     this.view = view;
     this.signal = this.#abort.signal;
   }
 
   static async open(
-    document: PlatformDocument,
-    view: FoliateViewElement,
-    setup?: (reader: ReaderDocument) => void,
+    source: PlatformDocument,
+    view: ReaderView,
+    setup?: (reader: Reader) => void,
   ) {
-    const reader = new ReaderDocument(document, view);
+    const reader = new Reader(source, view);
     try {
       setup?.(reader);
-      const book = await createBook(document.input);
+      const book = await createBook(source.input);
       if (reader.#disposed) {
         await book.destroy?.();
         throw new DOMException("Reader disposed", "AbortError");
@@ -51,9 +52,15 @@ export class ReaderDocument {
     this.#disposed = true;
     this.#abort.abort();
     this.navigation?.close();
-    this.view.destroy();
-    await this.book?.destroy?.();
-    this.document.release?.();
+    try {
+      this.view.destroy();
+    } finally {
+      try {
+        await this.book?.destroy?.();
+      } finally {
+        this.source.release?.();
+      }
+    }
   }
 
   #throwIfDisposed() {

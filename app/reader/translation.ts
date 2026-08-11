@@ -1,4 +1,4 @@
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 
 type TranslationResource = {
   destroy?: () => void;
@@ -24,7 +24,7 @@ function googleTranslateUrl(text: string) {
   return `https://translate.google.com/?${query}`;
 }
 
-export function createTranslationController(options: {
+export function createTranslation(options: {
   modelPolicy: "allow-download" | "external-fallback";
   openExternal: (url: string) => void;
 }) {

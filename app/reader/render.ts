@@ -1,8 +1,8 @@
-type ReaderRenderControllerOptions = {
+type RenderOptions = {
   root: HTMLElement;
 };
 
-export function createReaderRenderController(options: ReaderRenderControllerOptions) {
+export function createRenderState(options: RenderOptions) {
   let pendingToken = 0;
 
   const begin = () => {
@@ -20,11 +20,12 @@ export function createReaderRenderController(options: ReaderRenderControllerOpti
     if (token === pendingToken) end();
   };
 
-  const run = async (action: () => Promise<unknown> | undefined) => {
+  const run = async <Result>(action: () => Promise<Result> | Result) => {
     begin();
     try {
-      await action();
+      const result = await action();
       await revealAfterPaint();
+      return result;
     } catch (error) {
       end();
       throw error;

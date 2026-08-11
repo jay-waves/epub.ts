@@ -1,25 +1,25 @@
-import { Overlay } from "./foliate";
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
+import { Overlay } from "../renderer";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import {
   getSavedHighlights,
   setSavedHighlights,
-} from "./viewer-storage";
-import type { HighlightContextAction } from "./viewer-events";
-import type { ReaderHighlight } from "./reader";
-import type { FoliateContent, FoliateViewElement } from "./foliate";
-import { createTranslationController } from "./translation-controller";
-import { copyReaderMedia } from "./media-clipboard";
-import type { Navigation } from "./reader/navigation";
+} from "../viewer-storage";
+import type { HighlightContextAction } from "../viewer-events";
+import type { ReaderHighlight } from "./model";
+import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
+import type { ReaderView } from "./model";
+import { createTranslation } from "./translation";
+import { copyReaderMedia } from "../media-clipboard";
+import type { Navigation } from "./navigation";
 
 type PointerCoordinateSpace = "content" | "viewport";
 
-type HighlightControllerOptions = {
+type HighlightOptions = {
   getBookKey: () => string;
   getNavigation: () => Navigation | null;
   getProgress: () => number;
-  getReaderView: () => FoliateViewElement | null;
+  getView: () => ReaderView | null;
   openExternal: (url: string) => void;
-  runWhenIdle: (callback: () => void, timeout?: number) => void;
   translationModelPolicy: "allow-download" | "external-fallback";
 };
 
@@ -38,22 +38,18 @@ type HighlightContext = {
   };
 } | null;
 
-type AnnotationDrawOptions = {
+const ANNOTATION_BADGE_SELECTOR = "[data-reader-annotation-badge]";
+const AUTO_HIGHLIGHT_COLOR = "auto";
+const LEGACY_HIGHLIGHT_COLOR = "#f4c430";
+const THEME_HIGHLIGHT_COLOR = "var(--reader-annotation-color, #f4c430)";
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+type HighlightDrawOptions = OverlayDrawOptions & {
   annotationValue?: string;
   color: string;
   hasNote?: boolean;
   onBadgeClick?: (event: MouseEvent) => void;
-  width?: number;
 };
-
-type AnnotationDrawFunction = (
-  rects: DOMRectList,
-  options?: AnnotationDrawOptions,
-) => SVGElement;
-
-const ANNOTATION_BADGE_SELECTOR = "[data-reader-annotation-badge]";
-const DEFAULT_HIGHLIGHT_COLOR = "#f4c430";
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 function createSvgElement(tagName: string) {
   return document.createElementNS(SVG_NAMESPACE, tagName);
@@ -61,7 +57,7 @@ function createSvgElement(tagName: string) {
 
 function drawHighlightWithAnnotationBadge(
   rects: DOMRectList,
-  options: AnnotationDrawOptions = { color: DEFAULT_HIGHLIGHT_COLOR },
+  options: HighlightDrawOptions = { color: THEME_HIGHLIGHT_COLOR },
 ) {
   const group = createSvgElement("g");
   group.append(Overlay.highlight(rects, { color: options.color }));
@@ -95,17 +91,17 @@ function drawHighlightWithAnnotationBadge(
   box.setAttribute("width", String(size));
   box.setAttribute("height", String(size));
   box.setAttribute("rx", "2.5");
-  box.setAttribute("fill", "#6f7782");
+  box.setAttribute("fill", "var(--reader-comment-color, #f4c430)");
 
   const lineTop = createSvgElement("path");
   lineTop.setAttribute("d", `M${x + 2.4} ${y + 3.3}H${x + 7.6}`);
-  lineTop.setAttribute("stroke", "white");
+  lineTop.setAttribute("stroke", "var(--reader-comment-ink, white)");
   lineTop.setAttribute("stroke-linecap", "round");
   lineTop.setAttribute("stroke-width", "1.1");
 
   const lineBottom = createSvgElement("path");
   lineBottom.setAttribute("d", `M${x + 2.4} ${y + 5.9}H${x + 6.4}`);
-  lineBottom.setAttribute("stroke", "white");
+  lineBottom.setAttribute("stroke", "var(--reader-comment-ink, white)");
   lineBottom.setAttribute("stroke-linecap", "round");
   lineBottom.setAttribute("stroke-width", "1.1");
 
@@ -128,31 +124,37 @@ function drawHighlightWithAnnotationBadge(
   return group;
 }
 
-export function createHighlightController(options: HighlightControllerOptions) {
-  const contextDisposers = new Map<EventTarget, () => void>();
+export function createHighlights(options: HighlightOptions) {
+  const contextEvents = new Map<EventTarget, AbortController>();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
-  let pendingAnnotationSave: Promise<void> = Promise.resolve();
-  const translationController = createTranslationController({
+  let pendingWrites: Promise<void> = Promise.resolve();
+  const translation = createTranslation({
     modelPolicy: options.translationModelPolicy,
     openExternal: options.openExternal,
   });
+  const run = (task: Promise<unknown>, message: string) => {
+    void task.catch((error) => console.warn(message, error));
+  };
+  const track = <Result>(task: Promise<Result>) => {
+    const settled = task.then(() => undefined, () => undefined);
+    pendingWrites = Promise.all([pendingWrites, settled]).then(() => undefined);
+    return task;
+  };
 
   const viewerEventDisposers = [
     listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
       activeContext = null;
     }),
     listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
-      pendingAnnotationSave = saveAnnotationNote(detail.value, detail.note).catch((error) => {
-        console.warn("Failed to save annotation note.", error);
-      });
+      run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
     }),
     listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
-      void deleteAnnotationNote(detail.value);
+      run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
     }),
   ];
 
-  const getContents = () => options.getReaderView()?.renderer?.getContents?.() ?? [];
+  const getContents = () => options.getView()?.renderer?.getContents?.() ?? [];
 
   const findContentByIndex = (index: number) => getContents().find((item) => item.index === index);
 
@@ -194,7 +196,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
   const getPagePoint = (
     event: MouseEvent,
-    content: FoliateContent,
+    content: Content,
     coordinateSpace: PointerCoordinateSpace,
   ) => {
     const frameBounds = getContentFrameBounds(content.index);
@@ -206,7 +208,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
   const getHitPoint = (
     event: MouseEvent,
-    content: FoliateContent,
+    content: Content,
     coordinateSpace: PointerCoordinateSpace,
   ) => {
     const frameBounds = getContentFrameBounds(content.index);
@@ -261,13 +263,16 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
   const hasAnnotationNote = (highlight: ReaderHighlight) => Boolean(highlight.note?.trim());
 
-  const getHighlightColor = (highlight: ReaderHighlight) => highlight.color || DEFAULT_HIGHLIGHT_COLOR;
+  const getHighlightColor = (highlight: ReaderHighlight) =>
+    !highlight.color || highlight.color === AUTO_HIGHLIGHT_COLOR || highlight.color === LEGACY_HIGHLIGHT_COLOR
+      ? THEME_HIGHLIGHT_COLOR
+      : highlight.color;
 
   const getViewportCenter = () => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
   const removeAnnotationBadges = (value: string) => {
-    for (const { doc, overlayer } of getContents()) {
-      for (const root of [doc, overlayer?.element]) {
+    for (const { doc, overlay } of getContents()) {
+      for (const root of [doc, overlay?.element]) {
         root?.querySelectorAll(ANNOTATION_BADGE_SELECTOR).forEach((badge) => {
           if (badge.getAttribute("data-reader-annotation-badge") === value) badge.remove();
         });
@@ -296,11 +301,11 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
   const openFromPointer = (
     event: MouseEvent,
-    content: FoliateContent,
+    content: Content,
     coordinateSpace: PointerCoordinateSpace,
   ) => {
     const hitPoint = getHitPoint(event, content, coordinateSpace);
-    const [hitValue] = content.overlayer?.hitTest?.(hitPoint) ?? [];
+    const [hitValue] = content.overlay?.hitTest?.(hitPoint) ?? [];
     const highlight = hitValue ? currentHighlights.find((item) => item.value === hitValue) : undefined;
     const selection = getSelectedReaderContext();
     const pagePoint = getPagePoint(event, content, coordinateSpace);
@@ -335,15 +340,18 @@ export function createHighlightController(options: HighlightControllerOptions) {
       const { doc } = content;
       if (!doc) continue;
 
-      if (!contextDisposers.has(doc)) {
+      if (!contextEvents.has(doc)) {
+        const events = new AbortController();
+        contextEvents.set(doc, events);
+        const { signal } = events;
         const dismissPopovers = () => {
           close();
           emitViewerEvent(VIEWER_EVENTS.translationClose);
           emitViewerEvent(VIEWER_EVENTS.annotationClose);
         };
-        doc.addEventListener("pointerdown", dismissPopovers, true);
-        doc.addEventListener("keydown", dismissPopovers, true);
-        doc.addEventListener("scroll", dismissPopovers, true);
+        doc.addEventListener("pointerdown", dismissPopovers, { capture: true, signal });
+        doc.addEventListener("keydown", dismissPopovers, { capture: true, signal });
+        doc.addEventListener("scroll", dismissPopovers, { capture: true, signal });
         const openContextMenu = (event: MouseEvent) => {
           const currentContent = findContentByDocument(doc);
           const ElementClass = doc.defaultView?.Element;
@@ -352,7 +360,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
             : null;
           event.preventDefault();
           event.stopPropagation();
-          if (media && media !== currentContent?.overlayer?.element) {
+          if (media && media !== currentContent?.overlay?.element) {
             if (!currentContent) return;
             const pagePoint = getPagePoint(event, currentContent, "content");
             openMedia(media, pagePoint.x, pagePoint.y);
@@ -360,18 +368,13 @@ export function createHighlightController(options: HighlightControllerOptions) {
           }
           if (currentContent) openFromPointer(event, currentContent, "content");
         };
-        doc.addEventListener("contextmenu", openContextMenu);
-        const dispose = () => {
-          doc.removeEventListener("pointerdown", dismissPopovers, true);
-          doc.removeEventListener("keydown", dismissPopovers, true);
-          doc.removeEventListener("scroll", dismissPopovers, true);
-          doc.removeEventListener("contextmenu", openContextMenu);
-        };
-        contextDisposers.set(doc, dispose);
+        doc.addEventListener("contextmenu", openContextMenu, { signal });
       }
 
       const frameElement = doc.defaultView?.frameElement;
-      if (frameElement && !contextDisposers.has(frameElement)) {
+      if (frameElement && !contextEvents.has(frameElement)) {
+        const events = new AbortController();
+        contextEvents.set(frameElement, events);
         const openContextMenu = (event: Event) => {
           if (!(event instanceof MouseEvent)) return;
           event.preventDefault();
@@ -379,9 +382,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
           const currentContent = findContentByFrame(frameElement);
           if (currentContent) openFromPointer(event, currentContent, "viewport");
         };
-        frameElement.addEventListener("contextmenu", openContextMenu);
-        const dispose = () => frameElement.removeEventListener("contextmenu", openContextMenu);
-        contextDisposers.set(frameElement, dispose);
+        frameElement.addEventListener("contextmenu", openContextMenu, { signal: events.signal });
       }
     }
   };
@@ -393,19 +394,19 @@ export function createHighlightController(options: HighlightControllerOptions) {
     const frameElement = doc.defaultView?.frameElement;
     for (const target of [doc, frameElement]) {
       if (!target) continue;
-      contextDisposers.get(target)?.();
-      contextDisposers.delete(target);
+      contextEvents.get(target)?.abort();
+      contextEvents.delete(target);
     }
   };
 
   const unbindContextTargets = () => {
-    contextDisposers.forEach((dispose) => dispose());
-    contextDisposers.clear();
+    contextEvents.forEach((events) => events.abort());
+    contextEvents.clear();
   };
 
   const drawAnnotation = (detail: {
     annotation: ReaderHighlight;
-    draw: (func: AnnotationDrawFunction, options: AnnotationDrawOptions) => void;
+    draw: <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, options?: Options) => void;
   }) => {
     detail.draw(drawHighlightWithAnnotationBadge, {
       annotationValue: detail.annotation.value,
@@ -420,16 +421,19 @@ export function createHighlightController(options: HighlightControllerOptions) {
     });
   };
 
-  const addCurrentHighlightsToOverlay = (view: FoliateViewElement, index: number) => {
+  const addCurrentHighlightsToOverlay = (view: ReaderView, index: number) => {
     for (const annotation of currentHighlights) {
-      if (annotation.index === index) void view.addAnnotation?.(annotation);
+      if (annotation.index === index) {
+        const added = view.addAnnotation?.(annotation);
+        if (added) run(added, "Failed to draw restored highlight.");
+      }
     }
     bindContextTargets();
   };
 
-  const restore = async (view: FoliateViewElement, bookKey: string) => {
+  const restore = async (view: ReaderView, bookKey: string) => {
     const savedHighlights = await getSavedHighlights(bookKey);
-    if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
+    if (options.getView() !== view || options.getBookKey() !== bookKey) return;
 
     let shouldPersist = false;
     const sectionFractions = options.getNavigation()?.fractions() ?? [];
@@ -447,20 +451,11 @@ export function createHighlightController(options: HighlightControllerOptions) {
         return { ...annotation, index, fraction };
       }),
     );
-    if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
+    if (options.getView() !== view || options.getBookKey() !== bookKey) return;
 
     currentHighlights = restoredHighlights;
     if (shouldPersist) await setSavedHighlights(bookKey, restoredHighlights);
     bindContextTargets();
-  };
-
-  const scheduleRestore = (view: FoliateViewElement, bookKey: string) => {
-    options.runWhenIdle(() => {
-      if (options.getReaderView() !== view || options.getBookKey() !== bookKey) return;
-      void restore(view, bookKey).catch((error) => {
-        console.warn("Failed to restore highlights.", error);
-      });
-    }, 800);
   };
 
   const copyHighlight = async (highlight: ReaderHighlight) => {
@@ -495,7 +490,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
     if (!text) return;
 
     const point = activeContext?.point ?? getViewportCenter();
-    void translationController.translate({
+    void translation.translate({
       sourceText: text,
       x: point.x,
       y: point.y,
@@ -509,31 +504,31 @@ export function createHighlightController(options: HighlightControllerOptions) {
   };
 
   const persistHighlight = async (highlight: ReaderHighlight) => {
-    const readerView = options.getReaderView();
+    const view = options.getView();
     const bookKey = options.getBookKey();
-    if (!readerView || !bookKey) return false;
+    if (!view || !bookKey) return false;
 
     const exists = currentHighlights.some((item) => item.value === highlight.value);
     const nextHighlights = exists
       ? currentHighlights.map((item) => (item.value === highlight.value ? highlight : item))
       : [...currentHighlights, highlight];
     currentHighlights = nextHighlights;
-    await readerView.addAnnotation?.(highlight);
-    await setSavedHighlights(bookKey, nextHighlights);
     markUnsaved();
+    await view.addAnnotation?.(highlight);
+    await setSavedHighlights(bookKey, nextHighlights);
     return true;
   };
 
   const deleteHighlight = async (highlight: ReaderHighlight) => {
-    const readerView = options.getReaderView();
+    const view = options.getView();
     const bookKey = options.getBookKey();
-    if (!readerView || !bookKey) return;
+    if (!view || !bookKey) return;
 
-    await readerView.deleteAnnotation?.(highlight);
-    removeAnnotationBadges(highlight.value);
     currentHighlights = currentHighlights.filter((item) => item.value !== highlight.value);
-    await setSavedHighlights(bookKey, currentHighlights);
     markUnsaved();
+    await view.deleteAnnotation?.(highlight);
+    removeAnnotationBadges(highlight.value);
+    await setSavedHighlights(bookKey, currentHighlights);
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
     close();
   };
@@ -544,7 +539,6 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
     const highlight: ReaderHighlight = {
       ...existing,
-      color: getHighlightColor(existing),
       note: undefined,
     };
     removeAnnotationBadges(value);
@@ -566,16 +560,15 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
     const annotation: ReaderHighlight = {
       ...existing,
-      color: getHighlightColor(existing),
       note: cleanNote,
     };
     await persistHighlight(annotation);
   };
 
   const highlightSelectedText = async () => {
-    const readerView = options.getReaderView();
+    const view = options.getView();
     const bookKey = options.getBookKey();
-    if (!readerView || !bookKey || !activeContext?.selection) return;
+    if (!view || !bookKey || !activeContext?.selection) return;
 
     const selection = activeContext.selection;
     const { value } = selection;
@@ -588,7 +581,7 @@ export function createHighlightController(options: HighlightControllerOptions) {
 
     const annotation: ReaderHighlight = {
       value,
-      color: DEFAULT_HIGHLIGHT_COLOR,
+      color: AUTO_HIGHLIGHT_COLOR,
       text: selection.text,
       index: selection.index,
       fraction: options.getProgress(),
@@ -602,16 +595,15 @@ export function createHighlightController(options: HighlightControllerOptions) {
   };
 
   const annotateContextText = async () => {
-    const readerView = options.getReaderView();
+    const view = options.getView();
     const bookKey = options.getBookKey();
     const context = activeContext;
     const point = context?.point ?? getViewportCenter();
-    if (!readerView || !bookKey || !context) return;
+    if (!view || !bookKey || !context) return;
 
     if (context.highlight) {
       const annotation: ReaderHighlight = {
         ...context.highlight,
-        color: getHighlightColor(context.highlight),
         note: context.highlight.note ?? "",
       };
       openAnnotationPopover(annotation, point);
@@ -624,10 +616,10 @@ export function createHighlightController(options: HighlightControllerOptions) {
     const { value } = context.selection;
     const existing = currentHighlights.find((item) => item.value === value);
     const annotation: ReaderHighlight = existing
-      ? { ...existing, color: getHighlightColor(existing), note: existing.note ?? "" }
+      ? { ...existing, note: existing.note ?? "" }
       : {
           value,
-          color: DEFAULT_HIGHLIGHT_COLOR,
+          color: AUTO_HIGHLIGHT_COLOR,
           note: "",
           text: context.selection.text,
           index: context.selection.index,
@@ -645,27 +637,32 @@ export function createHighlightController(options: HighlightControllerOptions) {
     switch (action) {
       case "copy":
         if (activeContext?.media) {
-          void copyMedia(activeContext.media);
+          run(copyMedia(activeContext.media), "Failed to copy reader media.");
         } else {
-          void (activeContext?.highlight ? copyHighlight(activeContext.highlight) : copySelectedText());
+          run(
+            activeContext?.highlight ? copyHighlight(activeContext.highlight) : copySelectedText(),
+            "Failed to copy reader text.",
+          );
         }
         break;
       case "highlight":
-        void highlightSelectedText();
+        run(track(highlightSelectedText()), "Failed to save highlight.");
         break;
       case "translate":
         translateContextText();
         break;
       case "annotate":
-        void annotateContextText();
+        run(track(annotateContextText()), "Failed to create annotation.");
         break;
       case "delete":
-        if (activeContext?.highlight) void deleteHighlight(activeContext.highlight);
+        if (activeContext?.highlight) {
+          run(track(deleteHighlight(activeContext.highlight)), "Failed to delete highlight.");
+        }
     }
   };
 
   const reset = () => {
-    translationController.cancel();
+    translation.cancel();
     unbindContextTargets();
     currentHighlights = [];
     close();
@@ -678,14 +675,15 @@ export function createHighlightController(options: HighlightControllerOptions) {
     drawAnnotation,
     destroy: () => {
       reset();
-      translationController.destroy();
+      translation.destroy();
       viewerEventDisposers.forEach((dispose) => dispose());
     },
-    flushPendingAnnotationSave: () => pendingAnnotationSave,
+    flushPendingWrites: () => pendingWrites,
+    getAll: () => currentHighlights.slice(),
     handleContextAction,
     openFromAnnotation,
     reset,
-    scheduleRestore,
+    restore,
     unbindContextDocument,
   };
 }

@@ -43,6 +43,7 @@ export class FixedLayout extends HTMLElement {
     #center
     #side
     #zoom
+    #destroyed = false
     constructor() {
         super()
 
@@ -99,6 +100,8 @@ export class FixedLayout extends HTMLElement {
                 try {
                     const doc = iframe.contentDocument
                     await this.beforeRenderDocument?.(doc, index)
+                    if (this.#destroyed)
+                        throw new DOMException('Fixed layout destroyed', 'AbortError')
                     this.dispatchEvent(new CustomEvent('load', { detail: { doc, index } }))
                     const { width, height } = getViewport(doc, this.defaultViewport)
                     resolve({
@@ -287,28 +290,33 @@ export class FixedLayout extends HTMLElement {
             this.#render(side)
             return
         }
-        const previousSpread = this.#spreads[this.#index]
+        const previousIndex = this.#index
+        const previousSpread = this.#spreads[previousIndex]
         this.#index = index
         const spread = this.#spreads[index]
-        if (spread.center) {
-            const index = this.book.sections.indexOf(spread.center)
-            const src = await spread.center?.load?.()
-            await this.#showSpread({ center: { index, src } })
-        } else {
-            const indexL = this.book.sections.indexOf(spread.left)
-            const indexR = this.book.sections.indexOf(spread.right)
-            const srcL = await spread.left?.load?.()
-            const srcR = await spread.right?.load?.()
-            const left = { index: indexL, src: srcL }
-            const right = { index: indexR, src: srcR }
-            await this.#showSpread({ left, right, side })
+        try {
+            if (spread.center) {
+                const index = this.book.sections.indexOf(spread.center)
+                const src = await spread.center?.load?.()
+                await this.#showSpread({ center: { index, src } })
+            } else {
+                const indexL = this.book.sections.indexOf(spread.left)
+                const indexR = this.book.sections.indexOf(spread.right)
+                const srcL = await spread.left?.load?.()
+                const srcR = await spread.right?.load?.()
+                const left = { index: indexL, src: srcL }
+                const right = { index: indexR, src: srcR }
+                await this.#showSpread({ left, right, side })
+            }
+        } catch (error) {
+            this.#unloadDocuments()
+            this.#root.replaceChildren()
+            this.#unloadSpread(spread, previousSpread)
+            this.#index = previousIndex
+            throw error
         }
         this.#unloadSpread(previousSpread, spread)
         this.#reportLocation(reason)
-    }
-    async select(target) {
-        await this.goTo(target)
-        // TODO
     }
     async goTo(target) {
         const { book } = this
@@ -317,6 +325,16 @@ export class FixedLayout extends HTMLElement {
         if (!section) return
         const { index, side } = this.getSpreadOf(section)
         await this.goToSpread(index, side)
+        if (resolved.select && typeof resolved.anchor === 'function') {
+            const content = this.getContents().find(item => item.index === resolved.index)
+            const Range = content?.doc?.defaultView?.Range
+            const range = content?.doc && resolved.anchor(content.doc)
+            if (Range && range instanceof Range) {
+                const selection = content.doc.defaultView.getSelection()
+                selection.removeAllRanges()
+                selection.addRange(range)
+            }
+        }
     }
     async next() {
         const s = this.rtl ? this.#goLeft() : this.#goRight()
@@ -327,11 +345,12 @@ export class FixedLayout extends HTMLElement {
         if (!s) return this.goToSpread(this.#index - 1, this.rtl ? 'left' : 'right', 'page')
     }
     getContents() {
-        return Array.from(this.#root.querySelectorAll('iframe'), frame => ({
-            doc: frame.contentDocument,
-            index: Number(frame.dataset.index),
-            // TODO: overlayer
-        }))
+        return Array.from(this.#root.querySelectorAll('iframe')).flatMap(frame => {
+            const index = Number(frame.dataset.index)
+            return Number.isInteger(index) && index >= 0
+                ? [{ doc: frame.contentDocument, index }]
+                : []
+        })
     }
     #unloadDocuments() {
         for (const { doc } of this.getContents()) {
@@ -339,10 +358,13 @@ export class FixedLayout extends HTMLElement {
         }
     }
     destroy() {
-        this.#observer.unobserve(this)
+        if (this.#destroyed) return
+        this.#destroyed = true
+        this.#observer.disconnect()
         this.#unloadDocuments()
         this.#unloadSpread(this.#spreads?.[this.#index])
+        this.#root.replaceChildren()
     }
 }
 
-customElements.define('foliate-fxl', FixedLayout)
+customElements.define('epub-fixed', FixedLayout)

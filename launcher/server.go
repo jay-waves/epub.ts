@@ -33,6 +33,7 @@ type App struct {
 	origin     string
 	done       chan error
 	closeOnce  sync.Once
+	closeErr   error
 	stopTasks  context.CancelFunc
 	daemonLock *os.File
 }
@@ -108,7 +109,6 @@ func (app *App) Wait() error {
 }
 
 func (app *App) Close() error {
-	var err error
 	app.closeOnce.Do(func() {
 		if app.stopTasks != nil {
 			app.stopTasks()
@@ -116,16 +116,16 @@ func (app *App) Close() error {
 		if app.server != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			err = app.server.Shutdown(ctx)
+			app.closeErr = app.server.Shutdown(ctx)
 		}
 		if app.listener != nil {
-			if clearErr := app.registry.ClearEndpoint(app.listener.Addr().String()); err == nil {
-				err = clearErr
+			if clearErr := app.registry.ClearEndpoint(app.listener.Addr().String()); app.closeErr == nil {
+				app.closeErr = clearErr
 			}
 		}
 		app.releaseDaemonLock()
 	})
-	return err
+	return app.closeErr
 }
 
 func (app *App) acquireDaemonLock() error {

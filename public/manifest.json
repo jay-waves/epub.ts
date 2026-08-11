@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "EPUB Viewer",
   "version": "0.2.9",
-  "description": "Open local EPUB files in a Chrome extension reader powered by foliate-js.",
+  "description": "Open local EPUB files in a focused Chrome extension reader.",
   "minimum_chrome_version": "120",
   "permissions": [
     "declarativeNetRequestWithHostAccess",

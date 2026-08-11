@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { SearchUpdateDetail } from "../viewer-events";
 import { Button, Tooltip } from "./ui";
@@ -12,11 +12,15 @@ export function SearchBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const canNavigate = searchState.hitCount > 0;
 
-  useViewerEvent(VIEWER_EVENTS.searchOpen, () => {
-    setSearchState((current) => ({ ...current, placeholder: "Search text", visible: true }));
-    window.setTimeout(() => inputRef.current?.focus());
+  useViewerEvent(VIEWER_EVENTS.searchUpdate, (detail) => {
+    setSearchState(detail);
+    if (detail.visible) return;
+    setHighlightedOnly(false);
+    setQuery("");
   });
-  useViewerEvent(VIEWER_EVENTS.searchUpdate, setSearchState);
+  useEffect(() => {
+    if (searchState.visible) inputRef.current?.focus();
+  }, [searchState.visible]);
 
   const submitSearch = () => {
     emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly, query });
@@ -25,14 +29,10 @@ export function SearchBar() {
   const toggleHighlightedOnly = () => {
     const nextHighlightedOnly = !highlightedOnly;
     setHighlightedOnly(nextHighlightedOnly);
-    if (!nextHighlightedOnly) return;
-
-    emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly: true, query });
+    emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly: nextHighlightedOnly, query });
   };
 
   const clearSearch = () => {
-    setHighlightedOnly(false);
-    setQuery("");
     emitViewerEvent(VIEWER_EVENTS.searchClear);
   };
 

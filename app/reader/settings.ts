@@ -1,11 +1,11 @@
-import { createReaderBookStyles } from "./reader-book-styles";
-import { readerSettings } from "./reader";
-import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./reader";
-import type { FoliateViewElement } from "./foliate";
+import { createBookStyles } from "./book-styles";
+import { readerSettings } from "./model";
+import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
+import type { ReaderView } from "./model";
 
 type ReaderLayoutTarget = {
   root: HTMLElement;
-  view: FoliateViewElement | null;
+  view: ReaderView | null;
 };
 
 const READER_THEMES: ReaderTheme[] = [
@@ -16,6 +16,9 @@ const READER_THEMES: ReaderTheme[] = [
     background: "#fffefd",
     foreground: "#1f2933",
     link: "#1f5f8f",
+    primary: "#2563eb",
+    secondary: "#f4c430",
+    secondaryInk: "#1f2933",
   },
   {
     id: "grey",
@@ -24,6 +27,9 @@ const READER_THEMES: ReaderTheme[] = [
     background: "#f1f1ee",
     foreground: "#2f3438",
     link: "#4c6a7f",
+    primary: "#5f8f86",
+    secondary: "#78a79f",
+    secondaryInk: "#2d332f",
   },
   {
     id: "dark",
@@ -32,6 +38,9 @@ const READER_THEMES: ReaderTheme[] = [
     background: "#212830",
     foreground: "#e5e9f0",
     link: "#88c0d0",
+    primary: "#88c0d0",
+    secondary: "#5e81ac",
+    secondaryInk: "#eceff4",
   },
   {
     id: "one-dark",
@@ -40,6 +49,20 @@ const READER_THEMES: ReaderTheme[] = [
     background: "#0f1117",
     foreground: "#d7dae0",
     link: "#61afef",
+    primary: "#61afef",
+    secondary: "#56b6c2",
+    secondaryInk: "#0f1117",
+  },
+  {
+    id: "gruvbox",
+    bodyTheme: "coffee",
+    mode: "dark",
+    background: "#2d2c2a",
+    foreground: "#ebdbb2",
+    link: "#c7ce94",
+    primary: "#c7ce94",
+    secondary: "#c9b77a",
+    secondaryInk: "#2d2c2a",
   },
 ];
 
@@ -67,6 +90,17 @@ export function applyReaderTheme(themeId: ReaderThemeId) {
   document.documentElement.dataset.readerMode = theme.mode;
   document.documentElement.style.setProperty("--reader-chrome-bg", theme.background);
   document.documentElement.style.setProperty("--reader-chrome-fg", theme.foreground);
+  document.documentElement.style.setProperty("--reader-accent-primary", theme.primary);
+  document.documentElement.style.setProperty("--reader-accent-secondary", theme.secondary);
+  document.documentElement.style.setProperty("--reader-annotation-color", theme.secondary);
+  document.documentElement.style.setProperty("--reader-comment-color", theme.secondary);
+  document.documentElement.style.setProperty("--reader-comment-ink", theme.secondaryInk);
+  document.documentElement.style.setProperty("--reader-search-outline", theme.secondary);
+  document.documentElement.style.setProperty("--reader-search-current", theme.primary);
+  document.documentElement.style.setProperty(
+    "--reader-search-current-fill",
+    `color-mix(in srgb, ${theme.primary} 24%, transparent)`,
+  );
   document.documentElement.style.setProperty("--reader-color-scheme", theme.mode);
   document.documentElement.style.setProperty("--reader-scrollbar-thumb", scrollbarThumb);
   document.documentElement.style.setProperty("--reader-scrollbar-track", scrollbarTrack);
@@ -147,7 +181,7 @@ function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
 }
 
 export function getBookStyles(themeId = readerSettings.theme): [string, string] {
-  return createReaderBookStyles({
+  return createBookStyles({
     fontSize: readerSettings.fontSize,
     layout: getLayoutPreset(),
     layoutLevel: readerSettings.layoutLevel,
@@ -191,7 +225,7 @@ function clampLayoutLevel(layoutLevel: number) {
   return clamp(Math.round(layoutLevel), MIN_READER_LAYOUT_LEVEL, MAX_READER_LAYOUT_LEVEL);
 }
 
-export function applyReaderFontSize(fontSize: number, view?: FoliateViewElement | null) {
+export function applyReaderFontSize(fontSize: number, view?: ReaderView | null) {
   readerSettings.fontSize = clampReaderFontSize(fontSize);
   view?.renderer?.setStyles?.(getBookStyles());
 }

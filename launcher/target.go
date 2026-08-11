@@ -28,6 +28,9 @@ func ResolveTarget(argument string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", errors.New("document target must be a regular file")
 	}
+	if info.Size() <= 0 || info.Size() > maxDocumentBytes {
+		return "", fmt.Errorf("document size must be between 1 byte and %d GiB", maxDocumentBytes>>30)
+	}
 	if !strings.EqualFold(filepath.Ext(canonical), ".epub") {
 		return "", errors.New("epub.ts only opens EPUB files")
 	}

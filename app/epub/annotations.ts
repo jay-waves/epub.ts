@@ -7,7 +7,8 @@ import {
   ZipReader,
   ZipWriter,
 } from "@zip.js/zip.js";
-import type { ReaderHighlight } from "./reader";
+import type { ReaderHighlight } from "../reader/model";
+import type { Book } from "../renderer";
 import type { Entry, FileEntry } from "@zip.js/zip.js";
 
 const EPUB_MIME_TYPE = "application/epub+zip";
@@ -59,19 +60,9 @@ export async function getEpubBlob(sourceUrl: string) {
   return response.blob();
 }
 
-export async function readEmbeddedHighlights(source: Blob | string) {
-  const blob = typeof source === "string" ? await getEpubBlob(source) : source;
-  const reader = new ZipReader(new BlobReader(blob));
-  try {
-    const entries = await reader.getEntries();
-    const overlayEntry = entries.find((entry) => entry.filename === OVERLAY_ENTRY);
-    if (!overlayEntry || !isFileEntry(overlayEntry)) return [];
-
-    const text = await overlayEntry.getData?.(new TextWriter());
-    return text ? parseOverlayFile(text) : [];
-  } finally {
-    await reader.close();
-  }
+export async function readEmbeddedHighlights(book: Book) {
+  const text = await book.loadText?.(OVERLAY_ENTRY);
+  return text == null ? null : parseOverlayFile(text);
 }
 
 export async function createAnnotatedEpub(sourceBlob: Blob, highlights: ReaderHighlight[]) {

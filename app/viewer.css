@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 @layer base {
+  ::selection {
+    background-color: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 38%, transparent);
+    color: var(--reader-chrome-fg, #1f2933);
+  }
+
   :root {
     --muted-foreground: 215 16% 47%;
     --popover: 40 33% 98%;
@@ -23,6 +28,20 @@
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
   }
 
+  html[data-reader-theme="light"] {
+    --reader-glass-bg: rgb(248 250 252 / 94%);
+    --reader-glass-border: rgb(100 116 139 / 22%);
+    --reader-glass-shadow:
+      0 1px 2px rgb(15 23 42 / 9%),
+      0 12px 32px rgb(15 23 42 / 16%),
+      0 30px 72px rgb(15 23 42 / 8%),
+      inset 0 1px 0 rgb(255 255 255 / 88%);
+    --reader-glass-filter: blur(18px) saturate(145%);
+    --reader-field-bg: rgb(255 255 255 / 96%);
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, white);
+    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 6%, white);
+  }
+
   html[data-reader-mode="dark"] {
     --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
     --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
@@ -39,6 +58,20 @@
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, var(--reader-chrome-fg, #e5ebf3) 6%);
     --reader-field-placeholder: #8ea0b3;
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 10%);
+  }
+
+  html[data-reader-theme="gruvbox"] {
+    --reader-glass-bg: rgb(50 48 47 / 95%);
+    --reader-glass-border: #504945;
+    --reader-glass-shadow: 0 14px 34px rgb(0 0 0 / 30%);
+    --reader-border-subtle: #3c3836;
+    --reader-control-fg: #d5c4a1;
+    --reader-control-strong-fg: #ebdbb2;
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary) 10%, #3c3836);
+    --reader-control-hover-fg: #f9f5d7;
+    --reader-field-bg: #32302f;
+    --reader-field-placeholder: #a89984;
+    --reader-toc-hover-bg: #3c3836;
   }
 
   html,
@@ -129,7 +162,8 @@
   }
 
   .ui-button:focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-sky-500/45;
+    @apply outline outline-2 outline-offset-2;
+    outline-color: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 45%, transparent);
   }
 
   .ui-button:disabled {
@@ -195,20 +229,24 @@
     position: relative;
   }
 
-  .reader-frame > foliate-view {
+  .reader-frame > epub-view {
     width: 100%;
     height: 100%;
     display: block;
     opacity: 1;
   }
 
-  .reader-frame.reader-frame--pending > foliate-view {
+  .reader-frame.reader-frame--pending > epub-view {
     opacity: 0;
     pointer-events: none;
   }
 
-  .reader-frame > foliate-view::part(container),
-  .reader-frame > foliate-view::part(filter) {
+  .reader-frame.reader-frame--pending {
+    cursor: wait;
+  }
+
+  .reader-frame > epub-view::part(container),
+  .reader-frame > epub-view::part(filter) {
     background: var(--reader-chrome-bg, #fffefd);
   }
 
@@ -315,7 +353,6 @@
   .reader-progress-fill {
     @apply absolute top-1/2 left-0 z-[2] h-1.5 -translate-y-1/2 rounded-md transition-[width] duration-300 ease-out;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 68%, transparent);
-    width: var(--reader-progress, 0%);
   }
 
   .reader-progress-thumb {
@@ -358,6 +395,11 @@
 
   .reader-context-menu-item svg {
     @apply size-3.5 shrink-0;
+  }
+
+  .reader-context-menu-item:is([data-action="highlight"], [data-action="annotate"]) svg,
+  .reader-text-popover-title svg {
+    color: var(--reader-accent-secondary, #f4c430);
   }
 
   .reader-context-menu-item:hover,
@@ -516,7 +558,9 @@
 
   .search-nav button.search-mode-active,
   .search-nav button.search-mode-active:hover {
-    @apply bg-sky-600 text-white shadow-md;
+    color: var(--reader-accent-primary, #2563eb);
+    background-color: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 42%, transparent);
   }
 
   .search-nav svg {
@@ -545,8 +589,8 @@
 
   .search-input:focus {
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 16%, transparent),
-      0 0 0 2px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+      inset 0 0 0 1px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 72%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 12%, transparent);
   }
 
   .toc-root {
@@ -604,7 +648,7 @@
   .toc-link[aria-current="page"],
   .toc-link[data-selected="true"] {
     @apply font-semibold;
-    color: var(--reader-control-strong-fg);
+    color: var(--reader-accent-primary, #2563eb);
     text-decoration-line: underline;
     text-decoration-thickness: 0.08em;
     text-underline-offset: 0.24em;

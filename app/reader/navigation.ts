@@ -1,103 +1,31 @@
 import * as CFI from "../epub/cfi.js";
+import type { Book, RawRelocateDetail, Renderer, Resolved } from "../renderer/view.js";
 import { SectionIndex, TocIndex } from "./progress";
 import type { SectionLocation, TocItem } from "./progress";
 
-export type Target = string | number | { fraction: number };
-export type Anchor = number | ((doc: Document) => Node | Range | number | null);
-export type Resolved = { anchor?: Anchor; index: number; select?: boolean };
+export type Target = string | number | { fraction: number } | Resolved;
+export type { Anchor, Book, Resolved } from "../renderer/view.js";
 
-export type BookSection = {
-  cfi?: string;
-  createDocument?: () => Promise<Document>;
-  id?: number | string;
-  linear?: string;
-  size?: number;
+type GoOptions = {
+  select?: boolean;
 };
 
-export type Book = {
-  dir?: string;
-  getTOCFragment?: (doc: Document, id?: string) => Element | null;
-  landmarks?: Array<{ href?: string; type: string[] }>;
-  pageList?: TocItem[];
-  resolveCFI?: (cfi: string) => Resolved;
-  resolveHref?: (href: string) => Resolved | null;
-  sections: BookSection[];
-  splitTOCHref?: (href?: string) => [unknown, string?] | Promise<[unknown, string?]>;
-  toc?: TocItem[];
+const cfiFilter = (node: Node) => {
+  if (node.nodeType !== Node.ELEMENT_NODE) return NodeFilter.FILTER_ACCEPT;
+  const element = node as Element;
+  return element.parentElement?.closest("pre")
+    ? NodeFilter.FILTER_SKIP
+    : NodeFilter.FILTER_ACCEPT;
 };
 
-export type Renderer = {
-  getContents?: () => Array<{ doc?: Document }>;
-  goTo: (target: Resolved) => Promise<unknown>;
-  next: (distance?: number) => Promise<unknown>;
-  prev: (distance?: number) => Promise<unknown>;
-};
-
-export type RawLocation = {
-  fraction?: number;
-  index: number;
-  range?: Range;
-  reason?: string;
-  size?: number;
-};
-
-export type Location = Partial<SectionLocation> & RawLocation & {
+export type Location = Partial<SectionLocation> & RawRelocateDetail & {
   cfi: string;
   pageItem?: TocItem | null;
   tocItem?: TocItem | null;
 };
 
-class History extends EventTarget {
-  #entries: Target[] = [];
-  #index = -1;
-
-  get canGoBack() {
-    return this.#index > 0;
-  }
-
-  get canGoForward() {
-    return this.#index < this.#entries.length - 1;
-  }
-
-  push(state: Target) {
-    const last = this.#entries[this.#index];
-    if (last === state
-      || (typeof last === "object" && typeof state === "object" && last.fraction === state.fraction)) return;
-    this.#entries[++this.#index] = state;
-    this.#entries.length = this.#index + 1;
-    this.dispatchEvent(new Event("change"));
-  }
-
-  replace(state: Target) {
-    if (this.#index >= 0) this.#entries[this.#index] = state;
-  }
-
-  back() {
-    if (!this.canGoBack) return;
-    this.#index -= 1;
-    this.#pop();
-  }
-
-  forward() {
-    if (!this.canGoForward) return;
-    this.#index += 1;
-    this.#pop();
-  }
-
-  clear() {
-    this.#entries = [];
-    this.#index = -1;
-  }
-
-  #pop() {
-    this.dispatchEvent(new CustomEvent("pop", { detail: this.#entries[this.#index] }));
-    this.dispatchEvent(new Event("change"));
-  }
-}
-
 /** Single owner for reader navigation, CFI conversion, and book progress. */
 export class Navigation {
-  readonly history = new History();
   readonly book: Book;
   readonly #sections: SectionIndex;
   #pages?: TocIndex;
@@ -107,11 +35,6 @@ export class Navigation {
   private constructor(book: Book) {
     this.book = book;
     this.#sections = new SectionIndex(book.sections, 1_500, 1_600);
-    this.history.addEventListener("pop", (event) => {
-      const target = (event as CustomEvent<Target>).detail;
-      const resolved = this.resolve(target);
-      if (resolved && this.#renderer) void this.#renderer.goTo(resolved);
-    });
   }
 
   static async create(book: Book) {
@@ -149,23 +72,34 @@ export class Navigation {
 
   close() {
     this.detach();
-    this.history.clear();
   }
 
   cfi(index: number, range?: Range) {
     const base = this.book.sections[index]?.cfi ?? CFI.fake.fromIndex(index);
-    return range ? CFI.joinIndir(base, CFI.fromRange(range)) : base;
+    return range ? CFI.joinIndir(base, CFI.fromRange(range, cfiFilter)) : base;
   }
 
   resolve(target: Target): Resolved | undefined {
     try {
-      if (typeof target === "number") return { index: target };
+      let resolved: Resolved | undefined;
+      if (typeof target === "number") resolved = { index: target };
       if (typeof target === "object") {
-        const [index, anchor] = this.#sections.at(target.fraction);
-        return { anchor, index };
+        if ("index" in target) resolved = target;
+        else {
+          const [index, anchor] = this.#sections.at(target.fraction);
+          resolved = { anchor, index };
+        }
+      } else if (typeof target === "string") {
+        resolved = CFI.isCFI.test(target)
+          ? this.#resolveCfi(target)
+          : this.book.resolveHref?.(target) ?? undefined;
       }
-      if (CFI.isCFI.test(target)) return this.#resolveCfi(target);
-      return this.book.resolveHref?.(target) ?? undefined;
+      return resolved
+        && Number.isInteger(resolved.index)
+        && resolved.index >= 0
+        && resolved.index < this.book.sections.length
+        ? resolved
+        : undefined;
     } catch (error) {
       console.error(`Could not resolve target ${String(target)}`, error);
       return undefined;
@@ -173,25 +107,16 @@ export class Navigation {
   }
 
   #resolveCfi(cfi: string): Resolved {
-    if (this.book.resolveCFI) return this.book.resolveCFI(cfi);
+    if (this.book.resolveCFI) return this.book.resolveCFI(cfi, cfiFilter);
     const parts = CFI.parse(cfi);
     const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
-    return { index, anchor: (doc) => CFI.toRange(doc, parts) };
+    return { index, anchor: (doc) => CFI.toRange(doc, parts, cfiFilter) };
   }
 
-  async go(target: Target) {
+  async go(target: Target, options: GoOptions = {}) {
     const resolved = this.resolve(target);
     if (!resolved) throw new Error(`Could not resolve target ${String(target)}`);
-    await this.#getRenderer().goTo(resolved);
-    this.history.push(target);
-    return resolved;
-  }
-
-  async select(target: Target) {
-    const resolved = this.resolve(target);
-    if (!resolved) throw new Error(`Could not resolve target ${String(target)}`);
-    await this.#getRenderer().goTo({ ...resolved, select: true });
-    this.history.push(target);
+    await this.#getRenderer().goTo(options.select ? { ...resolved, select: true } : resolved);
     return resolved;
   }
 
@@ -201,12 +126,10 @@ export class Navigation {
       throw new Error(`Could not resolve initial location ${String(lastLocation)}`);
     }
     if (resolved) {
-      await this.#getRenderer().goTo(resolved);
-      this.history.push(lastLocation!);
+      await this.go(lastLocation!);
     } else if (showTextStart) {
       await this.start();
     } else {
-      this.history.push(0);
       await this.next();
     }
   }
@@ -215,7 +138,8 @@ export class Navigation {
     const landmark = this.book.landmarks
       ?.find(({ type }) => type.includes("bodymatter") || type.includes("text"))
       ?.href;
-    const target = landmark ?? this.book.sections.findIndex((section) => section.linear !== "no");
+    const firstLinear = this.book.sections.findIndex((section) => section.linear !== "no");
+    const target = landmark && this.resolve(landmark) ? landmark : Math.max(0, firstLinear);
     return this.go(target);
   }
 
@@ -225,6 +149,22 @@ export class Navigation {
 
   next(distance?: number) {
     return this.#getRenderer().next(distance);
+  }
+
+  previousSection() {
+    return this.#getRenderer().prevSection?.();
+  }
+
+  nextSection() {
+    return this.#getRenderer().nextSection?.();
+  }
+
+  scrollBy(distance: number) {
+    this.#getRenderer().scrollBy?.(distance, distance);
+  }
+
+  scrollTo(anchor: number) {
+    return this.#getRenderer().scrollToAnchor?.(anchor);
   }
 
   left() {
@@ -241,13 +181,10 @@ export class Navigation {
     }
   }
 
-  location(raw: RawLocation): Location {
-    const { fraction, index, range, reason, size } = raw;
+  location(raw: RawRelocateDetail): Location {
+    const { fraction, index, range, size } = raw;
     const progress = this.#sections.get(index, fraction, size);
     const cfi = this.cfi(index, range);
-    if (reason === "snap" || reason === "page" || reason === "scroll") {
-      this.history.replace(cfi);
-    }
     return {
       ...raw,
       ...progress,

@@ -12,9 +12,33 @@ import { MathML } from "@mathjax/src/js/input/mathml.js";
 import { mathjax } from "@mathjax/src/js/mathjax.js";
 import { SVG } from "@mathjax/src/js/output/svg.js";
 
+const commonFontModules = new Set([
+  "accents",
+  "arrows",
+  "calligraphic",
+  "double-struck",
+  "fraktur",
+  "latin",
+  "math",
+  "script",
+  "shapes",
+  "symbols",
+  "variants",
+]);
+
 const dynamicFontModules = import.meta.glob(
-  "/node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/*.js",
+  "/node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/{accents,arrows,calligraphic,double-struck,fraktur,latin,math,script,shapes,symbols,variants}.js",
 );
+
+// Unregistered ranges are rendered as system-font text inside MathJax's SVG.
+// The formula keeps MathJax layout without shipping every NewCM language and
+// specialist symbol table.
+const fontData = MathJaxNewcmFont as unknown as {
+  dynamicFiles: Record<string, unknown>;
+};
+for (const name of Object.keys(fontData.dynamicFiles)) {
+  if (!commonFontModules.has(name)) delete fontData.dynamicFiles[name];
+}
 
 mathjax.asyncLoad = async (name: string) => {
   const filename = name.split("/").pop();
@@ -75,7 +99,7 @@ export function createMathJaxSvgRenderer() {
   };
 
   return {
-    cacheKey: "mathjax-newcm-svg-1.35-b12-global",
+    cacheKey: "mathjax-newcm-compact-svg-1.35-b12-global",
     async render(source: string, options: MathJaxSvgRenderOptions) {
       return await mathDocument.convertPromise(source, options) as Element;
     },

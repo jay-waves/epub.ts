@@ -1,4 +1,4 @@
-import * as CFI from '../app/epub/cfi.js'
+import * as CFI from './cfi.js'
 import { ResourceCache } from './resource-cache.js'
 
 const NS = {
@@ -120,14 +120,12 @@ const pathRelative = (from, to) => {
 
 const pathDirname = str => str.slice(0, str.lastIndexOf('/') + 1)
 
-// replace asynchronously and sequentially
-// same technique as https://stackoverflow.com/a/48032528
-const replaceSeries = async (str, regex, f) => {
+const replaceAsync = async (str, regex, f) => {
     const matches = []
     str.replace(regex, (...args) => (matches.push(args), null))
-    const results = []
-    for (const args of matches) results.push(await f(...args))
-    return str.replace(regex, () => results.shift())
+    const results = await Promise.all(matches.map(args => f(...args)))
+    let index = 0
+    return str.replace(regex, () => results[index++])
 }
 
 const regexEscape = str => str.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
@@ -648,6 +646,7 @@ class Resources {
                 return item
             })
         this.manifestById = new Map(this.manifest.map(item => [item.id, item]))
+        this.manifestByHref = new Map(this.manifest.map(item => [item.href, item]))
         this.spine = $$itemref
             .map(getAttributes('idref', 'id', 'linear', 'properties'))
             .map(item => (item.properties = item.properties?.split(/\s/), item))
@@ -681,12 +680,12 @@ class Resources {
         return this.manifestById.get(id)
     }
     getItemByHref(href) {
-        return this.manifest.find(item => item.href === href)
+        return this.manifestByHref.get(href)
     }
     getItemByProperty(prop) {
         return this.manifest.find(item => item.properties?.includes(prop))
     }
-    resolveCFI(cfi) {
+    resolveCFI(cfi, filter) {
         const parts = CFI.parse(cfi)
         const top = (parts.parent ?? parts).shift()
         let $itemref = CFI.toElement(this.opf, top)
@@ -699,7 +698,7 @@ class Resources {
         }
         const idref = $itemref?.getAttribute('idref')
         const index = this.spine.findIndex(item => item.idref === idref)
-        const anchor = doc => CFI.toRange(doc, parts)
+        const anchor = doc => CFI.toRange(doc, parts, filter)
         return { index, anchor }
     }
 }
@@ -713,6 +712,7 @@ class Loader {
         this.loadText = loadText
         this.loadBlob = loadBlob
         this.manifest = resources.manifest
+        this.manifestByHref = resources.manifestByHref
         this.assets = resources.manifest
         // needed only when replacing in (X)HTML w/o parsing (see below)
         //.filter(({ mediaType }) => ![MIME.XHTML, MIME.HTML].includes(mediaType))
@@ -771,7 +771,8 @@ class Loader {
     async loadHref(href, base, parents = []) {
         if (isExternal(href)) return href
         const path = resolveURL(href, base)
-        const item = this.manifest.find(item => item.href === path)
+        if (parents.includes(path)) return 'data:,'
+        const item = this.manifestByHref.get(path)
         if (!item) return href
         return this.loadItem(item, parents.concat(base))
     }
@@ -814,7 +815,7 @@ class Loader {
                 let child = doc.firstChild
                 while (child instanceof ProcessingInstruction) {
                     if (child.data) {
-                        const replacedData = await replaceSeries(child.data,
+                        const replacedData = await replaceAsync(child.data,
                             /(?:^|\s*)(href\s*=\s*['"])([^'"]*)(['"])/i,
                             (_, p1, p2, p3) => this.loadHref(p2, href, parents)
                                 .then(p2 => `${p1}${p2}${p3}`))
@@ -827,25 +828,27 @@ class Loader {
             // replace hrefs (excluding anchors)
             const replace = async (el, attr) => el.setAttribute(attr,
                 await this.loadHref(el.getAttribute(attr), href, parents))
-            for (const el of doc.querySelectorAll('link[href]')) await replace(el, 'href')
-            for (const el of doc.querySelectorAll('[src]')) await replace(el, 'src')
-            for (const el of doc.querySelectorAll('[poster]')) await replace(el, 'poster')
-            for (const el of doc.querySelectorAll('object[data]')) await replace(el, 'data')
-            for (const el of doc.querySelectorAll('[*|href]:not([href])'))
-                el.setAttributeNS(NS.XLINK, 'href', await this.loadHref(
-                    el.getAttributeNS(NS.XLINK, 'href'), href, parents))
-            for (const el of doc.querySelectorAll('[srcset]'))
-                el.setAttribute('srcset', await replaceSeries(el.getAttribute('srcset'),
-                    /(\s*)(.+?)\s*((?:\s[\d.]+[wx])+\s*(?:,|$)|,\s+|$)/g,
-                    (_, p1, p2, p3) => this.loadHref(p2, href, parents)
-                        .then(p2 => `${p1}${p2}${p3}`)))
-            // replace inline styles
-            for (const el of doc.querySelectorAll('style'))
-                if (el.textContent) el.textContent =
-                    await this.replaceCSS(el.textContent, href, parents)
-            for (const el of doc.querySelectorAll('[style]'))
-                el.setAttribute('style',
-                    await this.replaceCSS(el.getAttribute('style'), href, parents))
+            await Promise.all([
+                ...Array.from(doc.querySelectorAll('link[href]'), el => replace(el, 'href')),
+                ...Array.from(doc.querySelectorAll('[src]'), el => replace(el, 'src')),
+                ...Array.from(doc.querySelectorAll('[poster]'), el => replace(el, 'poster')),
+                ...Array.from(doc.querySelectorAll('object[data]'), el => replace(el, 'data')),
+                ...Array.from(doc.querySelectorAll('[*|href]:not([href])'), async el =>
+                    el.setAttributeNS(NS.XLINK, 'href', await this.loadHref(
+                        el.getAttributeNS(NS.XLINK, 'href'), href, parents))),
+                ...Array.from(doc.querySelectorAll('[srcset]'), async el =>
+                    el.setAttribute('srcset', await replaceAsync(el.getAttribute('srcset'),
+                        /(\s*)(.+?)\s*((?:\s[\d.]+[wx])+\s*(?:,|$)|,\s+|$)/g,
+                        (_, p1, p2, p3) => this.loadHref(p2, href, parents)
+                            .then(p2 => `${p1}${p2}${p3}`)))),
+                ...Array.from(doc.querySelectorAll('style'), async el => {
+                    if (el.textContent) el.textContent =
+                        await this.replaceCSS(el.textContent, href, parents)
+                }),
+                ...Array.from(doc.querySelectorAll('[style]'), async el =>
+                    el.setAttribute('style',
+                        await this.replaceCSS(el.getAttribute('style'), href, parents))),
+            ])
             // TODO: replace inline scripts? probably not worth the trouble
             const result = new XMLSerializer().serializeToString(doc)
             return this.createURL(href, result, item.mediaType, parent)
@@ -857,12 +860,12 @@ class Loader {
         return this.createURL(href, result, mediaType, parent)
     }
     async replaceCSS(str, href, parents = []) {
-        const replacedUrls = await replaceSeries(str,
+        const replacedUrls = await replaceAsync(str,
             /url\(\s*["']?([^'"\n]*?)\s*["']?\s*\)/gi,
             (_, url) => this.loadHref(url, href, parents)
                 .then(url => `url("${url}")`))
         // apart from `url()`, strings can be used for `@import` (but why?!)
-        return replaceSeries(replacedUrls,
+        return replaceAsync(replacedUrls,
             /@import\s*["']([^"'\n]*?)["']/gi,
             (_, url) => this.loadHref(url, href, parents)
                 .then(url => `@import "${url}"`))
@@ -884,7 +887,7 @@ class Loader {
         }).flat().filter(x => x)
         if (!urls.length) return str
         const regex = new RegExp(urls.map(regexEscape).join('|'), 'g')
-        return replaceSeries(str, regex, async match =>
+        return replaceAsync(str, regex, async match =>
             this.loadItem(assetMap.get(match.replace(/^\//, '')),
                 parents.concat(href)))
     }
@@ -989,8 +992,6 @@ ${doc.querySelector('parsererror').innerText}`)
                 linear,
                 pageSpread: getPageSpread(properties),
                 resolveHref: href => resolveURL(href, item.href),
-                mediaOverlay: item.mediaOverlay
-                    ? this.resources.getItemByID(item.mediaOverlay) : null,
             }
         }).filter(s => s)
 
@@ -1033,13 +1034,16 @@ ${doc.querySelector('parsererror').innerText}`)
     }
     async loadDocument(item) {
         const str = await this.loadText(item.href)
-        return this.parser.parseFromString(str, item.mediaType)
+        let doc = this.parser.parseFromString(str, item.mediaType)
+        if (item.mediaType === MIME.XHTML && (doc.querySelector('parsererror')
+        || !doc.documentElement?.namespaceURI)) {
+            item.mediaType = MIME.HTML
+            doc = this.parser.parseFromString(str, item.mediaType)
+        }
+        return doc
     }
-    getMediaOverlay() {
-        return new MediaOverlay(this, this.#loadXML.bind(this))
-    }
-    resolveCFI(cfi) {
-        return this.resources.resolveCFI(cfi)
+    resolveCFI(cfi, filter) {
+        return this.resources.resolveCFI(cfi, filter)
     }
     resolveHref(href) {
         const [path, hash] = href.split('#')

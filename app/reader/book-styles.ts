@@ -1,10 +1,11 @@
 import atomOneLightHighlightTheme from "highlight.js/styles/atom-one-light.css?raw";
 import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
 import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
+import gruvboxDarkHighlightTheme from "highlight.js/styles/base16/gruvbox-dark-medium.css?raw";
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
 import { platform } from "#platform";
-import readerBookStyles from "./reader-book.css?raw";
-import type { ReaderTheme, ReaderThemeId } from "./reader";
+import bookStyles from "./book.css?raw";
+import type { ReaderTheme, ReaderThemeId } from "./model";
 
 const readerProfile = platform.readerProfile;
 
@@ -64,6 +65,7 @@ const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
   grey: normalizeHighlightThemeCss(atomOneLightHighlightTheme),
   dark: normalizeHighlightThemeCss(nordHighlightTheme),
   "one-dark": normalizeHighlightThemeCss(githubDarkHighlightTheme),
+  gruvbox: normalizeHighlightThemeCss(gruvboxDarkHighlightTheme),
 };
 
 const READER_BOOK_FOUNDATION_STYLES = `
@@ -101,7 +103,7 @@ const READER_BOOK_FOUNDATION_STYLES = `
   }
 `;
 
-export function createReaderBookStyles(options: ReaderBookStyleOptions): [string, string] {
+export function createBookStyles(options: ReaderBookStyleOptions): [string, string] {
   const { fontSize, layout, layoutLevel, theme } = options;
   const cacheKey = `${theme.id}|${fontSize}|${layoutLevel}`;
   if (cachedBookStyles?.key === cacheKey) return cachedBookStyles.value;
@@ -121,6 +123,9 @@ export function createReaderBookStyles(options: ReaderBookStyleOptions): [string
       --theme-bg-color: ${theme.background} !important;
       --reader-fg-color: ${theme.foreground};
       --reader-link-color: ${theme.link};
+      --reader-accent-primary: ${theme.primary};
+      --reader-accent-secondary: ${theme.secondary};
+      --reader-selection-color: color-mix(in srgb, ${theme.primary} 38%, transparent);
       --reader-muted-color: color-mix(in srgb, ${theme.foreground} 72%, ${theme.background});
       --reader-border-color: color-mix(in srgb, ${theme.foreground} 18%, ${theme.background});
       --reader-panel-bg: color-mix(in srgb, ${theme.foreground} 7%, ${theme.background});
@@ -138,6 +143,11 @@ export function createReaderBookStyles(options: ReaderBookStyleOptions): [string
       --reader-font-size-adjust: ${readerProfile.fontSizeAdjust};
       color-scheme: ${theme.mode};
     }
+    ::selection {
+      background-color: var(--reader-selection-color) !important;
+      color: var(--reader-fg-color) !important;
+      text-shadow: none !important;
+    }
     ${READER_CODE_HIGHLIGHT_THEMES[theme.id]}
     .hljs {
       display: block !important;
@@ -153,7 +163,7 @@ export function createReaderBookStyles(options: ReaderBookStyleOptions): [string
   `;
   const value: [string, string] = [
     READER_BOOK_FOUNDATION_STYLES,
-    `${readerBookStyles}\n${dynamicStyles}`,
+    `${bookStyles}\n${dynamicStyles}`,
   ];
   cachedBookStyles = { key: cacheKey, value };
   return value;

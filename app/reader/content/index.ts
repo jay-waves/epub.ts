@@ -1,15 +1,15 @@
-import { normalizeInlineText } from "../reader";
-import { loadReaderDocumentFonts } from "../reader-fonts";
-import { enhanceReaderImages } from "./image-zoom";
+import { loadDocumentFonts } from "../fonts";
+import { normalizeInlineText } from "../model";
+import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";
 import { getEpubType, markReaderSemantics } from "./semantics";
 
-export { closeReaderContentOverlays, disposeReaderContent } from "./image-zoom";
-export { clearMathSvgCache } from "./math";
+export { closeContentOverlays, disposeContent } from "./image-zoom";
+export { clearMathCache } from "./math";
 
 const footnotesLabeledDocs = new WeakSet<Document>();
 
-export async function prepareReaderContentDocument(doc: Document, options: {
+export async function prepareContent(doc: Document, options: {
   fontQueries: string[];
   reflowable: boolean;
   signal: AbortSignal;
@@ -20,10 +20,10 @@ export async function prepareReaderContentDocument(doc: Document, options: {
 
   markReaderSemantics(doc);
   labelFootnotes(doc);
-  enhanceReaderImages(doc, options.signal);
+  enhanceImages(doc, options.signal);
 
   const codeBlocks = prepareReaderCodeBlocks(doc);
-  const fontsReady = loadReaderDocumentFonts(doc, options.fontQueries);
+  const fontsReady = loadDocumentFonts(doc, options.fontQueries);
   const mathReady = doc.querySelector('math[display="block"]')
     ? prepareMathRenderer()
     : null;

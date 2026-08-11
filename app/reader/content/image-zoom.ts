@@ -11,7 +11,7 @@ const IMAGE_ZOOM_MARGIN = 28;
 const MIN_ZOOMABLE_IMAGE_SIZE = 160;
 const MIN_ZOOMED_IMAGE_LONG_EDGE = 320;
 
-export function enhanceReaderImages(doc: Document, signal: AbortSignal) {
+export function enhanceImages(doc: Document, signal: AbortSignal) {
   if (enhancedDocuments.has(doc)) return;
   enhancedDocuments.add(doc);
 
@@ -65,7 +65,7 @@ function handleImageZoomClosed(event: Event) {
   document.body.classList.remove("reader-image-zoom-open");
 }
 
-export async function closeReaderContentOverlays() {
+export async function closeContentOverlays() {
   ++imageZoomRunId;
   const zoom = readerImageZoom;
   const proxy = activeZoomProxy;
@@ -83,9 +83,9 @@ export async function closeReaderContentOverlays() {
   }
 }
 
-export async function disposeReaderContent() {
+export async function disposeContent() {
   disposed = true;
-  await closeReaderContentOverlays();
+  await closeContentOverlays();
   readerImageZoom?.off("open", handleImageZoomOpen);
   readerImageZoom?.off("closed", handleImageZoomClosed);
   readerImageZoom?.detach();
