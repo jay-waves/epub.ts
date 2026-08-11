@@ -50,6 +50,7 @@ import { createReadingProgressController } from "./components/reading-progress";
 import type { ReadingProgressElements } from "./components/reading-progress";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { setupViewerKeybindings } from "./viewer-keybindings";
+import { createReaderInteractions } from "./reader-interactions";
 import {
   getSavedPosition,
   getSavedHighlights,
@@ -59,7 +60,7 @@ import {
 } from "./viewer-storage";
 import type { ReaderSettings, ReadingPosition } from "./reader";
 import type { FoliateViewElement, RelocateDetail } from "./foliate";
-import type { DockAction, PageTurnDirection } from "./viewer-events";
+import type { DockAction } from "./viewer-events";
 import { createDebouncedTask, DEFAULT_READER_SETTINGS, readerSettings, runWhenIdle } from "./reader";
 import { createBookSession, resetBookSession } from "./viewer-session";
 import { createReaderRenderController } from "./reader-render";
@@ -74,6 +75,7 @@ type ViewerRuntime = {
   extraInteractionsDispose: (() => void) | null;
   idleTasks: Set<() => void>;
   isSearchOpen: boolean;
+  interactions: ReturnType<typeof createReaderInteractions> | null;
   keybindings: ReturnType<typeof setupViewerKeybindings> | null;
   lastScrollEdgeFeedbackAt: number;
   postLoadTaskToken: number;
@@ -93,6 +95,7 @@ const runtime: ViewerRuntime = {
   extraInteractionsDispose: null,
   idleTasks: new Set(),
   isSearchOpen: false,
+  interactions: null,
   keybindings: null,
   lastScrollEdgeFeedbackAt: 0,
   postLoadTaskToken: 0,
@@ -104,8 +107,6 @@ const runtime: ViewerRuntime = {
   searchController: null,
 };
 
-const PAGE_TURN_EDGE_RATIO = 0.22;
-const PAGE_TURN_CLICK_MAX_DISTANCE = 4;
 const appRoot = queryRequired<HTMLElement>("#app");
 
 function mountReadingProgressController(elements: ReadingProgressElements | null) {
@@ -151,6 +152,12 @@ const readerLayoutTarget = {
   get view() { return runtime.readerView; },
 };
 const readerRender = createReaderRenderController({
+  root: readerRoot,
+});
+runtime.interactions = createReaderInteractions({
+  getFlow: () => readerSettings.flow,
+  onEdgeClick: (direction) => emitViewerEvent(VIEWER_EVENTS.pageTurn, direction),
+  openExternal: platform.openExternal,
   root: readerRoot,
 });
 
@@ -350,11 +357,6 @@ function wireReaderEvents(view: FoliateViewElement) {
   view.addEventListener("unload", (event) => {
     highlightController.unbindContextDocument(event.detail.doc);
   }, listenerOptions);
-  view.addEventListener("edge-click", (event) => {
-    const { x } = event.detail;
-    emitPageTurnFromEdgeClick(x);
-  }, listenerOptions);
-
   view.addEventListener("relocate", (event) => {
     const { detail } = event;
     const sectionIndex = detail.index;
@@ -499,6 +501,7 @@ async function createView() {
   view.enhanceRenderedDocument = (doc) => enhanceRenderedReaderDocument(doc, view);
   readerRoot.replaceChildren(view);
   wireReaderEvents(view);
+  runtime.interactions?.bindView(view);
   runtime.keybindings?.bindReaderView(view);
   return view;
 }
@@ -647,33 +650,9 @@ function setupCriticalInteractions() {
   const interactions = new AbortController();
   runtime.criticalInteractions = interactions;
   const { signal } = interactions;
-  let clickStart: { x: number; y: number } | null = null;
-
   window.addEventListener("resize", () => {
     applyReaderLayout(readerLayoutTarget);
     highlightController.close();
-  }, { signal });
-
-  readerRoot.addEventListener("pointerdown", (event) => {
-    clickStart = null;
-    if (readerSettings.flow !== "scrolled") return;
-    if (!event.isPrimary || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    if (!(event.target instanceof Node) || !readerRoot.contains(event.target)) return;
-
-    clickStart = { x: event.clientX, y: event.clientY };
-  }, { capture: true, signal });
-
-  readerRoot.addEventListener("click", (event) => {
-    const start = clickStart;
-    clickStart = null;
-    if (readerSettings.flow !== "scrolled") return;
-    if (event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    if (!(event.target instanceof Node) || !readerRoot.contains(event.target)) return;
-    if (!start || !isClickDistance(start.x, start.y, event.clientX, event.clientY)) return;
-
-    emitPageTurnFromEdgeClick(event.clientX);
   }, { signal });
 
 }
@@ -704,23 +683,6 @@ function setupExtraInteractions() {
   ];
 
   return () => disposers.forEach((dispose) => dispose());
-}
-
-function emitPageTurnFromEdgeClick(clientX: number) {
-  const direction = resolveEdgeClickDirection(clientX);
-  if (direction) emitViewerEvent(VIEWER_EVENTS.pageTurn, direction);
-}
-
-function resolveEdgeClickDirection(clientX: number): PageTurnDirection | null {
-  const edgeWidth = window.innerWidth * PAGE_TURN_EDGE_RATIO;
-  if (clientX <= edgeWidth) return "left";
-  if (clientX >= window.innerWidth - edgeWidth) return "right";
-  return null;
-}
-
-function isClickDistance(startX: number, startY: number, endX: number, endY: number) {
-  return Math.abs(endX - startX) <= PAGE_TURN_CLICK_MAX_DISTANCE
-    && Math.abs(endY - startY) <= PAGE_TURN_CLICK_MAX_DISTANCE;
 }
 
 async function runReaderStyleChange(action: () => void) {
@@ -886,6 +848,7 @@ async function disposeViewer() {
   runtime.readerEvents?.abort();
   runtime.extraInteractionsDispose?.();
   runtime.keybindings?.destroy();
+  runtime.interactions?.destroy();
   highlightController.destroy();
   runtime.searchController?.clear();
   runtime.readingProgressController?.destroy();

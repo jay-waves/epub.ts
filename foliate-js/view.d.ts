@@ -24,6 +24,7 @@ export type BookSection = {
   id?: number | string;
   linear?: string;
   load?: () => Promise<string | null>;
+  resolveHref?: (href: string) => string;
   size?: number;
   unload?: () => void;
 };
@@ -32,6 +33,7 @@ export type FoliateBook = {
   dir?: string;
   destroy?: () => void;
   metadata?: BookMetadata;
+  isExternal?: (href: string) => boolean;
   sections?: BookSection[];
   toc?: TocItem[];
 };

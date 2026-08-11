@@ -1,4 +1,4 @@
-import { Overlayer } from "./foliate";
+import { Overlay } from "./foliate";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import {
   getSavedHighlights,
@@ -62,7 +62,7 @@ function drawHighlightWithAnnotationBadge(
   options: AnnotationDrawOptions = { color: DEFAULT_HIGHLIGHT_COLOR },
 ) {
   const group = createSvgElement("g");
-  group.append(Overlayer.highlight(rects, { color: options.color }));
+  group.append(Overlay.highlight(rects, { color: options.color }));
 
   if (!options.hasNote || rects.length === 0) return group;
 

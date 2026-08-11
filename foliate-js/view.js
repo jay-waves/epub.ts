@@ -5,8 +5,6 @@ import { textWalker } from './text-walker.js'
 import { BlobReader, BlobWriter, configure, TextWriter, ZipReader } from '@zip.js/zip.js'
 
 const SEARCH_PREFIX = 'foliate-search:'
-const EDGE_CLICK_RATIO = 0.22
-const EDGE_CLICK_MAX_DISTANCE = 4
 
 const isZip = async file => {
     const arr = new Uint8Array(await file.slice(0, 4).arrayBuffer())
@@ -48,38 +46,6 @@ export const makeBook = async file => {
     }
     if (!book) throw new UnsupportedTypeError('File type not supported')
     return book
-}
-
-class CursorAutohider {
-    #timeout
-    #el
-    #check
-    #state
-    constructor(el, check, state = {}) {
-        this.#el = el
-        this.#check = check
-        this.#state = state
-        if (this.#state.hidden) this.hide()
-        this.#el.addEventListener('mousemove', ({ screenX, screenY }) => {
-            // check if it actually moved
-            if (screenX === this.#state.x && screenY === this.#state.y) return
-            this.#state.x = screenX, this.#state.y = screenY
-            this.show()
-            if (this.#timeout) clearTimeout(this.#timeout)
-            if (check()) this.#timeout = setTimeout(this.hide.bind(this), 1000)
-        }, false)
-    }
-    cloneFor(el) {
-        return new CursorAutohider(el, this.#check, this.#state)
-    }
-    hide() {
-        this.#el.style.cursor = 'none'
-        this.#state.hidden = true
-    }
-    show() {
-        this.#el.style.removeProperty('cursor')
-        this.#state.hidden = false
-    }
 }
 
 class History extends EventTarget {
@@ -146,9 +112,6 @@ export class View extends HTMLElement {
     #searchResults = new Map()
     #searchDraw
     #searchDrawOptions
-    #cursorAutohider = new CursorAutohider(this, () =>
-        this.hasAttribute('autohide-cursor'))
-    #edgeClickDocs = new WeakSet()
     isFixedLayout = false
     lastLocation
     history = new History()
@@ -276,74 +239,7 @@ export class View extends HTMLElement {
         if (!this.language.isCJK)
             doc.documentElement.dir ||= this.language.direction ?? ''
 
-        this.#handleLinks(doc, index)
-        this.#handleEdgeClicks(doc)
-        this.#cursorAutohider.cloneFor(doc.documentElement)
-
         this.#emit('load', { doc, index })
-    }
-    #handleEdgeClicks(doc) {
-        if (this.#edgeClickDocs.has(doc)) return
-        this.#edgeClickDocs.add(doc)
-
-        let clickStart = null
-        doc.addEventListener('pointerdown', event => {
-            clickStart = null
-            if (!event.isPrimary || event.button !== 0) return
-            if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-            clickStart = { x: event.clientX, y: event.clientY }
-        }, true)
-        doc.addEventListener('click', event => {
-            const start = clickStart
-            clickStart = null
-            if (event.button !== 0) return
-            if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-            if (!start || Math.abs(event.clientX - start.x) > EDGE_CLICK_MAX_DISTANCE
-                || Math.abs(event.clientY - start.y) > EDGE_CLICK_MAX_DISTANCE) return
-
-            const x = this.#getAbsoluteClientX(doc, event.clientX)
-            if (x == null || !this.#isEdgeClick(doc, x)) return
-
-            if (this.renderer?.getAttribute('flow') !== 'scrolled') {
-                event.preventDefault()
-                event.stopPropagation()
-                event.stopImmediatePropagation()
-            }
-            this.#emit('edge-click', { x })
-        }, true)
-    }
-    #getAbsoluteClientX(doc, clientX) {
-        const frameElement = doc.defaultView?.frameElement
-        return frameElement instanceof Element
-            ? frameElement.getBoundingClientRect().left + clientX
-            : clientX
-    }
-    #isEdgeClick(doc, x) {
-        const width = doc.defaultView?.top?.innerWidth
-            || doc.defaultView?.parent?.innerWidth
-            || doc.defaultView?.innerWidth
-            || doc.documentElement.clientWidth
-        if (!width) return false
-        const edgeWidth = width * EDGE_CLICK_RATIO
-        return x <= edgeWidth || x >= width - edgeWidth
-    }
-    #handleLinks(doc, index) {
-        const { book } = this
-        const section = book.sections[index]
-        doc.addEventListener('click', e => {
-            const a = e.target.closest('a[href]')
-            if (!a) return
-            e.preventDefault()
-            const href_ = a.getAttribute('href')
-            const href = section?.resolveHref?.(href_) ?? href_
-            if (book?.isExternal?.(href))
-                Promise.resolve(this.#emit('external-link', { a, href_ }, true))
-                    .then(x => x ? globalThis.open(href_, '_blank') : null)
-                    .catch(e => console.error(e))
-            else Promise.resolve(this.#emit('link', { a, href }, true))
-                .then(x => x ? this.goTo(href) : null)
-                .catch(e => console.error(e))
-        })
     }
     async addAnnotation(annotation, remove) {
         const { value } = annotation

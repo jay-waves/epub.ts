@@ -4,7 +4,7 @@ import type { ReaderHighlight } from "../reader";
 
 export type FoliateViewElement = BaseFoliateViewElement<ReaderHighlight>;
 
-export { Overlayer } from "../../foliate-js/overlayer.js";
+export { Overlay, Overlayer } from "./overlay";
 export type {
   BookSection,
   FoliateContent,
