@@ -1,3 +1,5 @@
+import { ChapterFlow } from './chapter-flow.ts'
+
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const debounce = (f, wait, immediate) => {
@@ -224,6 +226,11 @@ class View {
     #rtl = false
     #column = true
     #size
+    #columnCount = 1
+    #columnStep = 0
+    #contentColumns = 1
+    #contentExtent = 1
+    #compact = false
     #layout = {}
     #destroyed = false
     constructor({ container, onExpand }) {
@@ -255,6 +262,23 @@ class View {
     }
     get document() {
         return this.#iframe.contentDocument
+    }
+    get columnCount() {
+        return this.#columnCount
+    }
+    get columnStep() {
+        return this.#columnStep
+    }
+    get contentColumns() {
+        return this.#contentColumns
+    }
+    get extent() {
+        return this.#column ? this.#contentColumns * this.#columnStep : this.#contentExtent
+    }
+    set compact(value) {
+        if (this.#compact === value) return
+        this.#compact = value
+        this.expand()
     }
     async load(src, afterLoad, beforeRender) {
         if (typeof src !== 'string') throw new Error(`${src} is not string`)
@@ -308,6 +332,9 @@ class View {
     scrolled({ gap, columnWidth }) {
         const vertical = this.#vertical
         const doc = this.document
+        this.#iframe.style.flex = '0 0 auto'
+        this.#element.style.justifyContent = 'center'
+        this.#element.style.alignItems = 'center'
         setStylesImportant(doc.documentElement, {
             'box-sizing': 'border-box',
             'padding': vertical ? `${gap}px 0` : `0 ${gap}px`,
@@ -322,9 +349,11 @@ class View {
         this.#setImageSize()
         this.expand()
     }
-    columnize({ width, height, gap, columnWidth }) {
+    columnize({ width, height, gap, columnWidth, columnCount, columnStep }) {
         const vertical = this.#vertical
         this.#size = vertical ? height : width
+        this.#columnCount = columnCount
+        this.#columnStep = columnStep
 
         const doc = this.document
         setStylesImportant(doc.documentElement, {
@@ -402,18 +431,27 @@ class View {
             const contentStart = this.#vertical ? 0
                 : this.#rtl ? rootRect.right - contentRect.right : contentRect.left - rootRect.left
             const contentSize = contentStart + contentRect[side]
-            const pageCount = Math.ceil(contentSize / this.#size)
+            this.#contentColumns = Math.max(1, Math.ceil(contentSize / this.#columnStep))
+            this.#contentExtent = this.#contentColumns * this.#columnStep
+            const pageCount = Math.ceil(this.#contentColumns / this.#columnCount)
             const expandedSize = pageCount * this.#size
             this.#element.style.padding = '0'
             this.#iframe.style[side] = `${expandedSize}px`
-            this.#element.style[side] = `${expandedSize + this.#size * 2}px`
+            this.#iframe.style.flex = `0 0 ${expandedSize}px`
+            this.#element.style[side] = this.#compact
+                ? `${this.extent}px`
+                : `${expandedSize + this.#size * 2}px`
+            this.#element.style.justifyContent = this.#compact ? 'flex-start' : 'center'
+            this.#element.style.alignItems = this.#compact ? 'flex-start' : 'center'
             this.#iframe.style[otherSide] = '100%'
             this.#element.style[otherSide] = '100%'
             documentElement.style[side] = `${this.#size}px`
             if (this.#overlay) {
                 this.#overlay.element.style.margin = '0'
-                this.#overlay.element.style.left = this.#vertical ? '0' : `${this.#size}px`
-                this.#overlay.element.style.top = this.#vertical ? `${this.#size}px` : '0'
+                this.#overlay.element.style.left = this.#compact || this.#vertical
+                    ? '0' : `${this.#size}px`
+                this.#overlay.element.style.top = this.#compact || !this.#vertical
+                    ? '0' : `${this.#size}px`
                 this.#overlay.element.style[side] = `${expandedSize}px`
                 this.#overlay.redraw()
             }
@@ -423,6 +461,7 @@ class View {
             const contentSize = documentElement.getBoundingClientRect()[side]
             const expandedSize = contentSize
             const { margin } = this.#layout
+            this.#contentExtent = expandedSize + margin * 2
             const padding = this.#vertical ? `0 ${margin}px` : `${margin}px 0`
             this.#element.style.padding = padding
             this.#iframe.style[side] = `${expandedSize}px`
@@ -446,6 +485,24 @@ class View {
     get overlay() {
         return this.#overlay
     }
+    mapRect(rect) {
+        if (!this.#column) {
+            const size = this.element.getBoundingClientRect()[this.#vertical ? 'width' : 'height']
+            const margin = this.#layout.margin
+            return this.#vertical
+                ? ({ left, right }) => ({ left: size - right - margin, right: size - left - margin })(rect)
+                : ({ top, bottom }) => ({ left: top + margin, right: bottom + margin })(rect)
+        }
+        const pxSize = Math.ceil(this.#contentColumns / this.#columnCount) * this.#size
+        return this.#rtl
+            ? ({ left, right }) => ({ left: pxSize - right, right: pxSize - left })(rect)
+            : this.#vertical
+                ? ({ top, bottom }) => ({ left: top, right: bottom })(rect)
+                : rect
+    }
+    visibleRange(start, end) {
+        return getVisibleRange(this.document, start, end, rect => this.mapRect(rect))
+    }
     destroy() {
         if (this.#destroyed) return
         this.#destroyed = true
@@ -467,9 +524,11 @@ export class Paginator extends HTMLElement {
     #top
     #background
     #container
+    #track
     #header
     #footer
     #view
+    #flow = new ChapterFlow()
     #vertical = false
     #rtl = false
     #margin = 0
@@ -485,6 +544,8 @@ export class Paginator extends HTMLElement {
     #touchState
     #lastVisibleRange
     #renderFrame
+    #fillingSpread = false
+    #leadingRemainder = 0
     #destroyed = false
     constructor() {
         super()
@@ -553,6 +614,11 @@ export class Paginator extends HTMLElement {
             height: 0;
             display: none;
         }
+        #track {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
         :host([flow="scrolled"]) #container {
             grid-column: 1 / -1;
             grid-row: 1 / -1;
@@ -589,7 +655,7 @@ export class Paginator extends HTMLElement {
         <div id="top">
             <div id="background" part="filter"></div>
             <div id="header"></div>
-            <div id="container"></div>
+            <div id="container"><div id="track"></div></div>
             <div id="footer"></div>
         </div>
         `
@@ -597,6 +663,7 @@ export class Paginator extends HTMLElement {
         this.#top = this.#root.getElementById('top')
         this.#background = this.#root.getElementById('background')
         this.#container = this.#root.getElementById('container')
+        this.#track = this.#root.getElementById('track')
         this.#header = this.#root.getElementById('header')
         this.#footer = this.#root.getElementById('footer')
 
@@ -619,6 +686,15 @@ export class Paginator extends HTMLElement {
             doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
             doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
             doc.addEventListener('touchcancel', this.#onTouchCancel.bind(this))
+            doc.addEventListener('wheel', event => {
+                if (!this.scrolled || event.ctrlKey) return
+                const delta = this.#vertical
+                    ? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY)
+                    : (Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX)
+                if (!delta) return
+                event.preventDefault()
+                this.#container[this.scrollProp] += delta
+            }, { passive: false })
         })
 
         this.addEventListener('relocate', ({ detail }) => {
@@ -714,10 +790,13 @@ export class Paginator extends HTMLElement {
         const view = new View({
             container: this,
             onExpand: () => {
-                if (this.#view === view) this.#scrollToAnchor(this.#anchor)
+                if (this.#flow.entries.some(entry => entry.view === view)) {
+                    this.#layoutEntries()
+                    if (this.#view === view) this.#scrollToAnchor(this.#anchor)
+                }
             },
         })
-        this.#container.append(view.element)
+        this.#track.append(view.element)
         return view
     }
     #destroyView(view = this.#view) {
@@ -727,6 +806,129 @@ export class Paginator extends HTMLElement {
         view.destroy()
         view.element.remove()
         if (this.#view === view) this.#view = null
+    }
+    #clearEntries() {
+        for (const { index, view } of this.#flow.clear()) {
+            this.#destroyView(view)
+            this.sections[index]?.unload?.()
+        }
+        this.#leadingRemainder = 0
+    }
+    async #loadEntry(index) {
+        const section = this.sections[index]
+        const view = this.#createView()
+        const afterLoad = async doc => {
+            if (doc.head) {
+                const $styleBefore = doc.createElement('style')
+                doc.head.prepend($styleBefore)
+                const $style = doc.createElement('style')
+                doc.head.append($style)
+                this.#styleMap.set(doc, [$styleBefore, $style])
+                this.#applyStyles(doc, this.#styles)
+            }
+            await this.beforeRenderDocument?.(doc, index)
+        }
+        try {
+            const src = await section.load()
+            await view.load(src, afterLoad, this.#beforeRender.bind(this))
+        } catch (error) {
+            this.#destroyView(view)
+            section.unload?.()
+            throw error
+        }
+        view.compact = this.continuous
+        const entry = this.#flow.add(index, view)
+        this.dispatchEvent(new CustomEvent('load', { detail: { doc: view.document, index } }))
+        this.dispatchEvent(new CustomEvent('request-overlay', {
+            detail: {
+                doc: view.document, index,
+                attach: overlay => view.overlay = overlay,
+            },
+        }))
+        return entry
+    }
+    #layoutEntries() {
+        if (!this.#flow.entries.length || !this.continuous) return
+        if (this.scrolled) {
+            const extent = this.#flow.layout(view => view.extent)
+            for (const entry of this.#flow.entries) {
+                entry.view.compact = false
+                const { style } = entry.view.element
+                style.position = 'absolute'
+                style.left = '0'
+                style.top = `${entry.start}px`
+                style.width = '100%'
+                style.removeProperty('height')
+            }
+            this.#track.style.width = '100%'
+            this.#track.style.height = `${extent}px`
+            return
+        }
+        const { columnCount, columnStep } = this.#flow.entries[0].view
+        if (!columnStep) return
+        const size = columnCount * columnStep
+        const leading = size + this.#leadingRemainder
+        let columnStart = 0
+        for (const entry of this.#flow.entries) {
+            entry.start = columnStart * columnStep
+            entry.extent = entry.view.extent
+            entry.view.compact = true
+            const { style } = entry.view.element
+            style.position = 'absolute'
+            style.left = this.#vertical ? '0' : `${leading + columnStart * columnStep}px`
+            style.top = this.#vertical ? `${leading + columnStart * columnStep}px` : '0'
+            columnStart += entry.view.contentColumns
+        }
+        const pages = Math.ceil((leading + columnStart * columnStep) / size) + 1
+        const side = this.#vertical ? 'height' : 'width'
+        const otherSide = this.#vertical ? 'width' : 'height'
+        this.#track.style[side] = `${pages * size}px`
+        this.#track.style[otherSide] = '100%'
+    }
+    async #fillTrailingSpread() {
+        if (this.#fillingSpread || !this.continuous || !this.#flow.entries.length) return
+        this.#fillingSpread = true
+        try {
+            const firstView = this.#flow.entries[0].view
+            const { columnCount } = firstView
+            if (this.scrolled) {
+                if (this.#flow.entries.length < 2) {
+                    const index = this.#adjacentIndexFrom(this.#flow.last.index, 1)
+                    if (index != null) await this.#loadEntry(index)
+                }
+                this.#layoutEntries()
+                return
+            }
+            if (columnCount <= 1) return
+            const totalColumns = this.#flow.entries.reduce((sum, entry) => sum + entry.view.contentColumns, 0)
+            if (totalColumns % columnCount) {
+                const last = this.#flow.last
+                const index = this.#adjacentIndexFrom(last.index, 1)
+                const section = this.sections[index]
+                if (index != null && !this.sections[last.index]?.pageSpread && !section?.pageSpread)
+                    await this.#loadEntry(index)
+            }
+            this.#layoutEntries()
+        } finally {
+            this.#fillingSpread = false
+        }
+    }
+    async #preloadNextSection() {
+        if (this.#fillingSpread || !this.continuous || !this.#flow.last) return
+        this.#fillingSpread = true
+        try {
+            for (let count = 0; count < 16; count++) {
+                const leading = this.scrolled ? 0 : this.size + this.#leadingRemainder
+                const boundary = leading + this.#flow.extent
+                if (boundary - this.end > this.size * 2) break
+                const index = this.#adjacentIndexFrom(this.#flow.last.index, 1)
+                if (index == null || this.#flow.find(index)) break
+                await this.#loadEntry(index)
+                this.#layoutEntries()
+            }
+        } finally {
+            this.#fillingSpread = false
+        }
     }
     #beforeRender({ vertical, rtl, background }) {
         this.#vertical = vertical
@@ -782,7 +984,8 @@ export class Paginator extends HTMLElement {
         }
 
         const divisor = Math.min(maxColumnCount, Math.ceil(size / maxInlineSize))
-        const columnWidth = (size / divisor) - gap
+        const columnStep = size / divisor
+        const columnWidth = columnStep - gap
         this.setAttribute('dir', rtl ? 'rtl' : 'ltr')
 
         const marginalDivisor = vertical
@@ -802,14 +1005,42 @@ export class Paginator extends HTMLElement {
         this.#header.replaceChildren(...heads)
         this.#footer.replaceChildren(...feet)
 
-        return { height, width, margin, gap, columnWidth }
+        return { height, width, margin, gap, columnWidth, columnCount: divisor, columnStep }
     }
     render() {
         if (!this.#view) return
-        this.#view.render(this.#beforeRender({
-            vertical: this.#vertical,
-            rtl: this.#rtl,
-        }))
+        if (!this.continuous && this.#flow.entries.length > 1) {
+            for (const entry of this.#flow.removeWhere(entry => entry.view !== this.#view)) {
+                this.#destroyView(entry.view)
+                this.sections[entry.index]?.unload?.()
+            }
+        }
+        for (const { view } of this.#flow.entries) {
+            view.compact = this.continuous
+            view.render(this.#beforeRender({
+                vertical: this.#vertical,
+                rtl: this.#rtl,
+            }))
+        }
+        if (!this.continuous) {
+            const { style } = this.#view.element
+            style.removeProperty('position')
+            style.removeProperty('left')
+            style.removeProperty('top')
+            this.#track.style.width = '100%'
+            this.#track.style.height = '100%'
+        } else {
+            this.#layoutEntries()
+            void this.#fillTrailingSpread().catch(error =>
+                console.warn('Failed to fill trailing reader spread.', error))
+        }
+        // Scrolled and paginated layouts use different scroll axes. Browsers
+        // preserve the inactive axis when overflow changes, which can leave the
+        // newly laid-out view completely outside the viewport.
+        const inactiveScrollProp = this.#vertical
+            ? (this.scrolled ? 'scrollTop' : 'scrollLeft')
+            : (this.scrolled ? 'scrollLeft' : 'scrollTop')
+        this.#container[inactiveScrollProp] = 0
         this.#scrollToAnchor(this.#anchor)
     }
     #scheduleRender() {
@@ -821,6 +1052,9 @@ export class Paginator extends HTMLElement {
     }
     get scrolled() {
         return this.getAttribute('flow') === 'scrolled'
+    }
+    get continuous() {
+        return !this.#vertical && !this.#rtl && this.bookDir !== 'rtl'
     }
     get scrollProp() {
         const { scrolled } = this
@@ -836,7 +1070,8 @@ export class Paginator extends HTMLElement {
         return this.#container.getBoundingClientRect()[this.sideProp]
     }
     get viewSize() {
-        return this.#view.element.getBoundingClientRect()[this.sideProp]
+        return (this.continuous ? this.#track : this.#view.element)
+            .getBoundingClientRect()[this.sideProp]
     }
     get start() {
         return Math.abs(this.#container[this.scrollProp])
@@ -933,29 +1168,48 @@ export class Paginator extends HTMLElement {
     }
     // allows one to process rects as if they were LTR and horizontal
     #getRectMapper() {
-        if (this.scrolled) {
-            const size = this.viewSize
-            const margin = this.#margin
-            return this.#vertical
-                ? ({ left, right }) =>
-                    ({ left: size - right - margin, right: size - left - margin })
-                : ({ top, bottom }) => ({ left: top + margin, right: bottom + margin })
+        return rect => this.#view.mapRect(rect)
+    }
+    #entryForView(view = this.#view) {
+        return this.#flow.entries.find(entry => entry.view === view)
+    }
+    #entryOffset(entry = this.#entryForView()) {
+        return this.continuous
+            ? (this.scrolled ? 0 : this.size + this.#leadingRemainder) + (entry?.start ?? 0)
+            : 0
+    }
+    #recycleBehind(activeEntry) {
+        const entries = this.#flow.entries
+        const activePosition = entries.indexOf(activeEntry)
+        if (activePosition <= 1) return
+        const stale = new Set(entries.slice(0, activePosition - 1))
+        const removed = this.#flow.removeWhere(entry => stale.has(entry))
+        const removedExtent = removed.reduce((sum, entry) => sum + entry.extent, 0)
+        if (!removedExtent) return
+
+        const oldLeading = this.scrolled ? 0 : this.size + this.#leadingRemainder
+        if (!this.scrolled && this.size > 0) this.#leadingRemainder =
+            (this.#leadingRemainder + removedExtent) % this.size
+        const newLeading = this.scrolled ? 0 : this.size + this.#leadingRemainder
+        const shift = oldLeading + removedExtent - newLeading
+
+        for (const { index, view } of removed) {
+            this.#destroyView(view)
+            this.sections[index]?.unload?.()
         }
-        const pxSize = this.pages * this.size
-        return this.#rtl
-            ? ({ left, right }) =>
-                ({ left: pxSize - right, right: pxSize - left })
-            : this.#vertical
-                ? ({ top, bottom }) => ({ left: top, right: bottom })
-                : f => f
+        this.#layoutEntries()
+        const prop = this.scrollProp
+        this.#container[prop] -= shift
     }
     async #scrollToRect(rect, reason) {
         if (this.scrolled) {
-            const offset = this.#getRectMapper()(rect).left - this.#margin
+            const offset = this.#entryOffset() + this.#getRectMapper()(rect).left - this.#margin
             return this.#scrollTo(offset, reason)
         }
         const offset = this.#getRectMapper()(rect).left
-        return this.#scrollToPage(Math.floor(offset / this.size) + (this.#rtl ? -1 : 1), reason)
+        return this.#scrollToPage(this.continuous
+            ? Math.floor((this.#entryOffset() + offset) / this.size)
+            : Math.floor(offset / this.size) + (this.#rtl ? -1 : 1), reason)
     }
     async #scrollTo(offset, reason, smooth) {
         const element = this.#container
@@ -1002,23 +1256,51 @@ export class Paginator extends HTMLElement {
         }
         // if anchor is a fraction
         if (this.scrolled) {
-            await this.#scrollTo(anchor * this.viewSize, reason)
+            const entry = this.#entryForView()
+            await this.#scrollTo(this.#entryOffset(entry) + anchor * entry.view.extent, reason)
             return
         }
-        const { pages } = this
-        if (!pages) return
-        const textPages = pages - 2
+        if (this.continuous) {
+            const entry = this.#entryForView()
+            if (!entry) return
+            const offset = this.#entryOffset(entry) + anchor * Math.max(0, entry.view.extent - 1)
+            await this.#scrollToPage(Math.floor(offset / this.size), reason)
+            return
+        }
+        const textPages = this.pages - 2
         const newPage = Math.round(anchor * (textPages - 1))
         await this.#scrollToPage(newPage + 1, reason)
     }
     #getVisibleRange() {
-        if (this.scrolled) return getVisibleRange(this.#view.document,
-            this.start + this.#margin, this.end - this.#margin, this.#getRectMapper())
+        if (this.scrolled) {
+            const offset = this.#entryOffset()
+            return this.#view.visibleRange(
+                Math.max(0, this.start - offset + this.#margin),
+                Math.min(this.#view.extent, this.end - offset - this.#margin),
+            )
+        }
+        if (this.continuous) {
+            const entry = this.#entryForView()
+            const offset = this.#entryOffset(entry)
+            return this.#view.visibleRange(
+                Math.max(0, this.start - offset),
+                Math.min(this.#view.extent, this.end - offset),
+            )
+        }
         const size = this.#rtl ? -this.size : this.size
         return getVisibleRange(this.#view.document,
             this.start - size, this.end - size, this.#getRectMapper())
     }
     #afterScroll(reason) {
+        if (this.continuous) {
+            const contentStart = Math.max(0, this.start - (this.scrolled ? 0 : this.size))
+            const entry = this.#flow.findAt(contentStart)
+            if (entry) {
+                this.#view = entry.view
+                this.#index = entry.index
+                this.#recycleBehind(entry)
+            }
+        }
         const range = this.#getVisibleRange()
         this.#lastVisibleRange = range
         // don't set new anchor if relocation was to scroll to anchor
@@ -1028,89 +1310,49 @@ export class Paginator extends HTMLElement {
 
         const index = this.#index
         const detail = { reason, range, index }
-        if (this.scrolled) detail.fraction = this.start / this.viewSize
+        if (this.scrolled) {
+            const entry = this.#entryForView()
+            detail.fraction = Math.min(1, Math.max(0,
+                (this.start - this.#entryOffset(entry)) / entry.view.extent))
+            detail.size = Math.min(1, this.size / entry.view.extent)
+        }
         else if (this.pages > 0) {
             const { page, pages } = this
             this.#header.style.visibility = page > 1 ? 'visible' : 'hidden'
-            detail.fraction = (page - 1) / (pages - 2)
-            detail.size = 1 / (pages - 2)
+            if (this.continuous) {
+                const entry = this.#entryForView()
+                const offset = this.#entryOffset(entry)
+                detail.fraction = Math.min(1, Math.max(0, (this.start - offset) / entry.view.extent))
+                detail.size = Math.min(1, this.size / entry.view.extent)
+            } else {
+                detail.fraction = (page - 1) / (pages - 2)
+                detail.size = 1 / (pages - 2)
+            }
         }
         this.dispatchEvent(new CustomEvent('relocate', { detail }))
-    }
-    async #display(promise) {
-        const { index, src, anchor, onLoad, select } = await promise
-        const hasFocus = this.#view?.document?.hasFocus()
-        let resolvedAnchor
-        if (src) {
-            const previousView = this.#view
-            const view = this.#createView()
-            if (previousView) Object.assign(view.element.style, {
-                inset: '0',
-                opacity: '0',
-                pointerEvents: 'none',
-                position: 'absolute',
-            })
-            const afterLoad = async doc => {
-                if (doc.head) {
-                    const $styleBefore = doc.createElement('style')
-                    doc.head.prepend($styleBefore)
-                    const $style = doc.createElement('style')
-                    doc.head.append($style)
-                    this.#styleMap.set(doc, [$styleBefore, $style])
-                    this.#applyStyles(doc, this.#styles)
-                }
-                await this.beforeRenderDocument?.(doc, index)
-            }
-            const beforeRender = this.#beforeRender.bind(this)
-            try {
-                await view.load(src, afterLoad, beforeRender)
-                resolvedAnchor = typeof anchor === 'function'
-                    ? anchor(view.document) : anchor
-            } catch (error) {
-                this.#destroyView(view)
-                throw error
-            }
-            this.#destroyView(previousView)
-            this.#view = view
-            view.element.style.removeProperty('inset')
-            view.element.style.removeProperty('opacity')
-            view.element.style.removeProperty('pointer-events')
-            view.element.style.removeProperty('position')
-            onLoad?.({ doc: view.document, index })
-            this.dispatchEvent(new CustomEvent('request-overlay', {
-                detail: {
-                    doc: view.document, index,
-                    attach: overlay => view.overlay = overlay,
-                },
-            }))
-        } else if (index !== this.#index) {
-            throw new Error(`Section ${index} has no renderable content`)
-        }
-        this.#index = index
-        await this.scrollToAnchor((src ? resolvedAnchor
-            : typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select)
-        if (hasFocus) this.#focusView()
+        void this.#preloadNextSection().catch(error =>
+            console.warn('Failed to preload reader section.', error))
     }
     #canGoToIndex(index) {
         return index >= 0 && index <= this.sections.length - 1
     }
     async #goTo({ index, anchor, select}) {
-        if (index === this.#index) await this.#display({ index, anchor, select })
-        else {
-            const oldIndex = this.#index
-            const section = this.sections[index]
-            const onLoad = detail => {
-                this.sections[oldIndex]?.unload?.()
-                this.dispatchEvent(new CustomEvent('load', { detail }))
-            }
-            try {
-                await this.#display(Promise.resolve(section.load())
-                    .then(src => ({ index, src, anchor, onLoad, select })))
-            } catch (error) {
-                section.unload?.()
-                throw error
-            }
+        let entry = this.#flow.find(index)
+        const hasFocus = this.#view?.document?.hasFocus()
+        if (!entry) {
+            this.#clearEntries()
+            entry = await this.#loadEntry(index)
+            this.#view = entry.view
+            this.#index = index
+            if (this.continuous) await this.#fillTrailingSpread()
+        } else {
+            this.#view = entry.view
+            this.#index = index
         }
+        const resolvedAnchor = typeof anchor === 'function'
+            ? anchor(entry.view.document) : anchor
+        await this.scrollToAnchor(resolvedAnchor ?? 0, select)
+        if (hasFocus) this.#focusView()
     }
     async goTo(target) {
         if (this.#locked) return
@@ -1147,7 +1389,10 @@ export class Paginator extends HTMLElement {
         return this.#adjacentIndex(1) == null && this.page >= this.pages - 2
     }
     #adjacentIndex(dir) {
-        for (let index = this.#index + dir; this.#canGoToIndex(index); index += dir)
+        return this.#adjacentIndexFrom(this.#index, dir)
+    }
+    #adjacentIndexFrom(from, dir) {
+        for (let index = from + dir; this.#canGoToIndex(index); index += dir)
             if (this.sections[index]?.linear !== 'no') return index
     }
     async #turnPage(dir, distance) {
@@ -1156,10 +1401,15 @@ export class Paginator extends HTMLElement {
         try {
             const prev = dir === -1
             const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-            if (shouldGo) await this.#goTo({
-                index: this.#adjacentIndex(dir),
-                anchor: prev ? () => 1 : () => 0,
-            })
+            if (shouldGo) {
+                const boundary = this.continuous
+                    ? (prev ? this.#flow.first : this.#flow.last)?.index
+                    : this.#index
+                await this.#goTo({
+                    index: this.#adjacentIndexFrom(boundary, dir),
+                    anchor: prev ? () => 1 : () => 0,
+                })
+            }
             if (shouldGo || !this.hasAttribute('animated')) await wait(100)
         } finally {
             this.#locked = false
@@ -1178,12 +1428,11 @@ export class Paginator extends HTMLElement {
         return this.goTo({ index: this.#adjacentIndex(1) })
     }
     getContents() {
-        if (this.#view) return [{
-            index: this.#index,
-            overlay: this.#view.overlay,
-            doc: this.#view.document,
-        }]
-        return []
+        return this.#flow.entries.map(({ index, view }) => ({
+            index,
+            overlay: view.overlay,
+            doc: view.document,
+        }))
     }
     #applyStyles(doc, styles) {
         const $$styles = this.#styleMap.get(doc)
@@ -1198,8 +1447,10 @@ export class Paginator extends HTMLElement {
     }
     setStyles(styles) {
         this.#styles = styles
-        const doc = this.#view?.document
-        if (!doc || !this.#applyStyles(doc, styles)) return
+        const docs = this.#flow.entries
+            .map(({ view }) => view.document)
+            .filter(doc => doc && this.#applyStyles(doc, styles))
+        if (!docs.length) return
 
         // NOTE: needs `requestAnimationFrame` in Chromium
         requestAnimationFrame(() => {
@@ -1208,9 +1459,7 @@ export class Paginator extends HTMLElement {
         })
 
         // needed because the resize observer doesn't work in Firefox
-        doc.fonts?.ready?.then(() => {
-            if (this.#view?.document === doc) this.#scheduleRender()
-        })
+        Promise.all(docs.map(doc => doc.fonts?.ready)).then(() => this.#scheduleRender())
     }
     #focusView() {
         this.#view.document.defaultView.focus()
@@ -1220,8 +1469,7 @@ export class Paginator extends HTMLElement {
         this.#destroyed = true
         cancelAnimationFrame(this.#renderFrame)
         this.#observer.disconnect()
-        this.#destroyView()
-        this.sections[this.#index]?.unload?.()
+        this.#clearEntries()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
     }
 }

@@ -7,20 +7,18 @@ const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
 const TARGET_STYLE = `
   @keyframes reader-link-target-flash {
-    0%, 22% {
-      background-color: color-mix(in srgb, var(--reader-accent-secondary) 34%, transparent);
-      outline-color: color-mix(in srgb, var(--reader-accent-secondary) 72%, transparent);
+    0%, 18% {
+      background-color: color-mix(in srgb, var(--reader-accent-secondary) 24%, transparent);
     }
     100% {
       background-color: transparent;
-      outline-color: transparent;
     }
   }
   .${TARGET_CLASS} {
-    animation: reader-link-target-flash 1.35s ease-out;
-    border-radius: 0.18em;
-    outline: 2px solid transparent;
-    outline-offset: 0.12em;
+    animation: reader-link-target-flash 900ms ease-out;
+    background-color: transparent;
+    border-radius: 0;
+    outline: 0;
   }
 `;
 
