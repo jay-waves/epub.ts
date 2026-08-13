@@ -20,7 +20,10 @@ export function TocPage() {
   });
   useViewerEvent(VIEWER_EVENTS.tocUpdate, (detail) => {
     setTocState(detail);
+    setSelectedKey(null);
   });
+
+  const currentKey = findCurrentKey(tocState.items, tocState.currentItem, tocState.currentHref);
 
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
@@ -42,7 +45,7 @@ export function TocPage() {
           <ul className="toc-menu">
             {tocState.items.map((item, index) => (
               <TocTreeItem
-                currentHref={tocState.currentHref}
+                currentKey={currentKey}
                 item={item}
                 key={`${item.href ?? "section"}-${index}`}
                 itemKey={`${index}`}
@@ -62,7 +65,7 @@ export function TocPage() {
 }
 
 function TocTreeItem({
-  currentHref,
+  currentKey,
   depth,
   item,
   itemKey,
@@ -70,7 +73,7 @@ function TocTreeItem({
   onNavigate,
   onSelect,
 }: {
-  currentHref: string;
+  currentKey: string | null;
   depth: number;
   item: TocItem;
   itemKey: string;
@@ -79,8 +82,8 @@ function TocTreeItem({
   onSelect: (itemKey: string) => void;
 }) {
   const children = item.subitems ?? [];
-  const isCurrent = isMatchingHref(item.href, currentHref);
-  const hasCurrentChild = containsHref(children, currentHref);
+  const isCurrent = currentKey === itemKey;
+  const hasCurrentChild = currentKey?.startsWith(`${itemKey}.`) ?? false;
   const isSelected = selectedKey === itemKey || (selectedKey === null && isCurrent);
   const className = depth === 0 ? "toc-link toc-link-primary" : "toc-link";
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -125,7 +128,7 @@ function TocTreeItem({
           <ul className="toc-child-list">
             {children.map((child, index) => (
               <TocTreeItem
-                currentHref={currentHref}
+                currentKey={currentKey}
                 depth={depth + 1}
                 item={child}
                 key={`${child.href ?? "section"}-${index}`}
@@ -159,13 +162,26 @@ function TocTreeItem({
   );
 }
 
-function containsHref(items: TocItem[], href: string): boolean {
-  return items.some((item) => isMatchingHref(item.href, href) || containsHref(item.subitems ?? [], href));
-}
-
 function isMatchingHref(linkHref?: string, currentHref?: string) {
   if (!linkHref || !currentHref) return false;
   return normalizeTocHref(linkHref) === normalizeTocHref(currentHref);
+}
+
+function findCurrentKey(items: TocItem[], currentItem?: TocItem | null, currentHref?: string) {
+  let hrefMatch: string | null = null;
+
+  const visit = (nodes: TocItem[], parentKey = ""): string | null => {
+    for (const [index, item] of nodes.entries()) {
+      const itemKey = parentKey ? `${parentKey}.${index}` : `${index}`;
+      if (item === currentItem) return itemKey;
+      if (hrefMatch === null && isMatchingHref(item.href, currentHref)) hrefMatch = itemKey;
+      const childMatch = visit(item.subitems ?? [], itemKey);
+      if (childMatch) return childMatch;
+    }
+    return null;
+  };
+
+  return visit(items) ?? hrefMatch;
 }
 
 function scrollCurrentItemIntoView(root: HTMLElement | null) {

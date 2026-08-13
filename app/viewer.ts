@@ -87,7 +87,7 @@ const appRoot = queryRequired<HTMLElement>("#app");
 function goToProgress(progress: number) {
   const navigation = getNavigation();
   if (!navigation || isReaderRenderPending()) return;
-  void renderState.run(() => navigation.go({ fraction: progress })).catch((error) => {
+  void renderState.run(() => navigation.goToProgress(progress)).catch((error) => {
     console.warn("Failed to navigate to reading progress.", error);
   });
 }
@@ -169,6 +169,7 @@ function ensureViewerInput() {
 function emitTocUpdate() {
   emitViewerEvent(VIEWER_EVENTS.tocUpdate, {
     currentHref: session.href,
+    currentItem: session.tocItem,
     items: session.tocItems,
   });
 }
@@ -229,8 +230,10 @@ function wireReaderEvents(reader: Reader) {
     if (!detail) return;
     const sectionIndex = detail.index;
 
-    const currentHref = detail.tocItem?.href ?? "";
-    if (currentHref !== session.href) {
+    const currentItem = detail.tocItem ?? null;
+    const currentHref = currentItem?.href ?? "";
+    if (currentItem !== session.tocItem || currentHref !== session.href) {
+      session.tocItem = currentItem;
       session.href = currentHref;
       emitTocUpdate();
     }
@@ -431,7 +434,7 @@ async function restoreSavedPosition(navigation: Navigation, savedPosition?: Read
     const attempts: Array<Parameters<Navigation["init"]>[0]> = [];
     if (savedPosition?.cfi) attempts.push({ lastLocation: savedPosition.cfi });
     if (typeof savedPosition?.fraction === "number") {
-      attempts.push({ lastLocation: { fraction: savedPosition.fraction } });
+      attempts.push({ progress: savedPosition.fraction });
     }
     attempts.push({ showTextStart: true });
 

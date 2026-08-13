@@ -13,8 +13,9 @@ type GetFragment = (doc: Document, id?: string) => Element | null;
 export type SectionLocation = {
   fraction: number;
   location: { current: number; next: number; total: number };
-  section: { current: number; total: number };
+  section: { current: number; fraction: number; total: number };
   time: { section: number; total: number };
+  viewport: { fraction: number };
 };
 
 function flatten(items: TocItem[]): TocItem[] {
@@ -80,7 +81,7 @@ export class TocIndex {
 
 }
 
-/** Maps section-relative positions to whole-book progress and back. */
+/** Maps section-relative locations to whole-book progress and back. */
 export class SectionIndex {
   readonly fractions: number[];
   readonly #sizes: number[];
@@ -127,8 +128,12 @@ export class SectionIndex {
     const nextSize = size + page * sectionSize;
 
     return {
-      fraction: nextSize / this.#total,
-      section: { current: index, total: this.#sizes.length },
+      // Navigation resolves a book fraction to a section anchor and places that
+      // anchor at the start of the viewport. Report the same edge here; using
+      // `nextSize` (the viewport end) makes every seek appear to land farther
+      // ahead than requested and compounds the offset on restore.
+      fraction: size / this.#total,
+      section: { current: index, fraction, total: this.#sizes.length },
       location: {
         current: Math.floor(size / this.#sizePerLocation),
         next: Math.floor(nextSize / this.#sizePerLocation),
@@ -138,6 +143,7 @@ export class SectionIndex {
         section: ((1 - fraction) * sectionSize) / this.#sizePerTime,
         total: (this.#total - size) / this.#sizePerTime,
       },
+      viewport: { fraction: page },
     };
   }
 

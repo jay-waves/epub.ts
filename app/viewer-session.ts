@@ -9,6 +9,7 @@ export function createBookSession() {
     document: null as PlatformDocument | null,
     dirty: false,
     href: "",
+    tocItem: null as TocItem | null,
     progress: 0,
     restoring: false,
     tocItems: [] as TocItem[],

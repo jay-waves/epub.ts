@@ -1,9 +1,9 @@
 import * as CFI from "../epub/cfi.js";
 import type { Book, RawRelocateDetail, Renderer, Resolved } from "../renderer/view.js";
-import { SectionIndex, TocIndex } from "./progress";
-import type { SectionLocation, TocItem } from "./progress";
+import { SectionIndex, TocIndex } from "./location";
+import type { SectionLocation, TocItem } from "./location";
 
-type Target = string | number | { fraction: number } | Resolved;
+type Target = string | number | Resolved;
 
 type GoOptions = {
   select?: boolean;
@@ -17,7 +17,7 @@ const cfiFilter = (node: Node) => {
     : NodeFilter.FILTER_ACCEPT;
 };
 
-export type Location = Partial<SectionLocation> & RawRelocateDetail & {
+export type Location = SectionLocation & Omit<RawRelocateDetail, "fraction" | "size"> & {
   cfi: string;
   pageItem?: TocItem | null;
   tocItem?: TocItem | null;
@@ -78,13 +78,8 @@ export class Navigation {
     try {
       let resolved: Resolved | undefined;
       if (typeof target === "number") resolved = { index: target };
-      if (typeof target === "object") {
-        if ("index" in target) resolved = target;
-        else {
-          const [index, anchor] = this.#sections.at(target.fraction);
-          resolved = { anchor, index };
-        }
-      } else if (typeof target === "string") {
+      if (typeof target === "object") resolved = target;
+      else if (typeof target === "string") {
         resolved = CFI.isCFI.test(target)
           ? this.#resolveCfi(target)
           : this.book.resolveHref?.(target) ?? undefined;
@@ -115,13 +110,31 @@ export class Navigation {
     return resolved;
   }
 
-  async init({ lastLocation, showTextStart }: { lastLocation?: Target; showTextStart?: boolean }) {
+  async goToProgress(fraction: number) {
+    if (!Number.isFinite(fraction)) throw new Error(`Invalid reading progress ${String(fraction)}`);
+    const [index, anchor] = this.#sections.at(Math.max(0, Math.min(1, fraction)));
+    const resolved = { anchor, index };
+    await this.#getRenderer().goTo(resolved);
+    return resolved;
+  }
+
+  async init({
+    lastLocation,
+    progress,
+    showTextStart,
+  }: {
+    lastLocation?: Target;
+    progress?: number;
+    showTextStart?: boolean;
+  }) {
     const resolved = lastLocation !== undefined ? this.resolve(lastLocation) : undefined;
     if (lastLocation !== undefined && !resolved) {
       throw new Error(`Could not resolve initial location ${String(lastLocation)}`);
     }
     if (resolved) {
       await this.go(lastLocation!);
+    } else if (progress !== undefined) {
+      await this.goToProgress(progress);
     } else if (showTextStart) {
       await this.start();
     } else {
@@ -169,11 +182,18 @@ export class Navigation {
   }
 
   location(raw: RawRelocateDetail): Location {
-    const { fraction, index, range, size } = raw;
-    const progress = this.#sections.get(index, fraction, size);
+    const {
+      fraction: sectionFraction,
+      index,
+      size: viewportFraction,
+      ...relocation
+    } = raw;
+    const progress = this.#sections.get(index, sectionFraction, viewportFraction);
+    const { range } = relocation;
     const cfi = this.cfi(index, range);
     return {
-      ...raw,
+      ...relocation,
+      index,
       ...progress,
       cfi,
       pageItem: this.#pages?.get(index, range),

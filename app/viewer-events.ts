@@ -103,6 +103,7 @@ type ProgressUpdateDetail = {
 
 export type TocUpdateDetail = {
   currentHref: string;
+  currentItem?: TocItem | null;
   items: TocItem[];
 };
 
