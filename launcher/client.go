@@ -23,19 +23,24 @@ var daemonHTTPClient = &http.Client{
 }
 
 func DaemonRunning() (bool, error) {
+	running, _, err := daemonStatus()
+	return running, err
+}
+
+func daemonStatus() (bool, string, error) {
 	listenAddress, err := daemonAddress()
 	if err != nil || listenAddress == "" {
-		return false, err
+		return false, "", err
 	}
 	response, err := daemonRequest(http.MethodGet, listenAddress, "/api/control/status", nil)
 	if err != nil {
-		return false, nil
+		return false, "", nil
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {
-		return false, fmt.Errorf("check epub.ts daemon: %s", response.Status)
+		return false, "", fmt.Errorf("check epub.ts daemon: %s", response.Status)
 	}
-	return true, nil
+	return true, response.Header.Get("X-EPUB-TS-Build"), nil
 }
 
 func StopDaemon() error {

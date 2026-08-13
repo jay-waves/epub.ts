@@ -9,6 +9,8 @@ const embedded = resolve(root, 'launcher/viewer');
 const target = process.argv[2];
 if (!['linux-amd64', 'windows-amd64'].includes(target)) throw new Error('Expected linux-amd64 or windows-amd64.');
 if (!existsSync(resolve(source, 'index.html'))) throw new Error('Run pnpm build:web first.');
+const buildMetadata = JSON.parse(readFileSync(resolve(source, 'build-metadata.json'), 'utf8'));
+if (!buildMetadata.builtAt) throw new Error('The web build is missing its build timestamp.');
 
 function copy(sourceDir, targetDir) {
   mkdirSync(targetDir, { recursive: true });
@@ -27,7 +29,7 @@ for (const entry of readdirSync(embedded)) {
 copy(source, embedded);
 const windows = target === 'windows-amd64';
 const output = resolve(root, 'release', windows ? 'epub.ts.exe' : 'epub.ts');
-const linkerFlags = windows ? '-s -w -H=windowsgui' : '-s -w';
+const linkerFlags = `${windows ? '-s -w -H=windowsgui' : '-s -w'} -X=main.buildID=${buildMetadata.builtAt}`;
 let windowsResource = null;
 if (windows) {
   const candidates = [process.env.EPUB_TS_WINDRES, "llvm-windres", "x86_64-w64-mingw32-windres", "windres"].filter(Boolean);

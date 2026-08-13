@@ -10,6 +10,7 @@ export function createBookSession() {
     dirty: false,
     href: "",
     tocItem: null as TocItem | null,
+    tocIntent: null as TocItem | null,
     progress: 0,
     restoring: false,
     tocItems: [] as TocItem[],

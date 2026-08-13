@@ -87,6 +87,7 @@ const appRoot = queryRequired<HTMLElement>("#app");
 function goToProgress(progress: number) {
   const navigation = getNavigation();
   if (!navigation || isReaderRenderPending()) return;
+  session.tocIntent = null;
   void renderState.run(() => navigation.goToProgress(progress)).catch((error) => {
     console.warn("Failed to navigate to reading progress.", error);
   });
@@ -187,6 +188,7 @@ function emitBookInfoUpdate() {
 
 const POSITION_SAVE_DELAY_MS = 350;
 const positionWrites = new SerialTaskQueue();
+const tocNavigations = new SerialTaskQueue();
 let pendingPosition: { bookKey: string; detail: Location } | undefined;
 let positionSaveTimer: number | undefined;
 
@@ -230,7 +232,18 @@ function wireReaderEvents(reader: Reader) {
     if (!detail) return;
     const sectionIndex = detail.index;
 
-    const currentItem = detail.tocItem ?? null;
+    let currentItem: typeof session.tocItem;
+    if (detail.reason === "navigation" && session.tocIntent) {
+      currentItem = session.tocIntent;
+      session.tocIntent = null;
+    } else if (detail.reason === "anchor") {
+      // Font/image reflow restores the same logical position and must not
+      // override a directory item explicitly selected by the user.
+      currentItem = session.tocItem;
+    } else {
+      session.tocIntent = null;
+      currentItem = detail.tocItem ?? null;
+    }
     const currentHref = currentItem?.href ?? "";
     if (currentItem !== session.tocItem || currentHref !== session.href) {
       session.tocItem = currentItem;
@@ -546,10 +559,18 @@ function setupEventListeners(signal: AbortSignal) {
     highlightState.close();
   }, { signal });
 
-  listenViewerEvent(VIEWER_EVENTS.tocNavigate, (href) => {
-    if (!href || isReaderRenderPending()) return;
-    void renderState.run(() => getNavigation()?.go(href)).catch((error) => {
-      console.warn("Failed to open table-of-contents entry.", error);
+  listenViewerEvent(VIEWER_EVENTS.tocNavigate, ({ href, item }) => {
+    if (!href) return;
+    void tocNavigations.add(async () => {
+      const navigation = getNavigation();
+      if (!navigation) return;
+      session.tocIntent = item;
+      try {
+        await renderState.run(() => navigation.go(href));
+      } catch (error) {
+        if (session.tocIntent === item) session.tocIntent = null;
+        console.warn("Failed to open table-of-contents entry.", error);
+      }
     });
   }, { signal });
   listenViewerEvent(VIEWER_EVENTS.progressSeek, goToProgress, { signal });

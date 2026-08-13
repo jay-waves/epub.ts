@@ -29,9 +29,9 @@ export function TocPage() {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
   }, [selectedKey, tocState]);
 
-  const navigate = (href?: string) => {
-    if (!href) return;
-    emitViewerEvent(VIEWER_EVENTS.tocNavigate, href);
+  const navigate = (item: TocItem) => {
+    if (!item.href) return;
+    emitViewerEvent(VIEWER_EVENTS.tocNavigate, { href: item.href, item });
   };
 
   return (
@@ -78,7 +78,7 @@ function TocTreeItem({
   item: TocItem;
   itemKey: string;
   selectedKey: string | null;
-  onNavigate: (href?: string) => void;
+  onNavigate: (item: TocItem) => void;
   onSelect: (itemKey: string) => void;
 }) {
   const children = item.subitems ?? [];
@@ -107,7 +107,7 @@ function TocTreeItem({
     }
 
     onSelect(itemKey);
-    onNavigate(item.href);
+    onNavigate(item);
   };
 
   if (children.length) {
@@ -153,7 +153,7 @@ function TocTreeItem({
         type="button"
         onClick={() => {
           onSelect(itemKey);
-          onNavigate(item.href);
+          onNavigate(item);
         }}
       >
         <span className="toc-link-label">{item.label ?? "Untitled section"}</span>

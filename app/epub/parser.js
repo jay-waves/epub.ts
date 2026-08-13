@@ -719,8 +719,13 @@ class Loader {
     }
 }
 
-const getHTMLFragment = (doc, id) => doc.getElementById(id)
-    ?? doc.querySelector(`[name="${CSS.escape(id)}"]`)
+const getHTMLFragment = (doc, id) => {
+    let decoded = id
+    try { decoded = decodeURIComponent(id) } catch {}
+    return doc.getElementById(decoded)
+        ?? doc.querySelector(`[id="${CSS.escape(decoded)}"]`)
+        ?? doc.querySelector(`[name="${CSS.escape(decoded)}"]`)
+}
 
 const getPageSpread = properties => {
     for (const p of properties) {
@@ -870,8 +875,7 @@ ${doc.querySelector('parsererror').innerText}`)
         return href?.split('#') ?? []
     }
     getTOCFragment(doc, id) {
-        return doc.getElementById(id)
-            ?? doc.querySelector(`[name="${CSS.escape(id)}"]`)
+        return getHTMLFragment(doc, id)
     }
     isExternal(uri) {
         return isExternal(uri)

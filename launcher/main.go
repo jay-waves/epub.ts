@@ -116,12 +116,17 @@ func openDocument(argument string) error {
 }
 
 func startDaemon() error {
-	running, err := DaemonRunning()
+	running, runningBuild, err := daemonStatus()
 	if err != nil {
 		return err
 	}
-	if running {
+	if running && runningBuild == buildID {
 		return nil
+	}
+	if running {
+		if err := StopDaemon(); err != nil {
+			return fmt.Errorf("replace older epub.ts daemon: %w", err)
+		}
 	}
 
 	executable, err := os.Executable()
@@ -136,12 +141,12 @@ func startDaemon() error {
 	var lastError error
 	for time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
-		running, err = DaemonRunning()
+		running, runningBuild, err = daemonStatus()
 		if err != nil {
 			lastError = err
 			continue
 		}
-		if running {
+		if running && runningBuild == buildID {
 			return nil
 		}
 	}

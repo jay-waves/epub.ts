@@ -203,6 +203,7 @@ func (app *App) handleStatus(response http.ResponseWriter, request *http.Request
 		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	response.Header().Set("X-EPUB-TS-Build", buildID)
 	response.WriteHeader(http.StatusNoContent)
 }
 

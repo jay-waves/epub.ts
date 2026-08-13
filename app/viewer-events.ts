@@ -107,6 +107,11 @@ export type TocUpdateDetail = {
   items: TocItem[];
 };
 
+export type TocNavigateDetail = {
+  href: string;
+  item: TocItem;
+};
+
 export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
   [VIEWER_EVENTS.highlightContextClose]: void;
@@ -132,7 +137,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.bookInfoOpen]: void;
   [VIEWER_EVENTS.bookInfoUpdate]: BookInfo;
   [VIEWER_EVENTS.tocOpen]: void;
-  [VIEWER_EVENTS.tocNavigate]: string;
+  [VIEWER_EVENTS.tocNavigate]: TocNavigateDetail;
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
 };
 

@@ -1,5 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
-import { cpSync } from "node:fs";
+import { cpSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -7,7 +7,7 @@ import packageJson from "./package.json";
 
 const isWeb = process.env.VIEWER_PLATFORM === "web";
 const outputDir = isWeb ? "release/web" : "release/chrome-extension";
-const buildTime = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/u, " UTC");
+const builtAt = new Date().toISOString();
 const iconFiles = ["icon.png", ...[16, 32, 48, 128].map((size) => `icon-${size}.png`)];
 const fontFiles = [
   "EBGaramond-VariableFont_wght.ttf",
@@ -18,7 +18,7 @@ const fontFiles = [
 export default defineConfig({
   base: "./",
   define: {
-    __EPUB_TS_BUILD_TIME__: JSON.stringify(buildTime),
+    __EPUB_TS_BUILD_TIME__: JSON.stringify(builtAt),
     __EPUB_TS_VERSION__: JSON.stringify(packageJson.version),
   },
   publicDir: isWeb ? false : "public",
@@ -38,6 +38,10 @@ export default defineConfig({
       name: "viewer-assets",
       writeBundle() {
         const resolvedOutputDir = resolve(__dirname, outputDir);
+        writeFileSync(
+          resolve(resolvedOutputDir, "build-metadata.json"),
+          `${JSON.stringify({ builtAt, version: packageJson.version })}\n`,
+        );
         for (const filename of iconFiles) {
           cpSync(resolve(__dirname, "assets", filename), resolve(resolvedOutputDir, filename));
         }

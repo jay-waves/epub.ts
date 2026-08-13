@@ -70,9 +70,15 @@ export class TocIndex {
     if (!range || (items.length === 1 && !items[0]?.fragment)) return items[0]?.item;
 
     const doc = range.startContainer.getRootNode() as Document;
+    // A relocation range spans the whole viewport. Comparing TOC targets with
+    // that range treats every heading visible near the bottom as current and
+    // eventually selects the last one. Collapse it to the reading edge so the
+    // active item is the last heading at or before the viewport start.
+    const readingEdge = range.cloneRange();
+    readingEdge.collapse(true);
     for (const [itemIndex, { fragment }] of items.entries()) {
       const element = this.#getFragment?.(doc, fragment);
-      if (element && range.comparePoint(element, 0) > 0) {
+      if (element && readingEdge.comparePoint(element, 0) > 0) {
         return items[itemIndex - 1]?.item ?? prev;
       }
     }

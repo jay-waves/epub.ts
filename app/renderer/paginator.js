@@ -1,10 +1,21 @@
-import { ChapterFlow } from './chapter-flow.ts'
+import { ChapterWindow } from './chapter-window.ts'
 import {
+    getAnchorPage,
+    getAnchorRect,
+    getEntryOffset,
+    getFractionTarget,
+    getRectTarget,
+    getScrolledTrackSize,
     isAtBookEdge,
     planViewportNavigation,
+    ViewportNavigation,
 } from './viewport-navigation.ts'
-
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+import {
+    getReadingEdge,
+    getVisibleRange,
+    resolveVisibleLocation,
+} from './visible-location.ts'
+import { ScrolledViewport } from './scrolled-viewport.ts'
 
 const debounce = (f, wait, immediate) => {
     let timeout
@@ -55,104 +66,6 @@ const uncollapse = range => {
     if (endOffset + 1 < endContainer.length) range.setEnd(endContainer, endOffset + 1)
     else if (endOffset > 1) range.setStart(endContainer, endOffset - 1)
     else return endContainer.parentNode
-    return range
-}
-
-const makeRange = (doc, node, start, end = start) => {
-    const range = doc.createRange()
-    range.setStart(node, start)
-    range.setEnd(node, end)
-    return range
-}
-
-// use binary search to find an offset value in a text node
-const bisectNode = (doc, node, cb, start = 0, end = node.nodeValue.length) => {
-    if (end - start === 1) {
-        const result = cb(makeRange(doc, node, start), makeRange(doc, node, end))
-        return result < 0 ? start : end
-    }
-    const mid = Math.floor(start + (end - start) / 2)
-    const result = cb(makeRange(doc, node, start, mid), makeRange(doc, node, mid, end))
-    return result < 0 ? bisectNode(doc, node, cb, start, mid)
-        : result > 0 ? bisectNode(doc, node, cb, mid, end) : mid
-}
-
-const { SHOW_ELEMENT, SHOW_TEXT, SHOW_CDATA_SECTION,
-    FILTER_ACCEPT, FILTER_REJECT, FILTER_SKIP } = NodeFilter
-
-const filter = SHOW_ELEMENT | SHOW_TEXT | SHOW_CDATA_SECTION
-
-// needed cause there seems to be a bug in `getBoundingClientRect()` in Firefox
-// where it fails to include rects that have zero width and non-zero height
-// (CSSOM spec says "rectangles [...] of which the height or width is not zero")
-// which makes the visible range include an extra space at column boundaries
-const getBoundingClientRect = target => {
-    let top = Infinity, right = -Infinity, left = Infinity, bottom = -Infinity
-    for (const rect of target.getClientRects()) {
-        left = Math.min(left, rect.left)
-        top = Math.min(top, rect.top)
-        right = Math.max(right, rect.right)
-        bottom = Math.max(bottom, rect.bottom)
-    }
-    return new DOMRect(left, top, right - left, bottom - top)
-}
-
-const getVisibleRange = (doc, start, end, mapRect) => {
-    // first get all visible nodes
-    const acceptNode = node => {
-        const name = node.localName?.toLowerCase()
-        // ignore all scripts, styles, and their children
-        if (name === 'script' || name === 'style') return FILTER_REJECT
-        if (node.nodeType === 1) {
-            const { left, right } = mapRect(node.getBoundingClientRect())
-            // no need to check child nodes if it's completely out of view
-            if (right < start || left > end) return FILTER_REJECT
-            // elements must be completely in view to be considered visible
-            // because you can't specify offsets for elements
-            if (left >= start && right <= end) return FILTER_ACCEPT
-            // TODO: it should probably allow elements that do not contain text
-            // because they can exceed the whole viewport in both directions
-            // especially in scrolled mode
-        } else {
-            // ignore empty text nodes
-            if (!node.nodeValue?.trim()) return FILTER_SKIP
-            // create range to get rect
-            const range = doc.createRange()
-            range.selectNodeContents(node)
-            const { left, right } = mapRect(range.getBoundingClientRect())
-            // it's visible if any part of it is in view
-            if (right >= start && left <= end) return FILTER_ACCEPT
-        }
-        return FILTER_SKIP
-    }
-    const walker = doc.createTreeWalker(doc.body, filter, { acceptNode })
-    const nodes = []
-    for (let node = walker.nextNode(); node; node = walker.nextNode())
-        nodes.push(node)
-
-    // we're only interested in the first and last visible nodes
-    const from = nodes[0] ?? doc.body
-    const to = nodes[nodes.length - 1] ?? from
-
-    // find the offset at which visibility changes
-    const startOffset = from.nodeType === 1 ? 0
-        : bisectNode(doc, from, (a, b) => {
-            const p = mapRect(getBoundingClientRect(a))
-            const q = mapRect(getBoundingClientRect(b))
-            if (p.right < start && q.left > start) return 0
-            return q.left > start ? -1 : 1
-        })
-    const endOffset = to.nodeType === 1 ? 0
-        : bisectNode(doc, to, (a, b) => {
-            const p = mapRect(getBoundingClientRect(a))
-            const q = mapRect(getBoundingClientRect(b))
-            if (p.right < end && q.left > end) return 0
-            return q.left > end ? -1 : 1
-        })
-
-    const range = doc.createRange()
-    range.setStart(from, startOffset)
-    range.setEnd(to, endOffset)
     return range
 }
 
@@ -312,12 +225,14 @@ class View {
                     this.render(layout)
                     this.#observer.observe(doc.body)
 
-                    // the resize observer above doesn't work in Firefox
-                    // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
-                    // until the bug is fixed we can at least account for font load
-                    doc.fonts.ready.then(() => {
-                        this.#scheduleExpand()
-                    })
+                    // Commit the initial layout only after document fonts have
+                    // settled. Resolving earlier lets navigation publish a
+                    // location that a second font-driven expand immediately
+                    // invalidates.
+                    await doc.fonts.ready
+                    if (this.#destroyed)
+                        throw new DOMException('View destroyed', 'AbortError')
+                    this.expand()
 
                     resolve()
                 } catch (error) {
@@ -525,7 +440,12 @@ export class Paginator extends HTMLElement {
         'max-inline-size', 'max-block-size', 'max-column-count',
     ]
     #root = this.attachShadow({ mode: 'closed' })
-    #observer = new ResizeObserver(() => this.#scheduleRender())
+    #observer = new ResizeObserver(([entry]) => {
+        const { width, height } = entry.contentRect
+        this.#containerWidth = width
+        this.#containerHeight = height
+        this.#scheduleRender()
+    })
     #top
     #background
     #container
@@ -533,15 +453,21 @@ export class Paginator extends HTMLElement {
     #header
     #footer
     #view
-    #flow = new ChapterFlow()
-    #entryLoads = new Map()
+    #flow = new ChapterWindow({
+        create: index => this.#createChapter(index),
+        destroy: (index, view) => {
+            this.#destroyView(view)
+            this.sections[index]?.unload?.()
+        },
+        onAdd: entry => this.#addChapter(entry),
+    })
     #vertical = false
     #rtl = false
     #margin = 0
     #index = -1
     #anchor = 0 // anchor view to a fraction (0-1), Range, or Element
     #justAnchored = false
-    #locked = false // while true, prevent any further navigation
+    #navigation = new ViewportNavigation()
     #styles
     #styleMap = new WeakMap()
     #mediaQuery = matchMedia('(prefers-color-scheme: dark)')
@@ -549,9 +475,12 @@ export class Paginator extends HTMLElement {
     #scrollBounds
     #lastVisibleRange
     #renderFrame
+    #scrolledViewport
     #loadingChapters = false
     #cacheFrame
     #leadingRemainder = 0
+    #containerWidth = 0
+    #containerHeight = 0
     #destroyed = false
     constructor() {
         super()
@@ -673,15 +602,17 @@ export class Paginator extends HTMLElement {
         this.#track = this.#root.getElementById('track')
         this.#header = this.#root.getElementById('header')
         this.#footer = this.#root.getElementById('footer')
+        this.#scrolledViewport = new ScrolledViewport(this.#container, () => {
+            if (this.scrolled && !this.#destroyed) this.#afterScroll('scroll')
+        })
 
         this.#observer.observe(this.#container)
-        this.#container.addEventListener('scroll', () => this.dispatchEvent(new Event('scroll')))
-        this.#container.addEventListener('scroll', debounce(() => {
-            if (this.scrolled) {
-                if (this.#justAnchored) this.#justAnchored = false
-                else this.#afterScroll('scroll')
-            }
-        }, 250))
+        this.#container.addEventListener('scroll', () => {
+            this.dispatchEvent(new Event('scroll'))
+            if (!this.scrolled) return
+            if (this.#justAnchored) this.#justAnchored = false
+            else this.#scrolledViewport.schedule()
+        })
 
         this.addEventListener('relocate', ({ detail }) => {
             if (detail.reason === 'selection') setSelectionTo(this.#anchor, 0)
@@ -737,6 +668,7 @@ export class Paginator extends HTMLElement {
     attributeChangedCallback(name, _, value) {
         switch (name) {
             case 'flow':
+                if (value !== 'scrolled') this.#scrolledViewport?.cancel()
                 this.#scheduleRender()
                 break
             case 'gap':
@@ -777,7 +709,12 @@ export class Paginator extends HTMLElement {
             container: this,
             onExpand: () => {
                 if (this.#flow.entries.some(entry => entry.view === view)) {
-                    const activeEntry = this.#entryForView()
+                    // Reflowing while a navigation is in progress can
+                    // restore #anchor before #afterScroll has updated it to the
+                    // destination page. Defer the layout so the new, landed
+                    // range becomes the anchor instead of jumping back.
+                    if (this.#navigation.deferReflow()) return
+                    const activeEntry = this.#entryAtReadingEdge()
                     const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
                     this.#layoutEntries()
                     if (activeEntry) {
@@ -786,6 +723,8 @@ export class Paginator extends HTMLElement {
                             this.#container[this.scrollProp] += shift
                             if (this.#scrollBounds) this.#scrollBounds[0] += shift
                         }
+                        if (activeEntry.view === view && this.#anchorBelongsTo(view))
+                            void this.#scrollToAnchor(this.#anchor, 'anchor', activeEntry)
                     }
                 }
             },
@@ -804,24 +743,10 @@ export class Paginator extends HTMLElement {
     #clearEntries() {
         cancelAnimationFrame(this.#cacheFrame)
         this.#cacheFrame = null
-        for (const { index, view } of this.#flow.clear()) {
-            this.#destroyView(view)
-            this.sections[index]?.unload?.()
-        }
+        this.#flow.clear()
         this.#leadingRemainder = 0
     }
-    #loadEntry(index) {
-        const existing = this.#flow.find(index)
-        if (existing) return Promise.resolve(existing)
-        const pending = this.#entryLoads.get(index)
-        if (pending) return pending
-        const load = this.#loadNewEntry(index).finally(() => {
-            if (this.#entryLoads.get(index) === load) this.#entryLoads.delete(index)
-        })
-        this.#entryLoads.set(index, load)
-        return load
-    }
-    async #loadNewEntry(index) {
+    async #createChapter(index) {
         const section = this.sections[index]
         const view = this.#createView()
         const afterLoad = async doc => {
@@ -843,10 +768,19 @@ export class Paginator extends HTMLElement {
             section.unload?.()
             throw error
         }
-        const activeEntry = this.#entryForView()
+        return view
+    }
+    #addChapter(entry) {
+        const { index, view } = entry
+        // #view can briefly lag behind the physical scroll position while an
+        // adjacent chapter finishes loading.
+        // `entry` has been inserted but is not laid out yet (start/extent are
+        // both zero). Exclude it when snapshotting the chapter that currently
+        // owns the viewport, otherwise the tail fallback can compensate from
+        // the new chapter and move the viewport by an entire cache window.
+        const activeEntry = this.#entryAtReadingEdge(entry)
         const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
         view.compact = this.continuous && !this.scrolled
-        const entry = this.#flow.add(index, view)
         if (this.continuous) {
             this.#layoutEntries()
             if (activeEntry) {
@@ -863,25 +797,27 @@ export class Paginator extends HTMLElement {
                 attach: overlay => view.overlay = overlay,
             },
         }))
-        return entry
     }
     #layoutEntries() {
         if (!this.#flow.entries.length || !this.continuous) return
         if (this.scrolled) {
             const extent = this.#flow.layout(view => view.extent)
-            this.#track.style.display = 'flex'
-            this.#track.style.flexDirection = 'column'
+            this.#track.style.removeProperty('display')
+            this.#track.style.removeProperty('flex-direction')
             for (const entry of this.#flow.entries) {
                 entry.view.compact = false
                 const { style } = entry.view.element
-                style.position = 'relative'
-                style.removeProperty('left')
-                style.removeProperty('top')
+                style.position = 'absolute'
+                style.left = '0'
+                style.top = `${entry.start}px`
                 style.width = '100%'
-                style.order = String(entry.index)
+                style.removeProperty('order')
             }
             this.#track.style.width = '100%'
-            this.#track.style.height = `${Math.max(extent, this.size)}px`
+            // Keep logical anchor coordinates reachable independently of how
+            // many following chapters happen to be cached. The extra viewport
+            // is a virtual alignment reserve, not part of any chapter.
+            this.#track.style.height = `${getScrolledTrackSize(extent, this.size)}px`
             return
         }
         const { columnCount, columnStep } = this.#flow.entries[0].view
@@ -921,7 +857,7 @@ export class Paginator extends HTMLElement {
             if (columnCount > 1 && !hasNext && active.view.contentColumns % columnCount) {
                 const section = this.sections[nextIndex]
                 if (!this.sections[active.index]?.pageSpread && !section?.pageSpread)
-                    await this.#loadEntry(nextIndex)
+                    await this.#flow.load(nextIndex)
             }
         } finally {
             this.#loadingChapters = false
@@ -939,7 +875,7 @@ export class Paginator extends HTMLElement {
         try {
             for (const dir of [-1, 1]) {
                 const index = this.#adjacentIndexFrom(activeEntry.index, dir)
-                if (index != null && !this.#flow.find(index)) await this.#loadEntry(index)
+                if (index != null && !this.#flow.find(index)) await this.#flow.load(index)
             }
         } finally {
             this.#loadingChapters = false
@@ -950,8 +886,10 @@ export class Paginator extends HTMLElement {
         this.#cacheFrame = requestAnimationFrame(() => {
             this.#cacheFrame = requestAnimationFrame(() => {
                 this.#cacheFrame = null
-                void this.#cacheAdjacentSections().catch(error =>
-                    console.warn('Failed to cache adjacent reader sections.', error))
+                void this.#cacheAdjacentSections().catch(error => {
+                    if (error?.name !== 'AbortError')
+                        console.warn('Failed to cache adjacent reader sections.', error)
+                })
             })
         })
     }
@@ -965,6 +903,8 @@ export class Paginator extends HTMLElement {
         this.#background.style.background = background
 
         const { width, height } = this.#container.getBoundingClientRect()
+        this.#containerWidth = width
+        this.#containerHeight = height
         const size = vertical ? height : width
 
         const style = getComputedStyle(this.#top)
@@ -1034,12 +974,9 @@ export class Paginator extends HTMLElement {
     }
     render() {
         if (!this.#view) return
-        if (!this.continuous && this.#flow.entries.length > 1) {
-            for (const entry of this.#flow.removeWhere(entry => entry.view !== this.#view)) {
-                this.#destroyView(entry.view)
-                this.sections[entry.index]?.unload?.()
-            }
-        }
+        if (!this.#navigation.beginReflow()) return
+        if (!this.continuous && this.#flow.entries.length > 1)
+            this.#flow.removeWhere(entry => entry.view !== this.#view)
         for (const { view } of this.#flow.entries) {
             view.compact = this.continuous && !this.scrolled
             view.render(this.#beforeRender({
@@ -1073,6 +1010,7 @@ export class Paginator extends HTMLElement {
     }
     #scheduleRender() {
         if (this.#destroyed || this.#renderFrame) return
+        if (this.#navigation.deferReflow()) return
         this.#renderFrame = requestAnimationFrame(() => {
             this.#renderFrame = null
             this.render()
@@ -1095,9 +1033,15 @@ export class Paginator extends HTMLElement {
             : scrolled ? 'height' : 'width'
     }
     get size() {
-        return this.#container.getBoundingClientRect()[this.sideProp]
+        const size = this.sideProp === 'width'
+            ? this.#containerWidth : this.#containerHeight
+        return size || this.#container.getBoundingClientRect()[this.sideProp]
     }
     get viewSize() {
+        // The scrolled track includes a physical alignment reserve so anchors
+        // near the cache tail remain reachable. It is not logical book content
+        // and must not affect page-turn boundaries or progress calculations.
+        if (this.continuous && this.scrolled) return this.#flow.extent
         return (this.continuous ? this.#track : this.#view.element)
             .getBoundingClientRect()[this.sideProp]
     }
@@ -1128,35 +1072,62 @@ export class Paginator extends HTMLElement {
         element[scrollProp] = Math.max(min, Math.min(max,
             element[scrollProp] + delta))
     }
-    #snap(vx, vy) {
-        const velocity = this.#vertical ? vy : vx
-        const [offset, backward, forward] = this.#scrollBounds
-        const min = Math.abs(offset) - backward
-        const max = Math.abs(offset) + forward
-        const projected = velocity * (this.#rtl ? -this.size : this.size)
-        const page = Math.floor(Math.max(min, Math.min(max,
-            (this.start + this.end) / 2 + (isNaN(projected) ? 0 : projected))) / this.size)
+    async #snap(vx, vy) {
+        return this.#runNavigation(async () => {
+            const velocity = this.#vertical ? vy : vx
+            const [offset, backward, forward] = this.#scrollBounds
+            const min = Math.abs(offset) - backward
+            const max = Math.abs(offset) + forward
+            const projected = velocity * (this.#rtl ? -this.size : this.size)
+            const page = Math.floor(Math.max(min, Math.min(max,
+                (this.start + this.end) / 2 + (isNaN(projected) ? 0 : projected))) / this.size)
 
-        this.#scrollToPage(page, 'snap').then(() => {
+            await this.#scrollToPage(page, 'snap')
             if (page <= 0) return this.#crossCacheWindow(-1)
             if (page >= this.pages - 1) return this.#crossCacheWindow(1)
-        }).catch(error => console.warn('Failed to snap reader page.', error))
+        })
     }
     settle(velocityX, velocityY) {
         if (!this.scrolled && globalThis.visualViewport.scale === 1)
-            this.#snap(velocityX, velocityY)
+            void this.#snap(velocityX, velocityY).catch(error =>
+                console.warn('Failed to snap reader page.', error))
     }
     // allows one to process rects as if they were LTR and horizontal
-    #getRectMapper() {
-        return rect => this.#view.mapRect(rect)
+    #getRectMapper(view = this.#view) {
+        return rect => view.mapRect(rect)
     }
     #entryForView(view = this.#view) {
         return this.#flow.entries.find(entry => entry.view === view)
     }
+    #entryAtReadingEdge(ignore) {
+        if (!this.continuous) return this.#entryForView()
+        const firstOffset = this.#entryOffset(this.#flow.first)
+        const edge = getReadingEdge({
+            contentOffset: this.scrolled ? 0 : firstOffset,
+            margin: this.#margin,
+            scrolled: this.scrolled,
+            start: this.start,
+        })
+        const entries = ignore
+            ? this.#flow.entries.filter(entry => entry !== ignore)
+            : this.#flow.entries
+        return entries.find(entry =>
+            edge >= entry.start && edge < entry.start + entry.extent)
+            ?? entries.at(-1)
+    }
+    #anchorBelongsTo(view) {
+        if (typeof this.#anchor === 'number') return true
+        const node = this.#anchor?.startContainer ?? this.#anchor
+        return (node?.ownerDocument ?? node) === view.document
+    }
     #entryOffset(entry = this.#entryForView()) {
-        return this.continuous
-            ? (this.scrolled ? 0 : this.size + this.#leadingRemainder) + (entry?.start ?? 0)
-            : 0
+        return getEntryOffset({
+            continuous: this.continuous,
+            leadingRemainder: this.#leadingRemainder,
+            scrolled: this.scrolled,
+            start: entry?.start,
+            viewportSize: this.size,
+        })
     }
     #trimChapterCache(activeEntry) {
         const entries = this.#flow.entries
@@ -1172,23 +1143,20 @@ export class Paginator extends HTMLElement {
         if (!this.scrolled && this.size > 0)
             this.#leadingRemainder = (this.#leadingRemainder + removedBefore) % this.size
 
-        for (const { index, view } of removed) {
-            this.#destroyView(view)
-            this.sections[index]?.unload?.()
-        }
         this.#layoutEntries()
         const shift = this.#entryOffset(activeEntry) - oldOffset
         this.#container[this.scrollProp] += shift
         if (this.#scrollBounds) this.#scrollBounds[0] += shift
     }
-    async #scrollToRect(rect, reason) {
+    async #scrollToRect(rect, reason, entry = this.#entryForView()) {
         if (this.scrolled) {
-            const offset = this.#entryOffset() + this.#getRectMapper()(rect).left - this.#margin
+            const offset = getRectTarget(this.#entryOffset(entry),
+                this.#getRectMapper(entry.view)(rect).left, this.#margin)
             return this.#scrollTo(offset, reason)
         }
-        const offset = this.#getRectMapper()(rect).left
+        const offset = this.#getRectMapper(entry.view)(rect).left
         return this.#scrollToPage(this.continuous
-            ? Math.floor((this.#entryOffset() + offset) / this.size)
+            ? getAnchorPage(this.#entryOffset(entry), offset, this.size)
             : Math.floor(offset / this.size) + (this.#rtl ? -1 : 1), reason)
     }
     async #scrollTo(offset, reason, smooth) {
@@ -1197,6 +1165,7 @@ export class Paginator extends HTMLElement {
         if (element[scrollProp] === offset) {
             this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
             this.#afterScroll(reason)
+            this.#justAnchored = false
             return
         }
         // FIXME: vertical-rl only, not -lr
@@ -1219,30 +1188,39 @@ export class Paginator extends HTMLElement {
         return this.#scrollTo(offset, reason, smooth)
     }
     async scrollToAnchor(anchor, select) {
-        return this.#scrollToAnchor(anchor, select ? 'selection' : 'navigation')
+        return this.#runNavigation(() => this.#scrollToAnchor(
+            anchor, select ? 'selection' : 'navigation'))
     }
-    async #scrollToAnchor(anchor, reason = 'anchor') {
+    async #scrollToAnchor(anchor, reason = 'anchor', entry = this.#entryForView()) {
+        if (!entry) return
+        if (this.scrolled) this.#scrolledViewport.cancel()
         this.#anchor = anchor
-        const rects = uncollapse(anchor)?.getClientRects?.()
+        const rect = getAnchorRect(uncollapse(anchor))
         // if anchor is an element or a range
-        if (rects) {
-            // when the start of the range is immediately after a hyphen in the
-            // previous column, there is an extra zero width rect in that column
-            const rect = Array.from(rects)
-                .find(r => r.width > 0 && r.height > 0) || rects[0]
-            if (!rect) return
-            await this.#scrollToRect(rect, reason)
+        if (rect) {
+            if (this.scrolled && !this.#vertical) {
+                const target = this.#scrolledViewport.anchorTarget(
+                    entry.view.document, rect, this.#margin)
+                if (target) {
+                    if (target.visible) {
+                        this.#afterScroll(reason)
+                        this.#justAnchored = false
+                        return
+                    }
+                    await this.#scrollTo(target.offset, reason)
+                    return
+                }
+            }
+            await this.#scrollToRect(rect, reason, entry)
             return
         }
         // if anchor is a fraction
         if (this.scrolled) {
-            const entry = this.#entryForView()
-            await this.#scrollTo(this.#entryOffset(entry) + anchor * entry.view.extent, reason)
+            await this.#scrollTo(getFractionTarget(
+                this.#entryOffset(entry), entry.view.extent, anchor), reason)
             return
         }
         if (this.continuous) {
-            const entry = this.#entryForView()
-            if (!entry) return
             const offset = this.#entryOffset(entry) + anchor * Math.max(0, entry.view.extent - 1)
             await this.#scrollToPage(Math.floor(offset / this.size), reason)
             return
@@ -1251,66 +1229,48 @@ export class Paginator extends HTMLElement {
         const newPage = Math.round(anchor * (textPages - 1))
         await this.#scrollToPage(newPage + 1, reason)
     }
-    #getVisibleRange() {
-        if (this.scrolled) {
-            const offset = this.#entryOffset()
-            return this.#view.visibleRange(
-                Math.max(0, this.start - offset + this.#margin),
-                Math.min(this.#view.extent, this.end - offset - this.#margin),
-            )
-        }
-        if (this.continuous) {
-            const entry = this.#entryForView()
-            const offset = this.#entryOffset(entry)
-            return this.#view.visibleRange(
-                Math.max(0, this.start - offset),
-                Math.min(this.#view.extent, this.end - offset),
-            )
-        }
-        const size = this.#rtl ? -this.size : this.size
-        return getVisibleRange(this.#view.document,
-            this.start - size, this.end - size, this.#getRectMapper())
-    }
     #afterScroll(reason) {
-        if (this.continuous) {
-            const contentStart = Math.max(0, this.start - (this.scrolled ? 0 : this.size))
-            const entry = this.#flow.findAt(contentStart)
-            if (entry) {
-                this.#view = entry.view
-                this.#index = entry.index
-                this.#trimChapterCache(entry)
-            }
-        }
-        const range = this.#getVisibleRange()
+        const location = resolveVisibleLocation({
+            continuous: this.continuous,
+            current: this.#entryForView(),
+            end: this.end,
+            entryOffset: entry => this.#entryOffset(entry),
+            findAt: offset => this.#flow.findAt(offset),
+            margin: this.#margin,
+            page: this.page,
+            pages: this.pages,
+            rtl: this.#rtl,
+            scrolled: this.scrolled,
+            scrolledRange: entry => this.#scrolledViewport.readingRange(
+                entry.view.document, this.#margin),
+            start: this.start,
+            viewportSize: this.size,
+        })
+        if (!location) return
+
+        const { entry, fraction, range, size } = location
+        this.#view = entry.view
+        this.#index = entry.index
         this.#lastVisibleRange = range
         // don't set new anchor if relocation was to scroll to anchor
         if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
             this.#anchor = range
         else this.#justAnchored = true
 
-        const index = this.#index
-        const detail = { reason, range, index }
-        if (this.scrolled) {
-            const entry = this.#entryForView()
-            detail.fraction = Math.min(1, Math.max(0,
-                (this.start - this.#entryOffset(entry)) / entry.view.extent))
-            detail.size = Math.min(1, this.size / entry.view.extent)
+        const detail = { reason, range, index: entry.index }
+        if (fraction !== undefined) {
+            detail.fraction = fraction
+            detail.size = size
         }
-        else if (this.pages > 0) {
-            const { page, pages } = this
-            this.#header.style.visibility = page > 1 ? 'visible' : 'hidden'
-            if (this.continuous) {
-                const entry = this.#entryForView()
-                const offset = this.#entryOffset(entry)
-                detail.fraction = Math.min(1, Math.max(0, (this.start - offset) / entry.view.extent))
-                detail.size = Math.min(1, this.size / entry.view.extent)
-            } else {
-                detail.fraction = (page - 1) / (pages - 2)
-                detail.size = 1 / (pages - 2)
-            }
+        if (!this.scrolled && this.pages > 0) {
+            this.#header.style.visibility = this.page > 1 ? 'visible' : 'hidden'
         }
         this.dispatchEvent(new CustomEvent('relocate', { detail }))
-        this.#scheduleAdjacentCache()
+        if (this.continuous) this.#trimChapterCache(entry)
+        // Exact positioning must settle without starting another layout race.
+        // User-driven scrolling and page turns will populate the next window.
+        if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
+            this.#scheduleAdjacentCache()
     }
     #canGoToIndex(index) {
         return index >= 0 && index <= this.sections.length - 1
@@ -1328,28 +1288,38 @@ export class Paginator extends HTMLElement {
             start: this.start,
         }
     }
-    async #goTo({ index, anchor, select}) {
+    async #activateEntry(index) {
         let entry = this.#flow.find(index)
-        const hasFocus = this.#view?.document?.hasFocus()
         if (!entry) {
-            if (!this.continuous) this.#clearEntries()
-            entry = await this.#loadEntry(index)
-            this.#view = entry.view
-            this.#index = index
-            if (this.continuous && !this.scrolled) await this.#fillPaginatedSpread()
-        } else {
-            this.#view = entry.view
-            this.#index = index
+            const adjacentToWindow = this.continuous && this.#flow.entries.some(candidate =>
+                this.#adjacentIndexFrom(candidate.index, -1) === index
+                || this.#adjacentIndexFrom(candidate.index, 1) === index)
+            if (!adjacentToWindow) this.#clearEntries()
+            entry = await this.#flow.load(index)
         }
+        this.#view = entry.view
+        this.#index = index
+
+        if (this.continuous && !this.scrolled) await this.#fillPaginatedSpread()
+        return entry
+    }
+    async #goTo({ index, anchor, select}) {
+        const hasFocus = this.#view?.document?.hasFocus()
+        const entry = await this.#activateEntry(index)
         const resolvedAnchor = typeof anchor === 'function'
             ? anchor(entry.view.document) : anchor
-        await this.scrollToAnchor(resolvedAnchor ?? 0, select)
+        await this.#scrollToAnchor(resolvedAnchor ?? 0,
+            select ? 'selection' : 'navigation', entry)
         if (hasFocus) this.#focusView()
     }
+    async #runNavigation(task) {
+        return this.#navigation.run(task, () => this.#scheduleRender())
+    }
     async goTo(target) {
-        if (this.#locked) return
         const resolved = await target
-        if (this.#canGoToIndex(resolved.index)) return this.#goTo(resolved)
+        if (this.#canGoToIndex(resolved.index))
+            return this.#navigation.enqueue(
+                () => this.#goTo(resolved), () => this.#scheduleRender())
     }
     get atStart() {
         return isAtBookEdge(this.#navigationState(), -1)
@@ -1376,27 +1346,20 @@ export class Paginator extends HTMLElement {
         })
     }
     async #turnPage(dir, distance) {
-        if (this.#locked || !this.#view) return
-        this.#locked = true
-        try {
+        if (!this.#view) return
+        return this.#runNavigation(async () => {
             const action = planViewportNavigation(this.#navigationState(), dir, distance)
-            let crossedWindow = false
             if (action.kind === 'scroll') {
                 await this.#scrollTo(action.offset, null, true)
             } else if (action.kind === 'page') {
                 await this.#scrollToPage(action.page, 'page', true)
                 if (action.crossWindowAfter) {
-                    crossedWindow = true
                     await this.#crossCacheWindow(dir)
                 }
             } else if (action.kind === 'cross-window') {
-                crossedWindow = true
                 await this.#crossCacheWindow(dir)
             }
-            if (crossedWindow || !this.hasAttribute('animated')) await wait(100)
-        } finally {
-            this.#locked = false
-        }
+        })
     }
     prev(distance) {
         return this.#turnPage(-1, distance)
@@ -1445,6 +1408,7 @@ export class Paginator extends HTMLElement {
         if (this.#destroyed) return
         this.#destroyed = true
         cancelAnimationFrame(this.#renderFrame)
+        this.#scrolledViewport.destroy()
         this.#observer.disconnect()
         this.#clearEntries()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)

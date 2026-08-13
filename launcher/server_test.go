@@ -26,6 +26,17 @@ func TestDocumentRoutesExposeOnlyEpubOperations(t *testing.T) {
 	assertDocumentStatus(t, app, http.MethodPost, "/api/documents/document/annotations", http.StatusMethodNotAllowed)
 }
 
+func TestStatusReportsDaemonBuild(t *testing.T) {
+	response := httptest.NewRecorder()
+	(&App{}).handleStatus(response, httptest.NewRequest(http.MethodGet, "/api/control/status", nil))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusNoContent)
+	}
+	if got := response.Header().Get("X-EPUB-TS-Build"); got != buildID {
+		t.Fatalf("build=%q, want %q", got, buildID)
+	}
+}
+
 func assertDocumentStatus(t *testing.T, app *App, method, target string, expected int) {
 	t.Helper()
 	response := httptest.NewRecorder()

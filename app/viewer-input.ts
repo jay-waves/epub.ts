@@ -3,23 +3,18 @@ import { WheelGestures } from "wheel-gestures";
 import type { PageTurnDirection, ReaderView } from "./reader/model";
 import type { Navigation } from "./reader/navigation";
 import { observeRenderedDocuments } from "./reader/documents";
+import { KineticScroller } from "./reader/kinetic-scroller";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
-const WHEEL_SCROLL_DISTANCE_RATIO = 0.6;
 const SECTION_EDGE_EPSILON = 2;
+const COARSE_WHEEL_DELTA_PX = 32;
 const WHEEL_SWIPE_AXIS_RATIO = 1.35;
 const WHEEL_SWIPE_MIN_DISTANCE = 42;
 const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
 const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
-const WHEEL_DISCRETE_DELTA_THRESHOLD_PX = 48;
-const WHEEL_BOUNDARY_HOLD_MS = 140;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
-const TOUCH_INERTIA_MIN_VELOCITY = 0.08;
-const TOUCH_INERTIA_MAX_VELOCITY = 2.5;
-const TOUCH_INERTIA_STOP_VELOCITY = 0.02;
-const TOUCH_INERTIA_TIME_CONSTANT_MS = 240;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
@@ -69,27 +64,12 @@ export function createViewerInput(options: ViewerInputOptions) {
     stopShellDrag: () => void;
   }>();
   let suppressWheelScrollUntil = 0;
-  let inertiaFrame: number | undefined;
-  let inertiaLastTime = 0;
-  let inertiaVelocity = 0;
-  let wheelBoundaryTimer: number | undefined;
   let wheelBoundaryConsumed = false;
   let wheelBoundaryDirection = 0;
   let wheelBoundaryInFlight = false;
   const activeWheelTargets = new Set<Document>();
 
-  const stopTouchInertia = () => {
-    inertiaVelocity = 0;
-    inertiaLastTime = 0;
-    if (inertiaFrame !== undefined) {
-      window.cancelAnimationFrame(inertiaFrame);
-      inertiaFrame = undefined;
-    }
-  };
-
   const clearWheelBoundary = () => {
-    if (wheelBoundaryTimer !== undefined) window.clearTimeout(wheelBoundaryTimer);
-    wheelBoundaryTimer = undefined;
     if (wheelBoundaryDirection) options.onChapterBoundary(wheelBoundaryDirection, false);
     wheelBoundaryDirection = 0;
     wheelBoundaryInFlight = false;
@@ -101,15 +81,12 @@ export function createViewerInput(options: ViewerInputOptions) {
     wheelBoundaryConsumed = true;
     wheelBoundaryDirection = direction;
     options.onChapterBoundary(direction, true);
-    wheelBoundaryTimer = window.setTimeout(() => {
-      wheelBoundaryTimer = undefined;
-      wheelBoundaryInFlight = true;
-      const navigation = options.getNavigation();
-      const crossing = direction < 0 ? navigation?.prev(distance) : navigation?.next(distance);
-      void Promise.resolve(crossing)
-        .catch((error) => console.warn("Failed to cross reader chapter boundary.", error))
-        .finally(clearWheelBoundary);
-    }, WHEEL_BOUNDARY_HOLD_MS);
+    wheelBoundaryInFlight = true;
+    const navigation = options.getNavigation();
+    const crossing = direction < 0 ? navigation?.prev(distance) : navigation?.next(distance);
+    void Promise.resolve(crossing)
+      .catch((error) => console.warn("Failed to cross reader chapter boundary.", error))
+      .finally(clearWheelBoundary);
   };
 
   const suppressWheelScroll = () => {
@@ -140,21 +117,26 @@ export function createViewerInput(options: ViewerInputOptions) {
   };
 
   const scrollWheelBy = (delta: number) => {
-    if (options.getFlow() !== "scrolled") return;
+    if (options.getFlow() !== "scrolled") return false;
     const metrics = getSectionScrollMetrics();
-    if (!metrics) return;
+    if (!metrics) return false;
     const direction = Math.sign(delta);
-    if (!direction) return;
+    if (!direction) return false;
     const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) {
       const atBookEdge = direction < 0 ? metrics.renderer.atStart : metrics.renderer.atEnd;
       if (atBookEdge) signalScrollEdge(direction);
       else crossWheelBoundary(direction, Math.abs(delta));
-      return;
+      return false;
     }
     const applied = Math.sign(delta) * Math.min(Math.abs(delta), remaining);
     options.getNavigation()?.scrollBy(applied);
+    return true;
   };
+  const inertia = new KineticScroller({
+    canRun: () => options.getFlow() === "scrolled",
+    scrollBy: scrollWheelBy,
+  });
 
   const scrollCurrentSectionWithBounds = (direction: number, distance: number) => {
     const metrics = getSectionScrollMetrics();
@@ -199,7 +181,7 @@ export function createViewerInput(options: ViewerInputOptions) {
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    stopTouchInertia();
+    inertia.stop();
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       if (event.repeat) return;
@@ -231,10 +213,6 @@ export function createViewerInput(options: ViewerInputOptions) {
     }
   };
 
-  const handleBlur = () => {
-    stopTouchInertia();
-  };
-
   const edgeDirection = (sourceDocument: Document, clientX: number): PageTurnDirection | null => {
     const frame = sourceDocument.defaultView?.frameElement;
     const frameLeft = frame?.nodeType === Node.ELEMENT_NODE
@@ -246,39 +224,6 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (x <= rect.width * TOUCH_EDGE_RATIO) return "left";
     if (x >= rect.width * (1 - TOUCH_EDGE_RATIO)) return "right";
     return null;
-  };
-
-  const stepTouchInertia = (time: number) => {
-    if (options.getFlow() !== "scrolled" || Math.abs(inertiaVelocity) < TOUCH_INERTIA_STOP_VELOCITY) {
-      stopTouchInertia();
-      return;
-    }
-    const elapsed = inertiaLastTime ? Math.min(32, time - inertiaLastTime) : 16;
-    inertiaLastTime = time;
-    const metrics = getSectionScrollMetrics();
-    if (!metrics) {
-      stopTouchInertia();
-      return;
-    }
-    const direction = Math.sign(inertiaVelocity);
-    const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
-    if (remaining <= SECTION_EDGE_EPSILON) {
-      signalScrollEdge(direction);
-      stopTouchInertia();
-      return;
-    }
-    const delta = inertiaVelocity * elapsed;
-    options.getNavigation()?.scrollBy(Math.sign(delta) * Math.min(Math.abs(delta), remaining));
-    inertiaVelocity *= Math.exp(-elapsed / TOUCH_INERTIA_TIME_CONSTANT_MS);
-    inertiaFrame = window.requestAnimationFrame(stepTouchInertia);
-  };
-
-  const startTouchInertia = (velocity: number) => {
-    stopTouchInertia();
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      || Math.abs(velocity) < TOUCH_INERTIA_MIN_VELOCITY) return;
-    inertiaVelocity = Math.max(-TOUCH_INERTIA_MAX_VELOCITY, Math.min(TOUCH_INERTIA_MAX_VELOCITY, velocity));
-    inertiaFrame = window.requestAnimationFrame(stepTouchInertia);
   };
 
   const bindDragGesture = (target: EventTarget, sourceDocument: Document) => {
@@ -303,7 +248,7 @@ export function createViewerInput(options: ViewerInputOptions) {
           return;
         }
         active = true;
-        stopTouchInertia();
+        inertia.stop();
         if (event.pointerType === "touch") {
           longPressTimer = window.setTimeout(() => {
             if (!state.intentional) selecting = true;
@@ -335,7 +280,7 @@ export function createViewerInput(options: ViewerInputOptions) {
           const velocityX = -state.direction[0] * state.velocity[0];
           const velocityY = -state.direction[1] * state.velocity[1];
           if (options.getFlow() === "paginated") options.getView()?.renderer?.settle?.(velocityX, velocityY);
-          else startTouchInertia(velocityY);
+          else inertia.start(velocityY);
         }
         return;
       }
@@ -366,16 +311,18 @@ export function createViewerInput(options: ViewerInputOptions) {
     let swipeConsumed = false;
     const stopListening = wheel.on("wheel", (state) => {
       if (state.isStart) {
+        inertia.stop();
         activeWheelTargets.add(targetDocument);
         swipeConsumed = false;
-        if (!wheelBoundaryInFlight && wheelBoundaryTimer === undefined) wheelBoundaryConsumed = false;
+        if (!wheelBoundaryInFlight) wheelBoundaryConsumed = false;
       }
       if (state.isEnding || state.isMomentumCancel) {
         activeWheelTargets.delete(targetDocument);
         swipeConsumed = false;
-        if (!activeWheelTargets.size && !wheelBoundaryInFlight && wheelBoundaryTimer === undefined) {
+        if (!activeWheelTargets.size && !wheelBoundaryInFlight) {
           wheelBoundaryConsumed = false;
         }
+        if (state.isMomentumCancel) inertia.stop();
         return;
       }
 
@@ -405,19 +352,12 @@ export function createViewerInput(options: ViewerInputOptions) {
       const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
       const direction = Math.sign(delta);
       if (!direction) return;
-      if (wheelBoundaryTimer !== undefined && direction !== wheelBoundaryDirection) {
-        clearWheelBoundary();
-        wheelBoundaryConsumed = false;
-      }
-      stopTouchInertia();
       event.preventDefault();
-      const isDiscreteWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
-        || Math.abs(delta) >= WHEEL_DISCRETE_DELTA_THRESHOLD_PX;
-      if (isDiscreteWheel) {
-        scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
-      } else {
-        scrollWheelBy(delta * WHEEL_SCROLL_DISTANCE_RATIO);
-      }
+      if (state.isMomentum) inertia.stop();
+      const coarse = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
+        || Math.abs(delta) >= COARSE_WHEEL_DELTA_PX;
+      if (!state.isMomentum && coarse) inertia.pushDistance(delta);
+      else scrollWheelBy(delta);
     });
     const stopObserving = wheel.observe(targetDocument);
     return () => {
@@ -436,7 +376,6 @@ export function createViewerInput(options: ViewerInputOptions) {
       targetDocument.head?.append(touchStyle);
     }
     targetDocument.addEventListener("keydown", handleKeyDown);
-    targetDocument.defaultView?.addEventListener("blur", handleBlur);
     const stopDrag = targetDocument === document
       ? () => {}
       : bindDragGesture(targetDocument, targetDocument);
@@ -445,7 +384,6 @@ export function createViewerInput(options: ViewerInputOptions) {
       stopDrag();
       stopWheel();
       targetDocument.removeEventListener("keydown", handleKeyDown);
-      targetDocument.defaultView?.removeEventListener("blur", handleBlur);
       touchStyle?.remove();
     });
   };
@@ -481,7 +419,7 @@ export function createViewerInput(options: ViewerInputOptions) {
   return {
     bindReaderView,
     destroy: () => {
-      stopTouchInertia();
+      inertia.stop();
       activeWheelTargets.clear();
       clearWheelBoundary();
       bindings.forEach((_, view) => unbindReaderView(view));

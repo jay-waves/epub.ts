@@ -51,9 +51,14 @@ export function createBookInfo({ book, sourceLabel }: BookInfoSource): BookInfo 
       ["Identifier", formatMetadataValue(metadata?.identifier)],
       ["Subject", formatMetadataValue(metadata?.subject)],
       ["Source", sourcePath],
-      ["epub.ts", `v${__EPUB_TS_VERSION__} · ${__EPUB_TS_BUILD_TIME__}`],
+      ["epub.ts", `v${__EPUB_TS_VERSION__} · ${formatBuildTime(__EPUB_TS_BUILD_TIME__)}`],
     ]),
   };
+}
+
+function formatBuildTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function compactRows(rows: Array<readonly [label: string, value: string] | null>) {
