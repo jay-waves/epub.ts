@@ -3,6 +3,7 @@ import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button, Tooltip } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
+import type { LucideIcon } from "lucide-react";
 
 import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Save, Scroll, Search, Info, TableOfContents } from "lucide-react";
 
@@ -70,7 +71,7 @@ function getDockItemLabel(action: DockAction, fallback: string, dockState: DockU
   return fallback;
 }
 
-function getDockItemIcon(action: DockAction, fallback: typeof BookOpen, dockState: DockUpdateDetail) {
+function getDockItemIcon(action: DockAction, fallback: LucideIcon, dockState: DockUpdateDetail) {
   if (action === "toggle-flow") return dockState.flowActive ? BookOpen : Scroll;
   return fallback;
 }

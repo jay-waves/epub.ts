@@ -94,7 +94,7 @@ export type SearchUpdateDetail = {
   visible: boolean;
 };
 
-export type ProgressUpdateDetail = {
+type ProgressUpdateDetail = {
   fraction: number;
   index?: number;
   reset?: boolean;
@@ -146,10 +146,11 @@ export function emitViewerEvent<EventName extends keyof ViewerEventDetailMap>(
 export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(
   eventName: EventName,
   handler: (detail: ViewerEventDetailMap[EventName]) => void,
+  options?: AddEventListenerOptions,
 ) {
   const listener = (event: Event) => {
     handler((event as CustomEvent<ViewerEventDetailMap[EventName]>).detail);
   };
-  viewerEvents.addEventListener(eventName, listener);
-  return () => viewerEvents.removeEventListener(eventName, listener);
+  viewerEvents.addEventListener(eventName, listener, options);
+  return () => viewerEvents.removeEventListener(eventName, listener, options);
 }

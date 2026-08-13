@@ -6,14 +6,14 @@ export type TocItem = {
   subitems?: TocItem[];
 };
 
-export type BookMetadata = {
+type BookMetadata = {
   altIdentifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>;
   title?: string | Record<string, string>;
   author?: string | { name?: string | Record<string, string> } | Array<string | { name?: string | Record<string, string> }>;
   contributor?: unknown;
   description?: unknown;
   identifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>;
-  language?: unknown;
+  language?: string | string[];
   modified?: unknown;
   publisher?: unknown;
   published?: unknown;
@@ -43,7 +43,6 @@ export type Book = {
   isExternal?: (href: string) => boolean;
   landmarks?: Array<{ href?: string; type: string[] }>;
   loadText?: (path: string) => Promise<string | null>;
-  media?: { activeClass?: string; playbackActiveClass?: string };
   metadata?: BookMetadata;
   pageList?: TocItem[];
   rendition?: { layout?: string; spread?: string; viewport?: unknown };
@@ -92,7 +91,7 @@ export type RawRelocateDetail = {
   size?: number;
 };
 
-export type ViewNavigation = {
+type ViewNavigation = {
   go(target: string, options?: { select?: boolean }): Promise<Resolved>;
   label(index: number): string;
   resolve(target: string): Resolved | undefined;
@@ -104,9 +103,6 @@ export type Annotation = {
   [key: string]: unknown;
 };
 
-export type AnnotationDrawOptions = OverlayDrawOptions;
-export type AnnotationDraw = OverlayDraw;
-
 export type Decoration = {
   draw: OverlayDraw;
   drawOptions?: OverlayDrawOptions;
@@ -114,7 +110,7 @@ export type Decoration = {
   target: string | Anchor;
 };
 
-export type ViewEvents<Item extends Annotation = Annotation> = {
+type ViewEvents<Item extends Annotation = Annotation> = {
   "create-overlay": { index: number };
   "draw-annotation": {
     annotation: Item;

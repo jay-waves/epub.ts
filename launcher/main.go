@@ -152,7 +152,7 @@ func startDaemon() error {
 }
 
 func runDaemon() error {
-	app, err := New()
+	app, err := NewApp()
 	if err != nil {
 		return err
 	}

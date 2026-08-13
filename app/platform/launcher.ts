@@ -1,7 +1,7 @@
 import { get, set } from "idb-keyval";
 import { openExternal } from "./external";
 import { createBundledReaderProfile } from "./reader-profile";
-import type { ReaderHighlight } from "../reader/model";
+import type { ReaderHighlight } from "../epub/annotations";
 import type {
   EpubFileHandle,
   PlatformDocument,
@@ -18,10 +18,6 @@ type ConflictResponse = {
 
 type CopyResponse = {
   name: string;
-};
-
-type AnnotationPayload = {
-  highlights: readonly ReaderHighlight[];
 };
 
 function stripEtag(value: string | null) {
@@ -78,18 +74,19 @@ class EpubLauncherSession implements EpubFileHandle {
   async prepareWrite() {
     if (!this.version) await this.openDocument();
     return {
-      saveAnnotations: (highlights: readonly ReaderHighlight[]) => this.saveAnnotations({ highlights }),
+      saveAnnotations: (highlights: readonly ReaderHighlight[]) => this.saveAnnotations(highlights),
     };
   }
 
-  private async saveAnnotations(payload: AnnotationPayload) {
+  private async saveAnnotations(highlights: readonly ReaderHighlight[]) {
+    const body = JSON.stringify({ highlights });
     const response = await fetch(`${this.resourceUrl}/annotations`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         "If-Match": `"${this.version}"`,
       },
-      body: JSON.stringify(payload),
+      body,
     });
     if (response.ok) {
       const result = await response.json() as WriteResponse;
@@ -108,7 +105,7 @@ class EpubLauncherSession implements EpubFileHandle {
       const copyResponse = await fetch(`${this.resourceUrl}/annotations/copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body,
       });
       if (!copyResponse.ok) {
         throw new Error(`EPUB.ts could not save an EPUB conflict copy (${copyResponse.status}).`);

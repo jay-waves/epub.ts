@@ -14,35 +14,32 @@ export class Reader {
 
   readonly #abort = new AbortController();
   #disposed = false;
+  #opened = false;
 
-  private constructor(source: PlatformDocument, view: ReaderView) {
+  constructor(source: PlatformDocument, view: ReaderView) {
     this.source = source;
     this.view = view;
     this.signal = this.#abort.signal;
   }
 
-  static async open(
-    source: PlatformDocument,
-    view: ReaderView,
-    setup?: (reader: Reader) => void,
-  ) {
-    const reader = new Reader(source, view);
+  async open() {
+    if (this.#disposed) throw new DOMException("Reader disposed", "AbortError");
+    if (this.#opened) throw new Error("Reader already opened");
+    this.#opened = true;
     try {
-      setup?.(reader);
-      const book = await createBook(source.input);
-      if (reader.#disposed) {
+      const book = await createBook(this.source.input);
+      if (this.#disposed) {
         await book.destroy?.();
         throw new DOMException("Reader disposed", "AbortError");
       }
-      reader.book = book;
-      reader.navigation = await Navigation.create(reader.book);
-      reader.#throwIfDisposed();
-      await view.open(reader.book, reader.navigation);
-      reader.#throwIfDisposed();
-      reader.navigation.attach(view.renderer);
-      return reader;
+      this.book = book;
+      this.navigation = await Navigation.create(book);
+      this.#throwIfDisposed();
+      await this.view.open(book, this.navigation);
+      this.#throwIfDisposed();
+      this.navigation.attach(this.view.renderer);
     } catch (error) {
-      await reader.dispose();
+      await this.dispose();
       throw error;
     }
   }

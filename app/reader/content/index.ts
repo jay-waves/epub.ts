@@ -1,5 +1,5 @@
 import { loadDocumentFonts } from "../fonts";
-import { normalizeInlineText } from "../model";
+import { normalizeInlineText } from "../../text";
 import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";
 import { getEpubType, markReaderSemantics } from "./semantics";

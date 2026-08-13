@@ -1,17 +1,13 @@
-type RenderOptions = {
-  root: HTMLElement;
-};
-
-export function createRenderState(options: RenderOptions) {
+export function createRenderState(root: HTMLElement) {
   let pendingToken = 0;
 
   const begin = () => {
     pendingToken += 1;
-    options.root.classList.add("reader-frame--pending");
+    root.classList.add("reader-frame--pending");
   };
 
   const end = () => {
-    options.root.classList.remove("reader-frame--pending");
+    root.classList.remove("reader-frame--pending");
   };
 
   const revealAfterPaint = async () => {
@@ -35,7 +31,7 @@ export function createRenderState(options: RenderOptions) {
   return {
     begin,
     end,
-    isPending: () => options.root.classList.contains("reader-frame--pending"),
+    isPending: () => root.classList.contains("reader-frame--pending"),
     revealAfterPaint,
     run,
   };

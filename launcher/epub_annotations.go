@@ -56,9 +56,8 @@ func (resource *Resource) ReplaceEpubAnnotations(response http.ResponseWriter, r
 	}
 	if current != expected {
 		return nil, &Conflict{
-			Code:           "version_conflict",
-			Message:        "The EPUB changed on disk after it was opened.",
-			CurrentVersion: current,
+			Code:    "version_conflict",
+			Message: "The EPUB changed on disk after it was opened.",
 		}, nil
 	}
 
@@ -95,9 +94,8 @@ func (resource *Resource) ReplaceEpubAnnotations(response http.ResponseWriter, r
 	}
 	if rechecked != expected {
 		return nil, &Conflict{
-			Code:           "version_conflict",
-			Message:        "The EPUB changed on disk while its annotations were being saved.",
-			CurrentVersion: rechecked,
+			Code:    "version_conflict",
+			Message: "The EPUB changed on disk while its annotations were being saved.",
 		}, nil
 	}
 	if err := atomicReplace(tempPath, resource.path); err != nil {
@@ -114,7 +112,7 @@ func (resource *Resource) ReplaceEpubAnnotations(response http.ResponseWriter, r
 		resource.modTime = info.ModTime()
 	}
 	resource.mutex.Unlock()
-	return &WriteResult{Version: version, Name: filepath.Base(resource.path)}, nil, nil
+	return &WriteResult{Version: version}, nil, nil
 }
 
 func (resource *Resource) SaveEpubAnnotationsConflictCopy(response http.ResponseWriter, request *http.Request) (*CopyResult, error) {

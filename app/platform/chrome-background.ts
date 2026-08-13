@@ -95,10 +95,23 @@ async function recoverStartupEpubState() {
 
 async function startup() {
   await recoverStartupEpubState();
-  setTimeout(() => { void recoverStartupEpubState().catch(() => {}); }, RECOVERY_RETRY_DELAY_MS);
+  setTimeout(() => {
+    void recoverStartupEpubState().catch((error) => {
+      console.warn("Failed to retry EPUB interception recovery.", error);
+    });
+  }, RECOVERY_RETRY_DELAY_MS);
 }
 
-chrome.runtime.onStartup.addListener(() => { void startup().catch(() => {}); });
-chrome.runtime.onInstalled.addListener(() => { void installEpubRedirectRule().catch(() => {}); });
-chrome.downloads.onCreated.addListener(item => { void recoverEpubDownload(item).catch(() => {}); });
-chrome.action.onClicked.addListener(() => { void chrome.tabs.create({ url: VIEWER_URL }); });
+chrome.runtime.onStartup.addListener(() => {
+  void startup().catch((error) => console.warn("Failed to initialize EPUB interception.", error));
+});
+chrome.runtime.onInstalled.addListener(() => {
+  void installEpubRedirectRule().catch((error) => console.warn("Failed to install EPUB interception.", error));
+});
+chrome.downloads.onCreated.addListener((item) => {
+  void recoverEpubDownload(item).catch((error) => console.warn("Failed to recover an EPUB download.", error));
+});
+chrome.action.onClicked.addListener(() => {
+  void chrome.tabs.create({ url: VIEWER_URL })
+    .catch((error) => console.warn("Failed to open the EPUB viewer.", error));
+});

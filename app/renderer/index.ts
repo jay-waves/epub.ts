@@ -3,8 +3,6 @@ import type { View as BaseView } from "./view.js";
 export { Overlay } from "./overlay";
 export type { OverlayDraw, OverlayDrawOptions } from "./overlay";
 export type {
-  AnnotationDraw,
-  AnnotationDrawOptions,
   Annotation,
   Anchor,
   Book,
@@ -12,6 +10,7 @@ export type {
   Content,
   Decoration,
   RawRelocateDetail,
+  Resolved,
   TocItem,
   View,
 } from "./view.js";

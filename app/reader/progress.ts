@@ -2,7 +2,7 @@ import type { TocItem } from "../renderer/view.js";
 
 export type { TocItem } from "../renderer/view.js";
 
-export type Section = {
+type Section = {
   linear?: string;
   size?: number;
 };

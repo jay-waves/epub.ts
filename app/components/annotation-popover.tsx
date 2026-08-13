@@ -90,8 +90,9 @@ export function AnnotationPopover() {
             type="button"
             onClick={() => {
               if (!copyText) return;
-              void navigator.clipboard.writeText(copyText);
-              updateState((current) => ({ ...current, copied: true }));
+              void navigator.clipboard.writeText(copyText)
+                .then(() => updateState((current) => ({ ...current, copied: true })))
+                .catch((error) => console.warn("Failed to copy annotation.", error));
             }}
           >
             {state.copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}

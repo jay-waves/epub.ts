@@ -3,8 +3,7 @@ import type { Book, RawRelocateDetail, Renderer, Resolved } from "../renderer/vi
 import { SectionIndex, TocIndex } from "./progress";
 import type { SectionLocation, TocItem } from "./progress";
 
-export type Target = string | number | { fraction: number } | Resolved;
-export type { Anchor, Book, Resolved } from "../renderer/view.js";
+type Target = string | number | { fraction: number } | Resolved;
 
 type GoOptions = {
   select?: boolean;
@@ -66,12 +65,8 @@ export class Navigation {
     this.#renderer = renderer;
   }
 
-  detach() {
-    this.#renderer = undefined;
-  }
-
   close() {
-    this.detach();
+    this.#renderer = undefined;
   }
 
   cfi(index: number, range?: Range) {
@@ -198,27 +193,8 @@ export class Navigation {
     return this.#sections.fractions.map((fraction) => fraction + Number.EPSILON);
   }
 
-  progress(index: number, range?: Range) {
-    return {
-      pageItem: this.#pages?.get(index, range),
-      tocItem: this.#toc?.get(index, range),
-    };
-  }
-
   label(index: number) {
     return this.#toc?.get(index)?.label ?? "";
-  }
-
-  async tocItem(target: Target) {
-    const resolved = this.resolve(target);
-    const section = resolved && this.book.sections[resolved.index];
-    if (!resolved || !section?.createDocument) return undefined;
-    const doc = await section.createDocument();
-    const fragment = typeof resolved.anchor === "function" ? resolved.anchor(doc) : null;
-    const isRange = fragment && typeof fragment !== "number" && "startContainer" in fragment;
-    const range = isRange ? fragment as Range : doc.createRange();
-    if (fragment && typeof fragment !== "number" && !isRange) range.selectNodeContents(fragment);
-    return this.#toc?.get(resolved.index, range);
   }
 
   #getRenderer() {

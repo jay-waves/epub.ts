@@ -2,7 +2,7 @@
 	"name": "epub.ts",
 	"license": "MIT",
 	"private": true,
-	"version": "0.5.2",
+	"version": "0.5.3",
 	"type": "module",
 	"scripts": {
 		"build:chrome": "pnpm typecheck && node scripts/build-chrome.mjs",

@@ -13,13 +13,13 @@ export const READER_FONT_FAMILY = readerProfile.fontFamily;
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
 const READER_FONT_LOCAL_NAME = readerProfile.fontLocalName;
-export const READER_LATIN_FONT_URL = readerProfile.latinFontUrl;
-export const READER_LATIN_ITALIC_FONT_URL = readerProfile.latinItalicFontUrl;
-export const READER_MONO_FONT_URL = readerProfile.monoFontUrl;
-export const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
-export const READER_LATIN_ITALIC_FONT_FORMAT = readerProfile.latinItalicFontFormat;
-export const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
-export const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
+const READER_LATIN_FONT_URL = readerProfile.latinFontUrl;
+const READER_LATIN_ITALIC_FONT_URL = readerProfile.latinItalicFontUrl;
+const READER_MONO_FONT_URL = readerProfile.monoFontUrl;
+const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
+const READER_LATIN_ITALIC_FONT_FORMAT = readerProfile.latinItalicFontFormat;
+const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
+const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
 
 const READER_SERIF_STACK =
   `"${READER_LATIN_FONT_FAMILY}", "${READER_FONT_FAMILY}", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;

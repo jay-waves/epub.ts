@@ -7,9 +7,18 @@ import {
   ZipReader,
   ZipWriter,
 } from "@zip.js/zip.js";
-import type { ReaderHighlight } from "../reader/model";
 import type { Book } from "../renderer";
 import type { Entry, FileEntry } from "@zip.js/zip.js";
+
+export type ReaderHighlight = {
+  value: string;
+  color: string;
+  text?: string;
+  note?: string;
+  index?: number;
+  fraction?: number;
+  createdAt: number;
+};
 
 const EPUB_MIME_TYPE = "application/epub+zip";
 const EPUB_MIMETYPE_ENTRY = "mimetype";

@@ -1,4 +1,4 @@
-import { normalizeInlineText } from "../reader/model";
+import { normalizeInlineText } from "../text";
 import type { Book } from "../renderer";
 
 export function normalizeTocHref(href?: string) {
@@ -36,7 +36,9 @@ function collectIdentifiers(value: unknown, identifiers: string[] = []) {
   } else if (Array.isArray(value)) {
     value.forEach((item) => collectIdentifiers(item, identifiers));
   } else if (typeof value === "object") {
-    Object.values(value as Record<string, unknown>).forEach((item) => collectIdentifiers(item, identifiers));
+    const record = value as Record<string, unknown>;
+    if ("value" in record) collectIdentifiers(record.value, identifiers);
+    else Object.values(record).forEach((item) => collectIdentifiers(item, identifiers));
   }
   return identifiers;
 }

@@ -1,5 +1,54 @@
+import { platform } from "#platform";
+import {
+  READER_FONT_FAMILY,
+  READER_LATIN_FONT_FAMILY,
+  READER_MONO_FONT_FAMILY,
+} from "./book-styles";
+
 const documentFontLoads = new WeakMap<Document, Promise<void>>();
 const FONT_LOAD_TIMEOUT = 2_000;
+let readerFontsReady: Promise<void> | undefined;
+
+export function getReaderFontQueries(fontSize: number) {
+  return [
+    `${fontSize}px "${READER_FONT_FAMILY}"`,
+    `${fontSize}px "${READER_LATIN_FONT_FAMILY}"`,
+    `italic ${fontSize}px "${READER_LATIN_FONT_FAMILY}"`,
+    `${fontSize}px "${READER_MONO_FONT_FAMILY}"`,
+  ];
+}
+
+export function preloadReaderFonts() {
+  if (readerFontsReady) return readerFontsReady;
+
+  const profile = platform.readerProfile;
+  const fontLoads = [
+    new FontFace(
+      READER_LATIN_FONT_FAMILY,
+      `url("${profile.latinFontUrl}") format("${profile.latinFontFormat}")`,
+      { style: "normal", weight: "400 800" },
+    ).load(),
+    new FontFace(
+      READER_LATIN_FONT_FAMILY,
+      `url("${profile.latinItalicFontUrl}") format("${profile.latinItalicFontFormat}")`,
+      { style: "italic", weight: "400 800" },
+    ).load(),
+    new FontFace(
+      READER_MONO_FONT_FAMILY,
+      `url("${profile.monoFontUrl}") format("${profile.monoFontFormat}")`,
+      { style: "normal", weight: profile.monoFontWeight },
+    ).load(),
+  ];
+
+  readerFontsReady = Promise.all(fontLoads)
+    .then((fonts) => {
+      fonts.forEach((font) => document.fonts.add(font));
+    })
+    .catch((error) => {
+      console.warn("Failed to preload reader fonts.", error);
+    });
+  return readerFontsReady;
+}
 
 function waitAtMost(task: Promise<unknown>, timeout: number) {
   return new Promise<void>((resolve, reject) => {

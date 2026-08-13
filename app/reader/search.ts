@@ -2,7 +2,7 @@ import type { Anchor, Book, Content, OverlayDraw } from "../renderer";
 import type { ReaderView } from "./model";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import { getSavedHighlights } from "../viewer-storage";
-import { normalizeInlineText } from "./model";
+import { normalizeInlineText } from "../text";
 import type { Navigation } from "./navigation";
 
 const MAX_QUERY_LENGTH = 120;
@@ -151,7 +151,7 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
       if (id !== runId || signal.aborted) return;
 
       hits = highlights.flatMap((highlight, highlightIndex) => {
-        const text = normalizeInlineText(highlight.text?.trim() || highlight.value).toLocaleLowerCase();
+        const text = normalizeInlineText(highlight.text || highlight.value).toLocaleLowerCase();
         if (normalized && !text.includes(normalized)) return [];
         const resolved = navigation.resolve(highlight.value);
         return resolved ? [{
@@ -173,13 +173,16 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
   };
 
   const collectText = async (query: string) => {
-    const normalized = normalizeInlineText(query).slice(0, MAX_QUERY_LENGTH).trim();
+    const normalized = normalizeInlineText(query).slice(0, MAX_QUERY_LENGTH);
     const id = reset(true);
     if (!normalized) return;
 
     try {
       const { findText } = await import("./text-search");
-      const locale = typeof book.metadata?.language === "string" ? book.metadata.language : "en";
+      const language = book.metadata?.language;
+      const locale = typeof language === "string"
+        ? language
+        : Array.isArray(language) && typeof language[0] === "string" ? language[0] : "en";
       searchBook: for (const [index, section] of book.sections.entries()) {
         if (!section.createDocument) continue;
         const doc = await section.createDocument();

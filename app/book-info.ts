@@ -1,5 +1,4 @@
-import type { BookSection } from "./renderer";
-import type { ReaderView } from "./reader/model";
+import type { Book, BookSection } from "./renderer";
 
 export type BookInfo = {
   metadataRows: BookInfoRow[];
@@ -17,23 +16,22 @@ const WORDS_PER_MINUTE = 250;
 const CHARS_PER_WORD = 6;
 
 type BookInfoSource = {
-  book: ReaderView["book"];
+  book?: Book;
   sourceLabel: string;
-  sourceUrl: string;
 };
 
-export function createBookInfo({ book, sourceLabel, sourceUrl }: BookInfoSource): BookInfo {
+export function createBookInfo({ book, sourceLabel }: BookInfoSource): BookInfo {
   if (!book) return { metadataRows: [], statsRows: [], title: "Book information" };
 
   const metadata = book.metadata;
   const title = formatMetadataValue(metadata?.title) || "Untitled Book";
   const author = formatMetadataValue(metadata?.author);
-  const sectionCount = book.sections?.length ?? 0;
+  const sectionCount = book.sections.length;
   const estimatedWords = estimateWords(book.sections);
   const estimatedMinutes = estimatedWords
     ? Math.max(1, Math.ceil(estimatedWords / WORDS_PER_MINUTE))
     : null;
-  const sourcePath = sourceLabel || formatSourcePath(sourceUrl);
+  const sourcePath = sourceLabel;
 
   return {
     title,
@@ -58,27 +56,15 @@ export function createBookInfo({ book, sourceLabel, sourceUrl }: BookInfoSource)
   };
 }
 
-function formatSourcePath(sourceUrl: string) {
-  if (!sourceUrl) return "";
-
-  try {
-    const url = new URL(sourceUrl);
-    if (url.protocol !== "file:") return sourceUrl;
-    return decodeURIComponent(url.pathname).replace(/^\/([A-Za-z]:\/)/, "$1");
-  } catch {
-    return sourceUrl;
-  }
-}
-
 function compactRows(rows: Array<readonly [label: string, value: string] | null>) {
   return rows.flatMap((row) => row?.[1] ? [{ label: row[0], value: row[1] }] : []);
 }
 
-function estimateWords(sections?: BookSection[]) {
-  const totalSize = sections?.reduce(
+function estimateWords(sections: BookSection[]) {
+  const totalSize = sections.reduce(
     (sum, section) => sum + (Number.isFinite(section.size) ? Number(section.size) : 0),
     0,
-  ) ?? 0;
+  );
   return totalSize > 0 ? Math.max(1, Math.round(totalSize / CHARS_PER_WORD)) : null;
 }
 

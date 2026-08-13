@@ -8,6 +8,12 @@ import packageJson from "./package.json";
 const isWeb = process.env.VIEWER_PLATFORM === "web";
 const outputDir = isWeb ? "release/web" : "release/chrome-extension";
 const buildTime = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/u, " UTC");
+const iconFiles = ["icon.png", ...[16, 32, 48, 128].map((size) => `icon-${size}.png`)];
+const fontFiles = [
+  "EBGaramond-VariableFont_wght.ttf",
+  "EBGaramond-Italic-VariableFont_wght.ttf",
+  "Monaspace Argon Var.woff2",
+];
 
 export default defineConfig({
   base: "./",
@@ -29,29 +35,19 @@ export default defineConfig({
     react(),
     tailwindcss(),
     {
-      name: "viewer-icon-assets",
+      name: "viewer-assets",
       writeBundle() {
         const resolvedOutputDir = resolve(__dirname, outputDir);
-        const iconDir = resolve(__dirname, "assets");
-        cpSync(resolve(iconDir, "icon.png"), resolve(resolvedOutputDir, "icon.png"));
-        for (const size of [16, 32, 48, 128]) {
-          cpSync(resolve(iconDir, `icon-${size}.png`), resolve(resolvedOutputDir, `icon-${size}.png`));
+        for (const filename of iconFiles) {
+          cpSync(resolve(__dirname, "assets", filename), resolve(resolvedOutputDir, filename));
+        }
+        if (isWeb) {
+          for (const filename of fontFiles) {
+            cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
+          }
         }
       },
     },
-    ...(isWeb ? [{
-      name: "browser-viewer-fonts",
-      writeBundle() {
-        const resolvedOutputDir = resolve(__dirname, outputDir);
-        for (const filename of [
-          "EBGaramond-VariableFont_wght.ttf",
-          "EBGaramond-Italic-VariableFont_wght.ttf",
-          "Monaspace Argon Var.woff2",
-        ]) {
-          cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
-        }
-      },
-    }] : []),
   ],
   build: {
     outDir: outputDir,

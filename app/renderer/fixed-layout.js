@@ -1,7 +1,11 @@
-const parseViewport = str => str
-    ?.split(/[,;\s]/) // NOTE: technically, only the comma is valid
-    ?.filter(x => x)
-    ?.map(x => x.split('=').map(x => x.trim()))
+const parseViewport = str => {
+    const entries = str
+        ?.split(/[,;\s]/) // NOTE: technically, only the comma is valid
+        .filter(Boolean)
+        .map(part => part.split('=').map(value => value.trim()))
+        .filter(([name, value]) => name && value)
+    return entries?.length ? Object.fromEntries(entries) : null
+}
 
 const getViewport = (doc, viewport) => {
     // use `viewBox` for SVG
@@ -14,10 +18,13 @@ const getViewport = (doc, viewport) => {
     // get `viewport` `meta` element
     const meta = parseViewport(doc.querySelector('meta[name="viewport"]')
         ?.getAttribute('content'))
-    if (meta) return Object.fromEntries(meta)
+    if (meta) return meta
 
     // fallback to book's viewport
-    if (typeof viewport === 'string') return parseViewport(viewport)
+    if (typeof viewport === 'string') {
+        const parsed = parseViewport(viewport)
+        if (parsed) return parsed
+    }
     if (viewport?.width && viewport.height) return viewport
 
     // if no viewport (possibly with image directly in spine), get image size
@@ -269,7 +276,7 @@ export class FixedLayout extends HTMLElement {
         this.dispatchEvent(new CustomEvent('relocate', { detail:
             { reason, range: null, index: this.index, fraction: 0, size: 1 } }))
     }
-    getSpreadOf(section) {
+    #getSpreadOf(section) {
         const spreads = this.#spreads
         for (let index = 0; index < spreads.length; index++) {
             const { left, right, center } = spreads[index]
@@ -284,10 +291,12 @@ export class FixedLayout extends HTMLElement {
             if (section && !retained.has(section)) section.unload?.()
         }
     }
-    async goToSpread(index, side, reason) {
+    async #goToSpread(index, side, reason) {
         if (index < 0 || index > this.#spreads.length - 1) return
         if (index === this.#index) {
-            this.#render(side)
+            this.#side = side ?? this.#side
+            this.#render()
+            this.#reportLocation(reason)
             return
         }
         const previousIndex = this.#index
@@ -323,8 +332,8 @@ export class FixedLayout extends HTMLElement {
         const resolved = await target
         const section = book.sections[resolved.index]
         if (!section) return
-        const { index, side } = this.getSpreadOf(section)
-        await this.goToSpread(index, side)
+        const { index, side } = this.#getSpreadOf(section)
+        await this.#goToSpread(index, side)
         if (resolved.select && typeof resolved.anchor === 'function') {
             const content = this.getContents().find(item => item.index === resolved.index)
             const Range = content?.doc?.defaultView?.Range
@@ -338,11 +347,11 @@ export class FixedLayout extends HTMLElement {
     }
     async next() {
         const s = this.rtl ? this.#goLeft() : this.#goRight()
-        if (!s) return this.goToSpread(this.#index + 1, this.rtl ? 'right' : 'left', 'page')
+        if (!s) return this.#goToSpread(this.#index + 1, this.rtl ? 'right' : 'left', 'page')
     }
     async prev() {
         const s = this.rtl ? this.#goRight() : this.#goLeft()
-        if (!s) return this.goToSpread(this.#index - 1, this.rtl ? 'left' : 'right', 'page')
+        if (!s) return this.#goToSpread(this.#index - 1, this.rtl ? 'left' : 'right', 'page')
     }
     getContents() {
         return Array.from(this.#root.querySelectorAll('iframe')).flatMap(frame => {

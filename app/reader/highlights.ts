@@ -5,7 +5,7 @@ import {
   setSavedHighlights,
 } from "../viewer-storage";
 import type { HighlightContextAction } from "../viewer-events";
-import type { ReaderHighlight } from "./model";
+import type { ReaderHighlight } from "../epub/annotations";
 import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
 import type { ReaderView } from "./model";
 import { createTranslation } from "./translation";
@@ -126,6 +126,7 @@ function drawHighlightWithAnnotationBadge(
 
 export function createHighlights(options: HighlightOptions) {
   const contextEvents = new Map<EventTarget, AbortController>();
+  const viewerEvents = new AbortController();
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
   let pendingWrites: Promise<void> = Promise.resolve();
@@ -142,17 +143,15 @@ export function createHighlights(options: HighlightOptions) {
     return task;
   };
 
-  const viewerEventDisposers = [
-    listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
-      activeContext = null;
-    }),
-    listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
-      run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
-    }),
-    listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
-      run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
-    }),
-  ];
+  listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
+    activeContext = null;
+  }, { signal: viewerEvents.signal });
+  listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
+    run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
+  }, { signal: viewerEvents.signal });
+  listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
+    run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
+  }, { signal: viewerEvents.signal });
 
   const getContents = () => options.getView()?.renderer?.getContents?.() ?? [];
 
@@ -475,8 +474,6 @@ export function createHighlights(options: HighlightOptions) {
   const copyMedia = async (media: Element) => {
     try {
       await copyReaderMedia(media);
-    } catch (error) {
-      console.warn("Failed to copy reader media.", error);
     } finally {
       close();
     }
@@ -676,7 +673,7 @@ export function createHighlights(options: HighlightOptions) {
     destroy: () => {
       reset();
       translation.destroy();
-      viewerEventDisposers.forEach((dispose) => dispose());
+      viewerEvents.abort();
     },
     flushPendingWrites: () => pendingWrites,
     getAll: () => currentHighlights.slice(),

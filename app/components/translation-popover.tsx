@@ -66,8 +66,9 @@ export function TranslationPopover() {
             type="button"
             onClick={() => {
               if (!translatedText) return;
-              void navigator.clipboard.writeText(translatedText);
-              setState((current) => ({ ...current, copied: true }));
+              void navigator.clipboard.writeText(translatedText)
+                .then(() => setState((current) => ({ ...current, copied: true })))
+                .catch((error) => console.warn("Failed to copy translation.", error));
             }}
           >
             {state.copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}

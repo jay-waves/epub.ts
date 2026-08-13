@@ -28,13 +28,11 @@ type Resource struct {
 
 type WriteResult struct {
 	Version string `json:"version"`
-	Name    string `json:"name"`
 }
 
 type Conflict struct {
-	Code           string `json:"code"`
-	Message        string `json:"message"`
-	CurrentVersion string `json:"currentVersion"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 type CopyResult struct {

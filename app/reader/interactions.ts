@@ -1,5 +1,5 @@
 import type { PageTurnDirection, ReaderView } from "./model";
-import type { Resolved } from "./navigation";
+import type { Resolved } from "../renderer";
 
 const EDGE_RATIO = 0.22;
 const CLICK_DISTANCE = 4;

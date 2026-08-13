@@ -132,7 +132,7 @@ const toInnerString = parsed => parsed.parent
 
 const toString = parsed => wrap(toInnerString(parsed))
 
-export const collapse = (x, toEnd) => typeof x === 'string'
+const collapse = (x, toEnd) => typeof x === 'string'
     ? toString(collapse(parse(x), toEnd))
     : x.parent ? concatArrays(x.parent, x[toEnd ? 'end' : 'start']) : x
 
@@ -159,31 +159,6 @@ const buildRange = (from, to) => {
     // copy non-local paths from `from`
     const parent = from.slice(0, -1).concat([localParent])
     return toString({ parent, start: [localStart], end: [localEnd] })
-}
-
-export const compare = (a, b) => {
-    if (typeof a === 'string') a = parse(a)
-    if (typeof b === 'string') b = parse(b)
-    if (a.start || b.start) return compare(collapse(a), collapse(b))
-        || compare(collapse(a, true), collapse(b, true))
-
-    for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const p = a[i] ?? [], q = b[i] ?? []
-        const maxIndex = Math.max(p.length, q.length) - 1
-        for (let i = 0; i <= maxIndex; i++) {
-            const x = p[i], y = q[i]
-            if (!x) return -1
-            if (!y) return 1
-            if (x.index > y.index) return 1
-            if (x.index < y.index) return -1
-            if (i === maxIndex) {
-                // TODO: compare temporal & spatial offsets
-                if (x.offset > y.offset) return 1
-                if (x.offset < y.offset) return -1
-            }
-        }
-    }
-    return 0
 }
 
 const isTextNode = ({ nodeType }) => nodeType === 3 || nodeType === 4

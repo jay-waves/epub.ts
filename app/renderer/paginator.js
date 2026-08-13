@@ -319,7 +319,7 @@ class View {
             [vertical ? 'max-height' : 'max-width']: `${columnWidth}px`,
             'margin': 'auto',
         })
-        this.setImageSize()
+        this.#setImageSize()
         this.expand()
     }
     columnize({ width, height, gap, columnWidth }) {
@@ -351,10 +351,10 @@ class View {
             'max-width': 'none',
             'margin': '0',
         })
-        this.setImageSize()
+        this.#setImageSize()
         this.expand()
     }
-    setImageSize() {
+    #setImageSize() {
         const { width, height, margin } = this.#layout
         const vertical = this.#vertical
         const doc = this.document
@@ -861,7 +861,7 @@ export class Paginator extends HTMLElement {
         element[scrollProp] = Math.max(min, Math.min(max,
             element[scrollProp] + delta))
     }
-    snap(vx, vy) {
+    #snap(vx, vy) {
         const velocity = this.#vertical ? vy : vx
         const [offset, a, b] = this.#scrollBounds
         const { start, end, pages, size } = this
@@ -925,7 +925,7 @@ export class Paginator extends HTMLElement {
         // anything that doesn't work
         requestAnimationFrame(() => {
             if (globalThis.visualViewport.scale === 1)
-                this.snap(state.vx, state.vy)
+                this.#snap(state.vx, state.vy)
         })
     }
     #onTouchCancel() {
@@ -1089,7 +1089,7 @@ export class Paginator extends HTMLElement {
         this.#index = index
         await this.scrollToAnchor((src ? resolvedAnchor
             : typeof anchor === 'function' ? anchor(this.#view.document) : anchor) ?? 0, select)
-        if (hasFocus) this.focusView()
+        if (hasFocus) this.#focusView()
     }
     #canGoToIndex(index) {
         return index >= 0 && index <= this.sections.length - 1
@@ -1177,14 +1177,6 @@ export class Paginator extends HTMLElement {
     nextSection() {
         return this.goTo({ index: this.#adjacentIndex(1) })
     }
-    firstSection() {
-        const index = this.sections.findIndex(section => section.linear !== 'no')
-        return this.goTo({ index })
-    }
-    lastSection() {
-        const index = this.sections.findLastIndex(section => section.linear !== 'no')
-        return this.goTo({ index })
-    }
     getContents() {
         if (this.#view) return [{
             index: this.#index,
@@ -1220,7 +1212,7 @@ export class Paginator extends HTMLElement {
             if (this.#view?.document === doc) this.#scheduleRender()
         })
     }
-    focusView() {
+    #focusView() {
         this.#view.document.defaultView.focus()
     }
     destroy() {

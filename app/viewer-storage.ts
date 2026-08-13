@@ -1,8 +1,8 @@
 import type {
-  ReaderHighlight,
   ReaderSettings,
   ReadingPosition,
 } from "./reader/model";
+import type { ReaderHighlight } from "./epub/annotations";
 import type { Location } from "./reader/navigation";
 import { platform } from "#platform";
 

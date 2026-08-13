@@ -7,11 +7,9 @@ const NS = {
     OPF: 'http://www.idpf.org/2007/opf',
     EPUB: 'http://www.idpf.org/2007/ops',
     DC: 'http://purl.org/dc/elements/1.1/',
-    DCTERMS: 'http://purl.org/dc/terms/',
     ENC: 'http://www.w3.org/2001/04/xmlenc#',
     NCX: 'http://www.daisy.org/z3986/2005/ncx/',
     XLINK: 'http://www.w3.org/1999/xlink',
-    SMIL: 'http://www.w3.org/ns/SMIL',
 }
 
 const MIME = {
@@ -29,7 +27,6 @@ const PREFIX = {
     a11y: 'http://www.idpf.org/epub/vocab/package/a11y/#',
     dcterms: 'http://purl.org/dc/terms/',
     marc: 'http://id.loc.gov/vocabulary/',
-    media: 'http://www.idpf.org/epub/vocab/overlays/#',
     onix: 'http://www.editeur.org/ONIX/book/codelists/current.html#',
     rendition: 'http://www.idpf.org/vocab/rendition/#',
     schema: 'http://schema.org/',
@@ -257,8 +254,9 @@ const getMetadata = opf => {
     const belongsTo = Object.groupBy(properties['belongs-to-collection'] ?? [],
         x => prop(x, 'collection-type') === 'series' ? 'series' : 'collection')
     const mainTitle = dc.title?.find(x => prop(x, 'title-type') === 'main') ?? dc.title?.[0]
+    const identifier = getIdentifier(opf)
     const metadata = {
-        identifier: getIdentifier(opf),
+        identifier,
         title: makeLanguageMap(mainTitle),
         sortAs: makeLanguageMap(mainTitle?.props?.['file-as']?.[0])
             ?? mainTitle?.attrs?.['file-as']
@@ -275,12 +273,13 @@ const getMetadata = opf => {
         belongsTo: {
             collection: belongsTo.collection?.map(makeCollection),
             series: belongsTo.series?.map(makeCollection)
-            ?? legacyMeta?.['calibre:series'] ? {
+            ?? (legacyMeta?.['calibre:series'] ? {
                 name: legacyMeta?.['calibre:series'],
                 position: parseFloat(legacyMeta?.['calibre:series_index']),
-            } : null,
+            } : null),
         },
-        altIdentifier: dc.identifier?.map(makeAltIdentifier),
+        altIdentifier: dc.identifier?.map(makeAltIdentifier)
+            .filter(value => value !== identifier),
         source: dc.source?.map(makeAltIdentifier), // NOTE: not in webpub schema
         rights: one(dc.rights), // NOTE: not in webpub schema
         pageBreakSource: one(properties['pageBreakSource']), // NOTE: not in webpub schema
@@ -296,19 +295,13 @@ const getMetadata = opf => {
             if (metadata[key]) metadata[key].push(val)
             else metadata[key] = [val]
     tidy(metadata)
-    if (metadata.altIdentifier === metadata.identifier)
-        delete metadata.altIdentifier
 
     const rendition = {}
-    const media = {}
     for (const [key, val] of Object.entries(properties)) {
         if (key.startsWith(PREFIX.rendition))
             rendition[camel(key.replace(PREFIX.rendition, ''))] = one(val)
-        else if (key.startsWith(PREFIX.media))
-            media[camel(key.replace(PREFIX.media, ''))] = one(val)
     }
-    if (media.duration) media.duration = parseClock(media.duration)
-    return { metadata, rendition, media }
+    return { metadata, rendition }
 }
 
 const parseNav = (doc, resolve = f => f) => {
@@ -368,185 +361,6 @@ const parseNCX = (doc, resolve = f => f) => {
             label: getElementText($(el, 'navLabel')),
             list: parseList(el, 'navTarget'),
         })),
-    }
-}
-
-const parseClock = str => {
-    if (!str) return
-    const parts = str.split(':').map(x => parseFloat(x))
-    if (parts.length === 3) {
-        const [h, m, s] = parts
-        return h * 60 * 60 + m * 60 + s
-    }
-    if (parts.length === 2) {
-        const [m, s] = parts
-        return m * 60 + s
-    }
-    const [x, unit] = str.split(/(?=[^\d.])/)
-    const n = parseFloat(x)
-    const f = unit === 'h' ? 60 * 60
-        : unit === 'min' ? 60
-        : unit === 'ms' ? .001
-        : 1
-    return n * f
-}
-
-class MediaOverlay extends EventTarget {
-    #entries
-    #lastMediaOverlayItem
-    #sectionIndex
-    #audioIndex
-    #itemIndex
-    #audio
-    #volume = 1
-    #rate = 1
-    #state
-    constructor(book, loadXML) {
-        super()
-        this.book = book
-        this.loadXML = loadXML
-    }
-    async #loadSMIL(item) {
-        if (this.#lastMediaOverlayItem === item) return
-        const doc = await this.loadXML(item.href)
-        const resolve = href => href ? resolveURL(href, item.href) : null
-        const { $, $$$ } = childGetter(doc, NS.SMIL)
-        this.#audioIndex = -1
-        this.#itemIndex = -1
-        this.#entries = $$$(doc, 'par').reduce((arr, $par) => {
-            const text = resolve($($par, 'text')?.getAttribute('src'))
-            const $audio = $($par, 'audio')
-            if (!text || !$audio) return arr
-            const src = resolve($audio.getAttribute('src'))
-            const begin = parseClock($audio.getAttribute('clipBegin'))
-            const end = parseClock($audio.getAttribute('clipEnd'))
-            const last = arr.at(-1)
-            if (last?.src === src) last.items.push({ text, begin, end })
-            else arr.push({ src, items: [{ text, begin, end }] })
-            return arr
-        }, [])
-        this.#lastMediaOverlayItem = item
-    }
-    get #activeAudio() {
-        return this.#entries[this.#audioIndex]
-    }
-    get #activeItem() {
-        return this.#activeAudio?.items?.[this.#itemIndex]
-    }
-    #error(e) {
-        console.error(e)
-        this.dispatchEvent(new CustomEvent('error', { detail: e }))
-    }
-    #highlight() {
-        this.dispatchEvent(new CustomEvent('highlight', { detail: this.#activeItem }))
-    }
-    #unhighlight() {
-        this.dispatchEvent(new CustomEvent('unhighlight', { detail: this.#activeItem }))
-    }
-    async #play(audioIndex, itemIndex) {
-        this.#stop()
-        this.#audioIndex = audioIndex
-        this.#itemIndex = itemIndex
-        const src = this.#activeAudio?.src
-        if (!src || !this.#activeItem) return this.start(this.#sectionIndex + 1)
-
-        const url = URL.createObjectURL(await this.book.loadBlob(src))
-        const audio = new Audio(url)
-        this.#audio = audio
-        audio.volume = this.#volume
-        audio.playbackRate = this.#rate
-        audio.addEventListener('timeupdate', () => {
-            if (audio.paused) return
-            const t = audio.currentTime
-            const { items } = this.#activeAudio
-            if (t > this.#activeItem?.end) {
-                this.#unhighlight()
-                if (this.#itemIndex === items.length - 1) {
-                    this.#play(this.#audioIndex + 1, 0).catch(e => this.#error(e))
-                    return
-                }
-            }
-            const oldIndex = this.#itemIndex
-            while (items[this.#itemIndex + 1]?.begin <= t) this.#itemIndex++
-            if (this.#itemIndex !== oldIndex) this.#highlight()
-        })
-        audio.addEventListener('error', () =>
-            this.#error(new Error(`Failed to load ${src}`)))
-        audio.addEventListener('playing', () => this.#highlight())
-        audio.addEventListener('ended', () => {
-            this.#unhighlight()
-            URL.revokeObjectURL(url)
-            this.#audio = null
-            this.#play(audioIndex + 1, 0).catch(e => this.#error(e))
-        })
-        if (this.#state === 'paused') {
-            this.#highlight()
-            audio.currentTime = this.#activeItem.begin ?? 0
-        }
-        else audio.addEventListener('canplaythrough', () => {
-            // for some reason need to seek in `canplaythrough`
-            // or it won't play when skipping in WebKit
-            audio.currentTime = this.#activeItem.begin ?? 0
-            this.#state = 'playing'
-            audio.play().catch(e => this.#error(e))
-        }, { once: true })
-    }
-    async start(sectionIndex, filter = () => true) {
-        this.#audio?.pause()
-        const section = this.book.sections[sectionIndex]
-        const href = section?.id
-        if (!href) return
-
-        const { mediaOverlay } = section
-        if (!mediaOverlay) return this.start(sectionIndex + 1)
-        this.#sectionIndex = sectionIndex
-        await this.#loadSMIL(mediaOverlay)
-
-        for (let i = 0; i < this.#entries.length; i++) {
-            const { items } = this.#entries[i]
-            for (let j = 0; j < items.length; j++) {
-                if (items[j].text.split('#')[0] === href && filter(items[j], j, items))
-                    return this.#play(i, j).catch(e => this.#error(e))
-            }
-        }
-    }
-    pause() {
-        this.#state = 'paused'
-        this.#audio?.pause()
-    }
-    resume() {
-        this.#state = 'playing'
-        this.#audio?.play().catch(e => this.#error(e))
-    }
-    #stop() {
-        if (this.#audio) {
-            this.#audio.pause()
-            URL.revokeObjectURL(this.#audio.src)
-            this.#audio = null
-            this.#unhighlight()
-        }
-    }
-    stop() {
-        this.#state = 'stopped'
-        this.#stop()
-    }
-    prev() {
-        if (this.#itemIndex > 0) this.#play(this.#audioIndex, this.#itemIndex - 1)
-        else if (this.#audioIndex > 0) this.#play(this.#audioIndex - 1,
-            this.#entries[this.#audioIndex - 1].items.length - 1)
-        else if (this.#sectionIndex > 0)
-            this.start(this.#sectionIndex - 1, (_, i, items) => i === items.length - 1)
-    }
-    next() {
-        this.#play(this.#audioIndex, this.#itemIndex + 1)
-    }
-    setVolume(volume) {
-        this.#volume = volume
-        if (this.#audio) this.#audio.volume = volume
-    }
-    setRate(rate) {
-        this.#rate = rate
-        if (this.#audio) this.#audio.playbackRate = rate
     }
 }
 
@@ -1015,10 +829,9 @@ ${doc.querySelector('parsererror').innerText}`)
         }
         this.landmarks ??= this.resources.guide
 
-        const { metadata, rendition, media } = getMetadata(opf)
+        const { metadata, rendition } = getMetadata(opf)
         this.metadata = metadata
         this.rendition = rendition
-        this.media = media
         this.dir = this.resources.pageProgressionDirection
         const displayOptions = getDisplayOptions(
             await this.#loadXML('META-INF/com.apple.ibooks.display-options.xml')
@@ -1062,20 +875,6 @@ ${doc.querySelector('parsererror').innerText}`)
     }
     isExternal(uri) {
         return isExternal(uri)
-    }
-    async getCover() {
-        const cover = this.resources?.cover
-        return cover?.href
-            ? new Blob([await this.loadBlob(cover.href)], { type: cover.mediaType })
-            : null
-    }
-    async getCalibreBookmarks() {
-        const txt = await this.loadText('META-INF/calibre_bookmarks.txt')
-        const magic = 'encoding=json+base64:'
-        if (txt?.startsWith(magic)) {
-            const json = atob(txt.slice(magic.length))
-            return JSON.parse(json)
-        }
     }
     async destroy() {
         this.#loader?.destroy()

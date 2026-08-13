@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent } from "react";
+import type { KeyboardEvent } from "react";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 
 const HISTORY_DISMISS_MS = 8_000;
 const SECTION_JUMP_THRESHOLD = 2;
+const SEEK_KEYS = new Set([
+  "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp",
+]);
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -84,10 +87,6 @@ export function ReadingProgress() {
     originRef.current ??= progressRef.current;
   };
 
-  const isSeekKey = (key: string) => [
-    "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp",
-  ].includes(key);
-
   const returnToHistory = () => {
     if (history == null) return;
     const target = history;
@@ -112,11 +111,11 @@ export function ReadingProgress() {
             if (event.key === "Escape" && history != null) {
               event.preventDefault();
               returnToHistory();
-            } else if (isSeekKey(event.key)) {
+            } else if (SEEK_KEYS.has(event.key)) {
               rememberOrigin();
             }
           }}
-          onPointerDown={(_event: PointerEvent) => rememberOrigin()}
+          onPointerDown={rememberOrigin}
           onValueChange={([value = 0]) => setProgress(value / 100)}
           onValueCommit={([value = 0]) => seek(value / 100)}
           step={1}

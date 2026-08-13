@@ -8,9 +8,9 @@ import {
 import type { FileEntry } from "@zip.js/zip.js";
 import type { Book } from "../renderer/view.js";
 
-export class ResponseError extends Error {}
-export class NotFoundError extends Error {}
-export class UnsupportedTypeError extends Error {}
+class ResponseError extends Error {}
+class NotFoundError extends Error {}
+class UnsupportedTypeError extends Error {}
 
 async function fetchFile(url: string) {
   const response = await fetch(url);

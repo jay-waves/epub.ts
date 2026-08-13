@@ -42,7 +42,7 @@ type openResult struct {
 	URL string `json:"url"`
 }
 
-func New() (*App, error) {
+func NewApp() (*App, error) {
 	registry, err := OpenRegistry()
 	if err != nil {
 		return nil, err
