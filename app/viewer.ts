@@ -53,6 +53,7 @@ import { Reader } from "./reader/lifecycle";
 import { getReaderFontQueries, preloadReaderFonts } from "./reader/fonts";
 import { platform } from "#platform";
 import type { PlatformDocument } from "./platform/types";
+import { SerialTaskQueue } from "./async-tasks";
 import "./viewer.css";
 
 type ViewerRuntime = {
@@ -154,8 +155,7 @@ function ensureViewerInput() {
     getNavigation,
     getFlow: () => readerSettings.flow,
     canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
-    beforeSectionTurn: handleBeforeSectionTurn,
-    afterSectionTurn: handleAfterSectionTurn,
+    onChapterBoundary: showChapterBoundaryPending,
     onScrollEdge: showScrollEdgeFeedback,
     openSearch,
     closeSearch: clearSearchState,
@@ -184,56 +184,8 @@ function emitBookInfoUpdate() {
   );
 }
 
-function getCurrentScrolledSectionAnchor() {
-  if (readerSettings.flow !== "scrolled") return null;
-
-  const renderer = getView()?.renderer;
-  const { start, viewSize } = renderer ?? {};
-  if (typeof start !== "number" || typeof viewSize !== "number" || viewSize <= 0) return null;
-
-  return Math.min(1, Math.max(0, start / viewSize));
-}
-
-function saveCurrentScrolledSectionProgress() {
-  if (session.scrolledSectionIndex == null) return;
-
-  const anchor = getCurrentScrolledSectionAnchor();
-  if (anchor == null) return;
-
-  session.scrolledSectionProgress.set(session.scrolledSectionIndex, anchor);
-}
-
-function handleBeforeSectionTurn() {
-  saveCurrentScrolledSectionProgress();
-  session.restoreScrollPending = readerSettings.flow === "scrolled";
-  renderState.begin();
-}
-
-function handleAfterSectionTurn() {
-  void renderState.revealAfterPaint();
-}
-
-function restoreScrolledSectionProgress(sectionIndex: number | undefined) {
-  if (!session.restoreScrollPending || readerSettings.flow !== "scrolled" || typeof sectionIndex !== "number") {
-    session.restoreScrollPending = false;
-    return;
-  }
-
-  const anchor = session.scrolledSectionProgress.get(sectionIndex);
-  session.restoreScrollPending = false;
-  if (typeof anchor !== "number") return;
-
-  requestAnimationFrame(() => {
-    if (readerSettings.flow !== "scrolled" || session.scrolledSectionIndex !== sectionIndex) return;
-
-    void getNavigation()?.scrollTo(anchor)?.catch((error) => {
-      console.warn("Failed to restore section reading progress.", error);
-    });
-  });
-}
-
 const POSITION_SAVE_DELAY_MS = 350;
-let activePositionSave = Promise.resolve();
+const positionWrites = new SerialTaskQueue();
 let pendingPosition: { bookKey: string; detail: Location } | undefined;
 let positionSaveTimer: number | undefined;
 
@@ -248,12 +200,11 @@ async function persistReadingPosition(bookKey: string, detail: Location) {
 function flushPositionSave() {
   window.clearTimeout(positionSaveTimer);
   positionSaveTimer = undefined;
-  if (!pendingPosition) return activePositionSave;
+  if (!pendingPosition) return positionWrites.idle();
 
   const { bookKey, detail } = pendingPosition;
   pendingPosition = undefined;
-  activePositionSave = activePositionSave.then(() => persistReadingPosition(bookKey, detail));
-  return activePositionSave;
+  return positionWrites.add(() => persistReadingPosition(bookKey, detail));
 }
 
 function queuePositionSave(detail: Location) {
@@ -273,9 +224,6 @@ function wireReaderEvents(reader: Reader) {
       highlightState.bindContextTargets();
     }
   }, listenerOptions);
-  view.addEventListener("unload", (event) => {
-    highlightState.unbindContextDocument(event.detail.doc);
-  }, listenerOptions);
   view.addEventListener("relocate", (event) => {
     const detail = reader.navigation?.location(event.detail);
     if (!detail) return;
@@ -292,9 +240,6 @@ function wireReaderEvents(reader: Reader) {
       index: sectionIndex,
     });
     queuePositionSave(detail);
-    const previousSectionIndex = session.scrolledSectionIndex;
-    session.scrolledSectionIndex = typeof sectionIndex === "number" ? sectionIndex : null;
-    if (sectionIndex !== previousSectionIndex) restoreScrolledSectionProgress(sectionIndex);
   }, listenerOptions);
 
   view.addEventListener("create-overlay", (event) => {
@@ -469,6 +414,17 @@ function showScrollEdgeFeedback(direction: number) {
   }, 360);
 }
 
+function showChapterBoundaryPending(direction: number, pending: boolean) {
+  const ownClass = direction < 0
+    ? "reader-frame--chapter-loading-top"
+    : "reader-frame--chapter-loading-bottom";
+  const otherClass = direction < 0
+    ? "reader-frame--chapter-loading-bottom"
+    : "reader-frame--chapter-loading-top";
+  readerRoot.classList.remove(otherClass);
+  readerRoot.classList.toggle(ownClass, pending);
+}
+
 async function restoreSavedPosition(navigation: Navigation, savedPosition?: ReadingPosition) {
   session.restoring = true;
   try {
@@ -495,12 +451,10 @@ async function restoreSavedPosition(navigation: Navigation, savedPosition?: Read
   }
 }
 
-let openBookTask = Promise.resolve();
+const bookOpens = new SerialTaskQueue();
 
 function openBook(platformDocument: PlatformDocument) {
-  const task = openBookTask.then(() => replaceBook(platformDocument));
-  openBookTask = task.catch(() => undefined);
-  return task;
+  return bookOpens.add(() => replaceBook(platformDocument));
 }
 
 async function replaceBook(platformDocument: PlatformDocument) {

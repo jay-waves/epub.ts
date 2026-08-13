@@ -5,9 +5,10 @@ import type {
 import type { ReaderHighlight } from "./epub/annotations";
 import type { Location } from "./reader/navigation";
 import { platform } from "#platform";
+import { SerialTaskQueue } from "./async-tasks";
 
-const queuePositionWrite = createWriteQueue();
-const queueHighlightAccess = createWriteQueue();
+const positionWrites = new SerialTaskQueue();
+const highlightAccess = new SerialTaskQueue();
 
 const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
 const getBookHighlightsKey = (bookKey: string) => `reading-highlights:${bookKey}`;
@@ -16,7 +17,7 @@ function updateBookPosition(
   bookKey: string,
   update: (previous: ReadingPosition | undefined) => ReadingPosition,
 ) {
-  return queuePositionWrite(async () => {
+  return positionWrites.add(async () => {
     await platform.writeViewerMetadata(getBookPositionKey(bookKey), update(await getSavedPosition(bookKey)));
   });
 }
@@ -48,21 +49,11 @@ export async function saveReaderSettings(bookKey: string, settings: ReaderSettin
 
 export async function getSavedHighlights(bookKey: string) {
   if (!bookKey) return [];
-  return queueHighlightAccess(async () =>
+  return highlightAccess.add(async () =>
     (await platform.readViewerMetadata<ReaderHighlight[]>(getBookHighlightsKey(bookKey))) ?? []);
 }
 
 export async function setSavedHighlights(bookKey: string, bookHighlights: ReaderHighlight[]) {
   if (!bookKey) return;
-  await queueHighlightAccess(() => platform.writeViewerMetadata(getBookHighlightsKey(bookKey), bookHighlights));
-}
-
-function createWriteQueue() {
-  let pending = Promise.resolve();
-
-  return <Result>(write: () => Promise<Result>) => {
-    const result = pending.then(write);
-    pending = result.then(() => undefined, () => undefined);
-    return result;
-  };
+  await highlightAccess.add(() => platform.writeViewerMetadata(getBookHighlightsKey(bookKey), bookHighlights));
 }

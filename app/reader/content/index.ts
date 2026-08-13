@@ -87,6 +87,7 @@ function getFootnoteTargets(doc: Document) {
         `li[epub\\:type~="rearnote"]`,
         `li[role~="doc-footnote"]`,
         `li[role~="doc-endnote"]`,
+        `[data-reader-role~="footnote"]`,
       ].join(","),
     ),
   );

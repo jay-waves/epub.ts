@@ -1,6 +1,7 @@
 const EPUB_NAMESPACE = "http://www.idpf.org/2007/ops";
 const processedDocuments = new WeakSet<Document>();
 const MEDIA_PARENT_TAGS = new Set(["a", "div", "p", "figure", "section", "article", "aside", "li"]);
+const NOTE_CONTAINER_TAGS = new Set(["aside", "details", "section", "article", "div", "li"]);
 
 const EPUB_ROLE_TYPES = {
   caption: new Set(["caption", "credit"]),
@@ -38,14 +39,20 @@ function classifyElement(element: Element) {
   if (element.getAttribute("role")?.split(/\s+/u).includes("heading")) roles.add("heading");
   if (hasEpubRole(epubTypes, "caption")) roles.add("caption");
   if (hasEpubRole(epubTypes, "heading")) roles.add("heading");
-  if (hasEpubRole(epubTypes, "note")) roles.add("note");
+  if (hasEpubRole(epubTypes, "note")) {
+    roles.add("note");
+    if (["footnote", "endnote", "rearnote"].some((type) => epubTypes.has(type))) roles.add("footnote");
+  }
   if (hasParagraphClass(classTokens)) roles.add("paragraph");
 
   const classRoles = Object.entries(CLASS_ROLE_FRAGMENTS)
     .filter(([, fragments]) => fragments.some((fragment) => classTokens.has(fragment)))
     .map(([role]) => role);
   if (classRoles.includes("caption")) roles.add("caption");
-  if (classRoles.includes("note")) roles.add("note");
+  // Class names such as `_idFootnoteLink` describe an inline reference, not a
+  // note container. Only block-like elements participate in this heuristic.
+  if (classRoles.includes("note") && NOTE_CONTAINER_TAGS.has(tagName)) roles.add("note");
+  if (looksLikeFootnoteEntry(element, tagName, classTokens)) roles.add("footnote");
   for (const role of classRoles) {
     if (role === "caption" || role === "note") continue;
     if (isSuppressedClassRole(roles, role)) continue;
@@ -56,6 +63,13 @@ function classifyElement(element: Element) {
   if (tagName === "img" || tagName === "video" || (tagName === "svg" && !element.closest("mjx-container"))) {
     markMediaBlock(element);
   }
+}
+
+function looksLikeFootnoteEntry(element: Element, tagName: string, classTokens: Set<string>) {
+  if (!NOTE_CONTAINER_TAGS.has(tagName)) return false;
+  if (classTokens.has("footnote") || classTokens.has("endnote") || classTokens.has("rearnote")) return true;
+  if (tagName !== "aside" || !classTokens.has("note") || !classTokens.has("entry")) return false;
+  return Boolean(element.querySelector('[id*="footnote" i], [id^="fn" i], [id*="-fn-" i]'));
 }
 
 function isSuppressedClassRole(roles: Set<string>, role: string) {

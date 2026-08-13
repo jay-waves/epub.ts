@@ -11,6 +11,8 @@ import type { ReaderView } from "./model";
 import { createTranslation } from "./translation";
 import { copyReaderMedia } from "../media-clipboard";
 import type { Navigation } from "./navigation";
+import { observeRenderedDocuments } from "./documents";
+import { TaskTracker } from "../async-tasks";
 
 type PointerCoordinateSpace = "content" | "viewport";
 
@@ -125,11 +127,12 @@ function drawHighlightWithAnnotationBadge(
 }
 
 export function createHighlights(options: HighlightOptions) {
-  const contextEvents = new Map<EventTarget, AbortController>();
   const viewerEvents = new AbortController();
+  let contextView: ReaderView | null = null;
+  let stopContextDocuments: (() => void) | null = null;
   let activeContext: HighlightContext = null;
   let currentHighlights: ReaderHighlight[] = [];
-  let pendingWrites: Promise<void> = Promise.resolve();
+  const pendingWrites = new TaskTracker();
   const translation = createTranslation({
     modelPolicy: options.translationModelPolicy,
     openExternal: options.openExternal,
@@ -138,9 +141,7 @@ export function createHighlights(options: HighlightOptions) {
     void task.catch((error) => console.warn(message, error));
   };
   const track = <Result>(task: Promise<Result>) => {
-    const settled = task.then(() => undefined, () => undefined);
-    pendingWrites = Promise.all([pendingWrites, settled]).then(() => undefined);
-    return task;
+    return pendingWrites.track(task);
   };
 
   listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
@@ -333,16 +334,8 @@ export function createHighlights(options: HighlightOptions) {
     open({ highlight, pageX: point.x, pageY: point.y });
   };
 
-  const bindContextTargets = () => {
-    const contents = getContents();
-    for (const content of contents) {
+  const bindContextDocument = (content: Content & { doc: Document }, signal: AbortSignal) => {
       const { doc } = content;
-      if (!doc) continue;
-
-      if (!contextEvents.has(doc)) {
-        const events = new AbortController();
-        contextEvents.set(doc, events);
-        const { signal } = events;
         const dismissPopovers = () => {
           close();
           emitViewerEvent(VIEWER_EVENTS.translationClose);
@@ -368,12 +361,9 @@ export function createHighlights(options: HighlightOptions) {
           if (currentContent) openFromPointer(event, currentContent, "content");
         };
         doc.addEventListener("contextmenu", openContextMenu, { signal });
-      }
 
       const frameElement = doc.defaultView?.frameElement;
-      if (frameElement && !contextEvents.has(frameElement)) {
-        const events = new AbortController();
-        contextEvents.set(frameElement, events);
+      if (frameElement) {
         const openContextMenu = (event: Event) => {
           if (!(event instanceof MouseEvent)) return;
           event.preventDefault();
@@ -381,26 +371,27 @@ export function createHighlights(options: HighlightOptions) {
           const currentContent = findContentByFrame(frameElement);
           if (currentContent) openFromPointer(event, currentContent, "viewport");
         };
-        frameElement.addEventListener("contextmenu", openContextMenu, { signal: events.signal });
+        frameElement.addEventListener("contextmenu", openContextMenu, { signal });
       }
-    }
+      signal.addEventListener("abort", () => {
+        close();
+        emitViewerEvent(VIEWER_EVENTS.translationClose);
+        emitViewerEvent(VIEWER_EVENTS.annotationClose);
+      }, { once: true });
   };
 
-  const unbindContextDocument = (doc: Document) => {
-    close();
-    emitViewerEvent(VIEWER_EVENTS.translationClose);
-    emitViewerEvent(VIEWER_EVENTS.annotationClose);
-    const frameElement = doc.defaultView?.frameElement;
-    for (const target of [doc, frameElement]) {
-      if (!target) continue;
-      contextEvents.get(target)?.abort();
-      contextEvents.delete(target);
-    }
+  const bindContextTargets = () => {
+    const view = options.getView();
+    if (!view || view === contextView) return;
+    stopContextDocuments?.();
+    contextView = view;
+    stopContextDocuments = observeRenderedDocuments(view, bindContextDocument);
   };
 
   const unbindContextTargets = () => {
-    contextEvents.forEach((events) => events.abort());
-    contextEvents.clear();
+    stopContextDocuments?.();
+    stopContextDocuments = null;
+    contextView = null;
   };
 
   const drawAnnotation = (detail: {
@@ -675,12 +666,11 @@ export function createHighlights(options: HighlightOptions) {
       translation.destroy();
       viewerEvents.abort();
     },
-    flushPendingWrites: () => pendingWrites,
+    flushPendingWrites: () => pendingWrites.idle(),
     getAll: () => currentHighlights.slice(),
     handleContextAction,
     openFromAnnotation,
     reset,
     restore,
-    unbindContextDocument,
   };
 }

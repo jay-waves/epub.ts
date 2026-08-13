@@ -11,9 +11,6 @@ export function createBookSession() {
     href: "",
     progress: 0,
     restoring: false,
-    restoreScrollPending: false,
-    scrolledSectionIndex: null as number | null,
-    scrolledSectionProgress: new Map<number, number>(),
     tocItems: [] as TocItem[],
   };
 }

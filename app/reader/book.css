@@ -5,7 +5,7 @@
       --reader-list-paragraph-spacing: calc(var(--reader-paragraph-spacing) * 0.72);
       --reader-media-spacing: max(1em, calc(var(--reader-paragraph-spacing) * 1.15));
       --reader-small-font-size: calc(var(--reader-font-size) * 0.78);
-      --reader-footnote-font-size: calc(var(--reader-font-size) * 0.68);
+      --reader-footnote-font-size: calc(var(--reader-font-size) * 0.82);
       --reader-small-line-height: 1.4;
       --reader-font-serif: var(--reader-config-font-serif);
       --reader-font-sans: var(--reader-config-font-sans);
@@ -303,23 +303,25 @@
       font-size: var(--reader-list-font-size) !important;
       line-height: var(--reader-line-height) !important;
     }
-    :is(aside, details, [data-reader-role~="note"]),
-    :is(aside, details, [data-reader-role~="note"]) * {
+    :is(aside, details, [data-reader-role~="note"]):not([data-reader-role~="footnote"]),
+    :is(aside, details, [data-reader-role~="note"]):not([data-reader-role~="footnote"]) * {
 
-      font-size: var(--reader-small-font-size) !important;
+      font-size: calc(var(--reader-font-size) * 0.9) !important;
       line-height: var(--reader-small-line-height) !important;
 
       word-spacing: 0 !important;
     }
-    :is(aside, details, [data-reader-role~="note"]) {
-      margin-block: 1em !important;
-      padding: 0.85em 1em !important;
-      border: 1px solid var(--reader-border-color) !important;
-      border-radius: 0.35em !important;
-      background: var(--reader-panel-bg) !important;
-      opacity: 0.92 !important;
+    :is(aside, details, [data-reader-role~="note"]):not([data-reader-role~="footnote"]) {
+      margin-block: 0.65em !important;
+      padding-block: 0.08em !important;
+      padding-inline: 0.75em 0 !important;
+      border: 0 !important;
+      border-inline-start: 0.12em solid var(--reader-border-color) !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      opacity: 0.9 !important;
     }
-    :is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-footnote-target="true"]) {
+    :is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-role~="footnote"], [data-reader-footnote-target="true"]) {
       display: block !important;
       position: relative !important;
       margin-block: 0.55em !important;
@@ -355,7 +357,7 @@
       line-height: inherit !important;
       text-align: end !important;
     }
-    :is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-footnote-target="true"]) :is(p, div, span, a, small) {
+    :is(aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="rearnote"], aside[role~="doc-footnote"], aside[role~="doc-endnote"], li[epub|type~="footnote"], li[epub|type~="endnote"], li[epub|type~="rearnote"], li[role~="doc-footnote"], li[role~="doc-endnote"], [data-reader-role~="footnote"], [data-reader-footnote-target="true"]) :is(p, div, span, a, small) {
 
       color: var(--reader-muted-color) !important;
       -webkit-text-fill-color: var(--reader-muted-color) !important;

@@ -28,8 +28,10 @@ export class ChapterFlow<View> {
   add(index: number, view: View) {
     const existing = this.find(index);
     if (existing) return existing;
-    const entry = { index, view, start: this.extent, extent: 0 };
-    this.#entries.push(entry);
+    const entry = { index, view, start: 0, extent: 0 };
+    const position = this.#entries.findIndex((candidate) => candidate.index > index);
+    if (position < 0) this.#entries.push(entry);
+    else this.#entries.splice(position, 0, entry);
     return entry;
   }
 

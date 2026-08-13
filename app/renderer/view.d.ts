@@ -70,9 +70,7 @@ export type Renderer = HTMLElement & {
   end?: number;
   next: (distance?: number) => Promise<void>;
   removeAttribute(name: string): void;
-  nextSection?: () => Promise<void>;
   prev: (distance?: number) => Promise<void>;
-  prevSection?: () => Promise<void>;
   setAttribute(name: string, value: string): void;
   scrollToAnchor?: (anchor: number, select?: boolean) => Promise<void>;
   scrollBy?: (dx: number, dy: number) => void;

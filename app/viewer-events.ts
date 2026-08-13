@@ -1,5 +1,6 @@
 import type { TocItem } from "./renderer";
 import type { BookInfo } from "./book-info";
+import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
   highlightContextAction: "reader:highlight-context-action",
@@ -135,11 +136,45 @@ export type ViewerEventDetailMap = {
 };
 
 const viewerEvents = new EventTarget();
+const STATE_EVENTS = new Set<string>([
+  VIEWER_EVENTS.highlightContextClose,
+  VIEWER_EVENTS.highlightContextOpen,
+  VIEWER_EVENTS.annotationClose,
+  VIEWER_EVENTS.annotationOpen,
+  VIEWER_EVENTS.translationClose,
+  VIEWER_EVENTS.translationOpen,
+  VIEWER_EVENTS.translationUpdate,
+  VIEWER_EVENTS.dockUpdate,
+  VIEWER_EVENTS.documentOpen,
+  VIEWER_EVENTS.progressUpdate,
+  VIEWER_EVENTS.searchUpdate,
+  VIEWER_EVENTS.bookInfoOpen,
+  VIEWER_EVENTS.bookInfoUpdate,
+  VIEWER_EVENTS.tocOpen,
+  VIEWER_EVENTS.tocUpdate,
+]);
+
+type ViewerStateUpdate = { detail: unknown; revision: number };
+type ViewerState = { updates: Record<string, ViewerStateUpdate | undefined> };
+
+export const viewerStore = createStore<ViewerState>(() => ({ updates: {} }));
 
 export function emitViewerEvent<EventName extends keyof ViewerEventDetailMap>(
   eventName: EventName,
   ...detail: ViewerEventDetailMap[EventName] extends void ? [] : [ViewerEventDetailMap[EventName]]
 ) {
+  if (STATE_EVENTS.has(eventName)) {
+    viewerStore.setState((state) => ({
+      updates: {
+        ...state.updates,
+        [eventName]: {
+          detail: detail[0],
+          revision: (state.updates[eventName]?.revision ?? 0) + 1,
+        },
+      },
+    }));
+    return;
+  }
   viewerEvents.dispatchEvent(new CustomEvent(eventName, { detail: detail[0] }));
 }
 
@@ -148,6 +183,18 @@ export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(
   handler: (detail: ViewerEventDetailMap[EventName]) => void,
   options?: AddEventListenerOptions,
 ) {
+  if (STATE_EVENTS.has(eventName)) {
+    if (options?.signal?.aborted) return () => {};
+    let revision = viewerStore.getState().updates[eventName]?.revision ?? 0;
+    const unsubscribe = viewerStore.subscribe((state) => {
+      const update = state.updates[eventName];
+      if (!update || update.revision === revision) return;
+      revision = update.revision;
+      handler(update.detail as ViewerEventDetailMap[EventName]);
+    });
+    options?.signal?.addEventListener("abort", unsubscribe, { once: true });
+    return unsubscribe;
+  }
   const listener = (event: Event) => {
     handler((event as CustomEvent<ViewerEventDetailMap[EventName]>).detail);
   };

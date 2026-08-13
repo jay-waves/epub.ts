@@ -1,4 +1,8 @@
 import { ChapterFlow } from './chapter-flow.ts'
+import {
+    isAtBookEdge,
+    planViewportNavigation,
+} from './viewport-navigation.ts'
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -240,7 +244,8 @@ class View {
         this.#element.append(this.#iframe)
         Object.assign(this.#element.style, {
             boxSizing: 'content-box',
-            position: 'relative',
+            position: 'absolute',
+            visibility: 'hidden',
             overflow: 'hidden',
             flex: '0 0 auto',
             width: '100%', height: '100%',
@@ -529,6 +534,7 @@ export class Paginator extends HTMLElement {
     #footer
     #view
     #flow = new ChapterFlow()
+    #entryLoads = new Map()
     #vertical = false
     #rtl = false
     #margin = 0
@@ -543,7 +549,8 @@ export class Paginator extends HTMLElement {
     #scrollBounds
     #lastVisibleRange
     #renderFrame
-    #fillingSpread = false
+    #loadingChapters = false
+    #cacheFrame
     #leadingRemainder = 0
     #destroyed = false
     constructor() {
@@ -607,6 +614,7 @@ export class Paginator extends HTMLElement {
             overflow: hidden;
             scrollbar-width: none;
             -ms-overflow-style: none;
+            overflow-anchor: none;
         }
         #container::-webkit-scrollbar {
             width: 0;
@@ -769,8 +777,16 @@ export class Paginator extends HTMLElement {
             container: this,
             onExpand: () => {
                 if (this.#flow.entries.some(entry => entry.view === view)) {
+                    const activeEntry = this.#entryForView()
+                    const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
                     this.#layoutEntries()
-                    if (this.#view === view) this.#scrollToAnchor(this.#anchor)
+                    if (activeEntry) {
+                        const shift = this.#entryOffset(activeEntry) - oldOffset
+                        if (shift) {
+                            this.#container[this.scrollProp] += shift
+                            if (this.#scrollBounds) this.#scrollBounds[0] += shift
+                        }
+                    }
                 }
             },
         })
@@ -786,13 +802,26 @@ export class Paginator extends HTMLElement {
         if (this.#view === view) this.#view = null
     }
     #clearEntries() {
+        cancelAnimationFrame(this.#cacheFrame)
+        this.#cacheFrame = null
         for (const { index, view } of this.#flow.clear()) {
             this.#destroyView(view)
             this.sections[index]?.unload?.()
         }
         this.#leadingRemainder = 0
     }
-    async #loadEntry(index) {
+    #loadEntry(index) {
+        const existing = this.#flow.find(index)
+        if (existing) return Promise.resolve(existing)
+        const pending = this.#entryLoads.get(index)
+        if (pending) return pending
+        const load = this.#loadNewEntry(index).finally(() => {
+            if (this.#entryLoads.get(index) === load) this.#entryLoads.delete(index)
+        })
+        this.#entryLoads.set(index, load)
+        return load
+    }
+    async #loadNewEntry(index) {
         const section = this.sections[index]
         const view = this.#createView()
         const afterLoad = async doc => {
@@ -814,8 +843,19 @@ export class Paginator extends HTMLElement {
             section.unload?.()
             throw error
         }
-        view.compact = this.continuous
+        const activeEntry = this.#entryForView()
+        const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
+        view.compact = this.continuous && !this.scrolled
         const entry = this.#flow.add(index, view)
+        if (this.continuous) {
+            this.#layoutEntries()
+            if (activeEntry) {
+                const shift = this.#entryOffset(activeEntry) - oldOffset
+                this.#container[this.scrollProp] += shift
+                if (this.#scrollBounds) this.#scrollBounds[0] += shift
+            }
+        } else view.element.style.position = 'relative'
+        view.element.style.removeProperty('visibility')
         this.dispatchEvent(new CustomEvent('load', { detail: { doc: view.document, index } }))
         this.dispatchEvent(new CustomEvent('request-overlay', {
             detail: {
@@ -829,21 +869,25 @@ export class Paginator extends HTMLElement {
         if (!this.#flow.entries.length || !this.continuous) return
         if (this.scrolled) {
             const extent = this.#flow.layout(view => view.extent)
+            this.#track.style.display = 'flex'
+            this.#track.style.flexDirection = 'column'
             for (const entry of this.#flow.entries) {
                 entry.view.compact = false
                 const { style } = entry.view.element
-                style.position = 'absolute'
-                style.left = '0'
-                style.top = `${entry.start}px`
+                style.position = 'relative'
+                style.removeProperty('left')
+                style.removeProperty('top')
                 style.width = '100%'
-                style.removeProperty('height')
+                style.order = String(entry.index)
             }
             this.#track.style.width = '100%'
-            this.#track.style.height = `${extent}px`
+            this.#track.style.height = `${Math.max(extent, this.size)}px`
             return
         }
         const { columnCount, columnStep } = this.#flow.entries[0].view
         if (!columnStep) return
+        this.#track.style.removeProperty('display')
+        this.#track.style.removeProperty('flex-direction')
         const size = columnCount * columnStep
         const leading = size + this.#leadingRemainder
         let columnStart = 0
@@ -852,6 +896,7 @@ export class Paginator extends HTMLElement {
             entry.extent = entry.view.extent
             entry.view.compact = true
             const { style } = entry.view.element
+            style.removeProperty('order')
             style.position = 'absolute'
             style.left = this.#vertical ? '0' : `${leading + columnStart * columnStep}px`
             style.top = this.#vertical ? `${leading + columnStart * columnStep}px` : '0'
@@ -863,50 +908,52 @@ export class Paginator extends HTMLElement {
         this.#track.style[side] = `${pages * size}px`
         this.#track.style[otherSide] = '100%'
     }
-    async #fillTrailingSpread() {
-        if (this.#fillingSpread || !this.continuous || !this.#flow.entries.length) return
-        this.#fillingSpread = true
+    async #fillPaginatedSpread() {
+        if (this.#loadingChapters || !this.continuous || this.scrolled
+            || !this.#flow.entries.length) return
+        this.#loadingChapters = true
         try {
             const firstView = this.#flow.entries[0].view
             const { columnCount } = firstView
-            if (this.scrolled) {
-                if (this.#flow.entries.length < 2) {
-                    const index = this.#adjacentIndexFrom(this.#flow.last.index, 1)
-                    if (index != null) await this.#loadEntry(index)
-                }
-                this.#layoutEntries()
-                return
+            const active = this.#entryForView() ?? this.#flow.last
+            const nextIndex = this.#adjacentIndexFrom(active.index, 1)
+            const hasNext = nextIndex == null || Boolean(this.#flow.find(nextIndex))
+            if (columnCount > 1 && !hasNext && active.view.contentColumns % columnCount) {
+                const section = this.sections[nextIndex]
+                if (!this.sections[active.index]?.pageSpread && !section?.pageSpread)
+                    await this.#loadEntry(nextIndex)
             }
-            if (columnCount <= 1) return
-            const totalColumns = this.#flow.entries.reduce((sum, entry) => sum + entry.view.contentColumns, 0)
-            if (totalColumns % columnCount) {
-                const last = this.#flow.last
-                const index = this.#adjacentIndexFrom(last.index, 1)
-                const section = this.sections[index]
-                if (index != null && !this.sections[last.index]?.pageSpread && !section?.pageSpread)
-                    await this.#loadEntry(index)
-            }
-            this.#layoutEntries()
         } finally {
-            this.#fillingSpread = false
+            this.#loadingChapters = false
         }
     }
-    async #preloadNextSection() {
-        if (this.#fillingSpread || !this.continuous || !this.#flow.last) return
-        this.#fillingSpread = true
+    async #cacheAdjacentSections() {
+        if (!this.continuous) return
+        if (this.#loadingChapters) {
+            this.#scheduleAdjacentCache()
+            return
+        }
+        const activeEntry = this.#entryForView()
+        if (!activeEntry) return
+        this.#loadingChapters = true
         try {
-            for (let count = 0; count < 16; count++) {
-                const leading = this.scrolled ? 0 : this.size + this.#leadingRemainder
-                const boundary = leading + this.#flow.extent
-                if (boundary - this.end > this.size * 2) break
-                const index = this.#adjacentIndexFrom(this.#flow.last.index, 1)
-                if (index == null || this.#flow.find(index)) break
-                await this.#loadEntry(index)
-                this.#layoutEntries()
+            for (const dir of [-1, 1]) {
+                const index = this.#adjacentIndexFrom(activeEntry.index, dir)
+                if (index != null && !this.#flow.find(index)) await this.#loadEntry(index)
             }
         } finally {
-            this.#fillingSpread = false
+            this.#loadingChapters = false
         }
+    }
+    #scheduleAdjacentCache() {
+        if (!this.continuous || this.#cacheFrame) return
+        this.#cacheFrame = requestAnimationFrame(() => {
+            this.#cacheFrame = requestAnimationFrame(() => {
+                this.#cacheFrame = null
+                void this.#cacheAdjacentSections().catch(error =>
+                    console.warn('Failed to cache adjacent reader sections.', error))
+            })
+        })
     }
     #beforeRender({ vertical, rtl, background }) {
         this.#vertical = vertical
@@ -994,7 +1041,7 @@ export class Paginator extends HTMLElement {
             }
         }
         for (const { view } of this.#flow.entries) {
-            view.compact = this.continuous
+            view.compact = this.continuous && !this.scrolled
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
@@ -1005,12 +1052,15 @@ export class Paginator extends HTMLElement {
             style.removeProperty('position')
             style.removeProperty('left')
             style.removeProperty('top')
+            style.removeProperty('order')
+            this.#track.style.removeProperty('display')
+            this.#track.style.removeProperty('flex-direction')
             this.#track.style.width = '100%'
             this.#track.style.height = '100%'
         } else {
             this.#layoutEntries()
-            void this.#fillTrailingSpread().catch(error =>
-                console.warn('Failed to fill trailing reader spread.', error))
+            if (!this.scrolled) void this.#fillPaginatedSpread().catch(error =>
+                console.warn('Failed to fill paginated reader spread.', error))
         }
         // Scrolled and paginated layouts use different scroll axes. Browsers
         // preserve the inactive axis when overflow changes, which can leave the
@@ -1080,21 +1130,16 @@ export class Paginator extends HTMLElement {
     }
     #snap(vx, vy) {
         const velocity = this.#vertical ? vy : vx
-        const [offset, a, b] = this.#scrollBounds
-        const { start, end, pages, size } = this
-        const min = Math.abs(offset) - a
-        const max = Math.abs(offset) + b
-        const d = velocity * (this.#rtl ? -size : size)
-        const page = Math.floor(
-            Math.max(min, Math.min(max, (start + end) / 2
-                + (isNaN(d) ? 0 : d))) / size)
+        const [offset, backward, forward] = this.#scrollBounds
+        const min = Math.abs(offset) - backward
+        const max = Math.abs(offset) + forward
+        const projected = velocity * (this.#rtl ? -this.size : this.size)
+        const page = Math.floor(Math.max(min, Math.min(max,
+            (this.start + this.end) / 2 + (isNaN(projected) ? 0 : projected))) / this.size)
 
         this.#scrollToPage(page, 'snap').then(() => {
-            const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
-            if (dir) return this.#goTo({
-                index: this.#adjacentIndex(dir),
-                anchor: dir < 0 ? () => 1 : () => 0,
-            })
+            if (page <= 0) return this.#crossCacheWindow(-1)
+            if (page >= this.pages - 1) return this.#crossCacheWindow(1)
         }).catch(error => console.warn('Failed to snap reader page.', error))
     }
     settle(velocityX, velocityY) {
@@ -1113,28 +1158,28 @@ export class Paginator extends HTMLElement {
             ? (this.scrolled ? 0 : this.size + this.#leadingRemainder) + (entry?.start ?? 0)
             : 0
     }
-    #recycleBehind(activeEntry) {
+    #trimChapterCache(activeEntry) {
         const entries = this.#flow.entries
         const activePosition = entries.indexOf(activeEntry)
-        if (activePosition <= 1) return
-        const stale = new Set(entries.slice(0, activePosition - 1))
+        if (activePosition < 0) return
+        const stale = new Set(entries.filter((_, index) => Math.abs(index - activePosition) > 1))
+        if (!stale.size) return
+        const oldOffset = this.#entryOffset(activeEntry)
         const removed = this.#flow.removeWhere(entry => stale.has(entry))
-        const removedExtent = removed.reduce((sum, entry) => sum + entry.extent, 0)
-        if (!removedExtent) return
-
-        const oldLeading = this.scrolled ? 0 : this.size + this.#leadingRemainder
-        if (!this.scrolled && this.size > 0) this.#leadingRemainder =
-            (this.#leadingRemainder + removedExtent) % this.size
-        const newLeading = this.scrolled ? 0 : this.size + this.#leadingRemainder
-        const shift = oldLeading + removedExtent - newLeading
+        const removedBefore = removed
+            .filter(entry => entry.index < activeEntry.index)
+            .reduce((sum, entry) => sum + entry.extent, 0)
+        if (!this.scrolled && this.size > 0)
+            this.#leadingRemainder = (this.#leadingRemainder + removedBefore) % this.size
 
         for (const { index, view } of removed) {
             this.#destroyView(view)
             this.sections[index]?.unload?.()
         }
         this.#layoutEntries()
-        const prop = this.scrollProp
-        this.#container[prop] -= shift
+        const shift = this.#entryOffset(activeEntry) - oldOffset
+        this.#container[this.scrollProp] += shift
+        if (this.#scrollBounds) this.#scrollBounds[0] += shift
     }
     async #scrollToRect(rect, reason) {
         if (this.scrolled) {
@@ -1233,7 +1278,7 @@ export class Paginator extends HTMLElement {
             if (entry) {
                 this.#view = entry.view
                 this.#index = entry.index
-                this.#recycleBehind(entry)
+                this.#trimChapterCache(entry)
             }
         }
         const range = this.#getVisibleRange()
@@ -1265,21 +1310,33 @@ export class Paginator extends HTMLElement {
             }
         }
         this.dispatchEvent(new CustomEvent('relocate', { detail }))
-        void this.#preloadNextSection().catch(error =>
-            console.warn('Failed to preload reader section.', error))
+        this.#scheduleAdjacentCache()
     }
     #canGoToIndex(index) {
         return index >= 0 && index <= this.sections.length - 1
+    }
+    #navigationState() {
+        return {
+            atBookEnd: this.#adjacentIndex(1) == null,
+            atBookStart: this.#adjacentIndex(-1) == null,
+            end: this.end,
+            extent: this.viewSize,
+            mode: this.scrolled ? 'scrolled' : 'paginated',
+            page: this.page,
+            pages: this.pages,
+            size: this.size,
+            start: this.start,
+        }
     }
     async #goTo({ index, anchor, select}) {
         let entry = this.#flow.find(index)
         const hasFocus = this.#view?.document?.hasFocus()
         if (!entry) {
-            this.#clearEntries()
+            if (!this.continuous) this.#clearEntries()
             entry = await this.#loadEntry(index)
             this.#view = entry.view
             this.#index = index
-            if (this.continuous) await this.#fillTrailingSpread()
+            if (this.continuous && !this.scrolled) await this.#fillPaginatedSpread()
         } else {
             this.#view = entry.view
             this.#index = index
@@ -1294,34 +1351,11 @@ export class Paginator extends HTMLElement {
         const resolved = await target
         if (this.#canGoToIndex(resolved.index)) return this.#goTo(resolved)
     }
-    #scrollPrev(distance) {
-        if (!this.#view) return true
-        if (this.scrolled) {
-            if (this.start > 0) return this.#scrollTo(
-                Math.max(0, this.start - (distance ?? this.size)), null, true)
-            return true
-        }
-        if (this.atStart) return
-        const page = this.page - 1
-        return this.#scrollToPage(page, 'page', true).then(() => page <= 0)
-    }
-    #scrollNext(distance) {
-        if (!this.#view) return true
-        if (this.scrolled) {
-            if (this.viewSize - this.end > 2) return this.#scrollTo(
-                Math.min(this.viewSize, distance ? this.start + distance : this.end), null, true)
-            return true
-        }
-        if (this.atEnd) return
-        const page = this.page + 1
-        const pages = this.pages
-        return this.#scrollToPage(page, 'page', true).then(() => page >= pages - 1)
-    }
     get atStart() {
-        return this.#adjacentIndex(-1) == null && this.page <= 1
+        return isAtBookEdge(this.#navigationState(), -1)
     }
     get atEnd() {
-        return this.#adjacentIndex(1) == null && this.page >= this.pages - 2
+        return isAtBookEdge(this.#navigationState(), 1)
     }
     #adjacentIndex(dir) {
         return this.#adjacentIndexFrom(this.#index, dir)
@@ -1330,22 +1364,36 @@ export class Paginator extends HTMLElement {
         for (let index = from + dir; this.#canGoToIndex(index); index += dir)
             if (this.sections[index]?.linear !== 'no') return index
     }
+    #crossCacheWindow(dir) {
+        const boundary = this.continuous
+            ? (dir < 0 ? this.#flow.first : this.#flow.last)?.index
+            : this.#index
+        const index = this.#adjacentIndexFrom(boundary, dir)
+        if (index == null) return
+        return this.#goTo({
+            index,
+            anchor: dir < 0 ? () => 1 : () => 0,
+        })
+    }
     async #turnPage(dir, distance) {
-        if (this.#locked) return
+        if (this.#locked || !this.#view) return
         this.#locked = true
         try {
-            const prev = dir === -1
-            const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-            if (shouldGo) {
-                const boundary = this.continuous
-                    ? (prev ? this.#flow.first : this.#flow.last)?.index
-                    : this.#index
-                await this.#goTo({
-                    index: this.#adjacentIndexFrom(boundary, dir),
-                    anchor: prev ? () => 1 : () => 0,
-                })
+            const action = planViewportNavigation(this.#navigationState(), dir, distance)
+            let crossedWindow = false
+            if (action.kind === 'scroll') {
+                await this.#scrollTo(action.offset, null, true)
+            } else if (action.kind === 'page') {
+                await this.#scrollToPage(action.page, 'page', true)
+                if (action.crossWindowAfter) {
+                    crossedWindow = true
+                    await this.#crossCacheWindow(dir)
+                }
+            } else if (action.kind === 'cross-window') {
+                crossedWindow = true
+                await this.#crossCacheWindow(dir)
             }
-            if (shouldGo || !this.hasAttribute('animated')) await wait(100)
+            if (crossedWindow || !this.hasAttribute('animated')) await wait(100)
         } finally {
             this.#locked = false
         }
@@ -1355,12 +1403,6 @@ export class Paginator extends HTMLElement {
     }
     next(distance) {
         return this.#turnPage(1, distance)
-    }
-    prevSection() {
-        return this.goTo({ index: this.#adjacentIndex(-1) })
-    }
-    nextSection() {
-        return this.goTo({ index: this.#adjacentIndex(1) })
     }
     getContents() {
         return this.#flow.entries.map(({ index, view }) => ({

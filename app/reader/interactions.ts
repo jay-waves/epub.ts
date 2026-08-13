@@ -1,5 +1,6 @@
 import type { ReaderView } from "./model";
 import type { Resolved } from "../renderer";
+import { observeRenderedDocuments } from "./documents";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
@@ -28,8 +29,8 @@ type InteractionOptions = {
 };
 
 type ViewBinding = {
-  docs: Map<Document, AbortController>;
   events: AbortController;
+  stopDocuments: () => void;
 };
 
 function asElement(target: EventTarget | null) {
@@ -113,11 +114,7 @@ export function createInteractions(options: InteractionOptions) {
   const views = new Map<ReaderView, ViewBinding>();
   const cursor = new CursorHider();
 
-  const bindDoc = (view: ReaderView, doc: Document, index: number, binding: ViewBinding) => {
-    if (binding.docs.has(doc)) return;
-    const events = new AbortController();
-    binding.docs.set(doc, events);
-    const { signal } = events;
+  const bindDoc = (view: ReaderView, doc: Document, index: number, signal: AbortSignal) => {
     cursor.add(doc.documentElement, () => view.hasAttribute("autohide-cursor"), signal);
     const targetStyle = doc.createElement("style");
     targetStyle.textContent = TARGET_STYLE;
@@ -146,34 +143,22 @@ export function createInteractions(options: InteractionOptions) {
     }, { capture: true, signal });
   };
 
-  const unbindDoc = (binding: ViewBinding, doc: Document) => {
-    binding.docs.get(doc)?.abort();
-    binding.docs.delete(doc);
-  };
-
   const bindView = (view: ReaderView) => {
     if (views.has(view)) return;
-    const binding: ViewBinding = { docs: new Map(), events: new AbortController() };
+    const events = new AbortController();
+    const binding: ViewBinding = {
+      events,
+      stopDocuments: observeRenderedDocuments(view, ({ doc, index }, signal) => bindDoc(view, doc, index, signal)),
+    };
     views.set(view, binding);
-    cursor.add(view, () => view.hasAttribute("autohide-cursor"), binding.events.signal);
-
-    view.renderer?.getContents?.().forEach(({ doc, index }) => {
-      if (doc) bindDoc(view, doc, index, binding);
-    });
-    view.addEventListener("load", (event) => {
-      bindDoc(view, event.detail.doc, event.detail.index, binding);
-    }, { signal: binding.events.signal });
-    view.addEventListener("unload", (event) => {
-      unbindDoc(binding, event.detail.doc);
-    }, { signal: binding.events.signal });
+    cursor.add(view, () => view.hasAttribute("autohide-cursor"), events.signal);
   };
 
   const unbindView = (view: ReaderView) => {
     const binding = views.get(view);
     if (!binding) return;
     binding.events.abort();
-    binding.docs.forEach((events) => events.abort());
-    binding.docs.clear();
+    binding.stopDocuments();
     views.delete(view);
   };
 

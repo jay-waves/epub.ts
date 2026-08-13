@@ -1,19 +1,18 @@
+import { DragGesture } from "@use-gesture/vanilla";
 import { WheelGestures } from "wheel-gestures";
 import type { PageTurnDirection, ReaderView } from "./reader/model";
 import type { Navigation } from "./reader/navigation";
+import { observeRenderedDocuments } from "./reader/documents";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
-const HOLD_SCROLL_SPEED_RATIO = 1.75;
-const HOLD_SCROLL_DELAY_MS = 180;
+const WHEEL_SCROLL_DISTANCE_RATIO = 0.6;
 const SECTION_EDGE_EPSILON = 2;
 const WHEEL_SWIPE_AXIS_RATIO = 1.35;
 const WHEEL_SWIPE_MIN_DISTANCE = 42;
 const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
 const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
-const WHEEL_SCROLL_COMPRESSION_THRESHOLD_PX = 24;
-const WHEEL_SCROLL_COMPRESSION_RATIO = 0.25;
 const WHEEL_DISCRETE_DELTA_THRESHOLD_PX = 48;
-const WHEEL_SMOOTHING_FACTOR = 0.32;
+const WHEEL_BOUNDARY_HOLD_MS = 140;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
@@ -21,22 +20,6 @@ const TOUCH_INERTIA_MIN_VELOCITY = 0.08;
 const TOUCH_INERTIA_MAX_VELOCITY = 2.5;
 const TOUCH_INERTIA_STOP_VELOCITY = 0.02;
 const TOUCH_INERTIA_TIME_CONSTANT_MS = 240;
-
-type PointerGesture = {
-  document: Document;
-  pointerId: number;
-  pointerType: string;
-  lastX: number;
-  lastY: number;
-  lastTime: number;
-  startX: number;
-  startY: number;
-  moved: boolean;
-  mode: "pending" | "pan" | "selection";
-  longPressTimer?: number;
-  velocityX: number;
-  velocityY: number;
-};
 
 function isEditableTarget(target: EventTarget | null) {
   if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
@@ -51,21 +34,6 @@ function isInteractiveTarget(target: EventTarget | null) {
   return Boolean((target as Element).closest(
     "a[href], button, input, select, textarea, label, summary, audio[controls], video[controls], [contenteditable='true']",
   ));
-}
-
-function wheelDeltaInPixels(delta: number, event: WheelEvent, pageSize: number) {
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return delta * 16;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return delta * pageSize;
-  return delta;
-}
-
-function compressWheelDelta(delta: number) {
-  const magnitude = Math.abs(delta);
-  if (magnitude <= WHEEL_SCROLL_COMPRESSION_THRESHOLD_PX) return delta;
-  return Math.sign(delta) * (
-    WHEEL_SCROLL_COMPRESSION_THRESHOLD_PX
-    + (magnitude - WHEEL_SCROLL_COMPRESSION_THRESHOLD_PX) * WHEEL_SCROLL_COMPRESSION_RATIO
-  );
 }
 
 function getKeyboardScrollDistance() {
@@ -85,8 +53,7 @@ type ViewerInputOptions = {
   getNavigation: () => Navigation | null;
   getFlow: () => "paginated" | "scrolled";
   canTurnPage: () => boolean;
-  beforeSectionTurn: () => void;
-  afterSectionTurn: () => void;
+  onChapterBoundary: (direction: number, pending: boolean) => void;
   onScrollEdge: (direction: number) => void;
   openSearch: () => boolean;
   closeSearch: () => boolean;
@@ -97,28 +64,19 @@ type ViewerInputOptions = {
 export function createViewerInput(options: ViewerInputOptions) {
   const inputTargets = new Map<Document, () => void>();
   const bindings = new Map<ReaderView, {
-    documents: Set<Document>;
-    onLoad: EventListener;
-    onUnload: EventListener;
     previousTouchAction: string;
+    stopDocuments: () => void;
+    stopShellDrag: () => void;
   }>();
-  let pressedScrollKey: string | null = null;
-  let holdScrollDelayTimer: number | undefined;
-  let holdScrollDirection = 0;
-  let holdScrollFrame: number | undefined;
-  let holdScrollLastTime = 0;
-  let holdScrollRefreshingBounds = false;
-  let sectionTurnInFlight = false;
-  let wheelSwipeConsumed = false;
   let suppressWheelScrollUntil = 0;
-  let pointerGesture: PointerGesture | null = null;
   let inertiaFrame: number | undefined;
   let inertiaLastTime = 0;
   let inertiaVelocity = 0;
-  let pendingWheelDelta = 0;
-  let smoothWheelMotion = false;
-  let wheelScrollFrame: number | undefined;
-  const wheelGestures = WheelGestures({ preventWheelAction: "x" });
+  let wheelBoundaryTimer: number | undefined;
+  let wheelBoundaryConsumed = false;
+  let wheelBoundaryDirection = 0;
+  let wheelBoundaryInFlight = false;
+  const activeWheelTargets = new Set<Document>();
 
   const stopTouchInertia = () => {
     inertiaVelocity = 0;
@@ -129,31 +87,29 @@ export function createViewerInput(options: ViewerInputOptions) {
     }
   };
 
-  const stopWheelMotion = () => {
-    pendingWheelDelta = 0;
-    smoothWheelMotion = false;
-    if (wheelScrollFrame !== undefined) {
-      window.cancelAnimationFrame(wheelScrollFrame);
-      wheelScrollFrame = undefined;
-    }
+  const clearWheelBoundary = () => {
+    if (wheelBoundaryTimer !== undefined) window.clearTimeout(wheelBoundaryTimer);
+    wheelBoundaryTimer = undefined;
+    if (wheelBoundaryDirection) options.onChapterBoundary(wheelBoundaryDirection, false);
+    wheelBoundaryDirection = 0;
+    wheelBoundaryInFlight = false;
+    if (!activeWheelTargets.size) wheelBoundaryConsumed = false;
   };
 
-  const stopHoldScroll = () => {
-    if (holdScrollDelayTimer !== undefined) {
-      window.clearTimeout(holdScrollDelayTimer);
-      holdScrollDelayTimer = undefined;
-    }
-    holdScrollDirection = 0;
-    holdScrollLastTime = 0;
-    if (holdScrollFrame !== undefined) {
-      window.cancelAnimationFrame(holdScrollFrame);
-      holdScrollFrame = undefined;
-    }
-    holdScrollRefreshingBounds = false;
-  };
-
-  const resetWheelSwipe = () => {
-    wheelSwipeConsumed = false;
+  const crossWheelBoundary = (direction: number, distance: number) => {
+    if (wheelBoundaryConsumed) return;
+    wheelBoundaryConsumed = true;
+    wheelBoundaryDirection = direction;
+    options.onChapterBoundary(direction, true);
+    wheelBoundaryTimer = window.setTimeout(() => {
+      wheelBoundaryTimer = undefined;
+      wheelBoundaryInFlight = true;
+      const navigation = options.getNavigation();
+      const crossing = direction < 0 ? navigation?.prev(distance) : navigation?.next(distance);
+      void Promise.resolve(crossing)
+        .catch((error) => console.warn("Failed to cross reader chapter boundary.", error))
+        .finally(clearWheelBoundary);
+    }, WHEEL_BOUNDARY_HOLD_MS);
   };
 
   const suppressWheelScroll = () => {
@@ -183,43 +139,21 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (options.getFlow() === "scrolled") options.onScrollEdge(direction);
   };
 
-  const stepWheelMotion = () => {
-    wheelScrollFrame = undefined;
-    if (options.getFlow() !== "scrolled" || Math.abs(pendingWheelDelta) < 0.01) {
-      stopWheelMotion();
-      return;
-    }
+  const scrollWheelBy = (delta: number) => {
+    if (options.getFlow() !== "scrolled") return;
     const metrics = getSectionScrollMetrics();
-    if (!metrics) {
-      stopWheelMotion();
-      return;
-    }
-    const direction = Math.sign(pendingWheelDelta);
+    if (!metrics) return;
+    const direction = Math.sign(delta);
+    if (!direction) return;
     const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) {
-      signalScrollEdge(direction);
-      stopWheelMotion();
+      const atBookEdge = direction < 0 ? metrics.renderer.atStart : metrics.renderer.atEnd;
+      if (atBookEdge) signalScrollEdge(direction);
+      else crossWheelBoundary(direction, Math.abs(delta));
       return;
     }
-    const delta = smoothWheelMotion && Math.abs(pendingWheelDelta) >= 0.75
-      ? pendingWheelDelta * WHEEL_SMOOTHING_FACTOR
-      : pendingWheelDelta;
     const applied = Math.sign(delta) * Math.min(Math.abs(delta), remaining);
-    pendingWheelDelta -= applied;
     options.getNavigation()?.scrollBy(applied);
-    if (Math.abs(pendingWheelDelta) >= 0.01) {
-      wheelScrollFrame = window.requestAnimationFrame(stepWheelMotion);
-    } else {
-      stopWheelMotion();
-    }
-  };
-
-  const queueWheelMotion = (delta: number, smooth: boolean) => {
-    pendingWheelDelta += delta;
-    smoothWheelMotion ||= smooth;
-    if (wheelScrollFrame === undefined) {
-      wheelScrollFrame = window.requestAnimationFrame(stepWheelMotion);
-    }
   };
 
   const scrollCurrentSectionWithBounds = (direction: number, distance: number) => {
@@ -228,7 +162,9 @@ export function createViewerInput(options: ViewerInputOptions) {
 
     const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) {
-      signalScrollEdge(direction);
+      const atBookEdge = direction < 0 ? metrics.renderer.atStart : metrics.renderer.atEnd;
+      if (atBookEdge) signalScrollEdge(direction);
+      else void (direction < 0 ? options.getNavigation()?.prev(distance) : options.getNavigation()?.next(distance));
       return;
     }
 
@@ -238,9 +174,8 @@ export function createViewerInput(options: ViewerInputOptions) {
       : navigation?.next(Math.min(distance, remaining)));
   };
 
-  const turnReaderSection = (direction: PageTurnDirection) => {
-    if (sectionTurnInFlight) return;
-
+  const turnPage = (direction: PageTurnDirection) => {
+    if (!options.canTurnPage()) return;
     const view = options.getView();
     const renderer = view?.renderer;
     if (!renderer) return;
@@ -253,123 +188,18 @@ export function createViewerInput(options: ViewerInputOptions) {
       return;
     }
 
-    suppressWheelScroll();
-    options.beforeSectionTurn();
-    sectionTurnInFlight = true;
     const navigation = options.getNavigation();
-    const turn = shouldGoNext ? navigation?.nextSection() : navigation?.previousSection();
-    void Promise.resolve(turn)
-      .catch((error) => {
-        console.warn("Failed to turn reader section.", error);
-      })
-      .finally(() => {
-        sectionTurnInFlight = false;
-        options.afterSectionTurn();
-      });
-  };
-
-  const turnPage = (direction: PageTurnDirection) => {
-    if (!options.canTurnPage()) return;
-
-    if (options.getFlow() === "paginated") {
-      const navigation = options.getNavigation();
-      void (direction === "left" ? navigation?.left() : navigation?.right())
-        ?.catch((error) => console.warn("Failed to turn reader page.", error));
-      return;
-    }
-
-    turnReaderSection(direction);
-  };
-
-  const refreshHoldScrollBounds = async () => {
-    const metrics = getSectionScrollMetrics();
-    if (!metrics?.renderer.scrollToAnchor || metrics.viewSize <= 0) return;
-
-    holdScrollRefreshingBounds = true;
-    holdScrollFrame = undefined;
-    try {
-      await options.getNavigation()?.scrollTo(metrics.start / metrics.viewSize);
-    } catch (error) {
-      console.warn("Failed to refresh reader scroll bounds.", error);
-    } finally {
-      holdScrollRefreshingBounds = false;
-      holdScrollLastTime = 0;
-    }
-
-    if (holdScrollDirection && options.getFlow() === "scrolled") {
-      holdScrollFrame = window.requestAnimationFrame(stepHoldScroll);
-    }
-  };
-
-  const stepHoldScroll = (time: number) => {
-    const view = options.getView();
-    const renderer = view?.renderer;
-    if (!holdScrollDirection || options.getFlow() !== "scrolled" || !renderer?.scrollBy) {
-      stopHoldScroll();
-      return;
-    }
-
-    if (holdScrollRefreshingBounds) {
-      holdScrollFrame = undefined;
-      return;
-    }
-
-    const metrics = getSectionScrollMetrics();
-    if (!metrics) {
-      stopHoldScroll();
-      return;
-    }
-
-    const elapsed = holdScrollLastTime ? time - holdScrollLastTime : 16;
-    holdScrollLastTime = time;
-    const speed = Math.max(260, window.innerHeight * HOLD_SCROLL_SPEED_RATIO);
-    const delta = holdScrollDirection * speed * (elapsed / 1000);
-    const remaining = holdScrollDirection < 0 ? metrics.start : metrics.viewSize - metrics.end;
-    if (remaining <= SECTION_EDGE_EPSILON) {
-      signalScrollEdge(holdScrollDirection);
-      stopHoldScroll();
-      return;
-    }
-
-    const beforeStart = metrics.start;
-    const scrollDelta = Math.sign(delta) * Math.min(Math.abs(delta), remaining);
-    options.getNavigation()?.scrollBy(scrollDelta);
-    const afterStart = renderer.start;
-    if (typeof afterStart === "number" && Math.abs(afterStart - beforeStart) < 0.5) {
-      void refreshHoldScrollBounds();
-      return;
-    }
-
-    holdScrollFrame = window.requestAnimationFrame(stepHoldScroll);
-  };
-
-  const startHoldScroll = (direction: number) => {
-    holdScrollDirection = direction;
-    if (holdScrollFrame === undefined) {
-      holdScrollFrame = window.requestAnimationFrame(stepHoldScroll);
-    }
-  };
-
-  const scheduleHoldScroll = (key: string, direction: number) => {
-    pressedScrollKey = key;
-    if (holdScrollDelayTimer !== undefined) return;
-
-    holdScrollDelayTimer = window.setTimeout(() => {
-      holdScrollDelayTimer = undefined;
-      if (pressedScrollKey === key) startHoldScroll(direction);
-    }, HOLD_SCROLL_DELAY_MS);
+    void (direction === "left" ? navigation?.left() : navigation?.right())
+      ?.catch((error) => console.warn("Failed to turn reader page.", error));
   };
 
   const handleScrollKeyDown = (event: KeyboardEvent, direction: number) => {
     event.preventDefault();
-    if (pressedScrollKey === event.key || holdScrollDirection) return;
-
-    scheduleHoldScroll(event.key, direction);
+    scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
     stopTouchInertia();
-    stopWheelMotion();
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       if (event.repeat) return;
@@ -386,9 +216,11 @@ export function createViewerInput(options: ViewerInputOptions) {
 
     if (event.key === "ArrowLeft" || event.key === "h") {
       event.preventDefault();
+      if (event.repeat) return;
       turnPage("left");
     } else if (event.key === "ArrowRight" || event.key === "l") {
       event.preventDefault();
+      if (event.repeat) return;
       turnPage("right");
     } else if (options.getFlow() === "scrolled" && isScrollUpKey(event.key)) {
       handleScrollKeyDown(event, -1);
@@ -399,40 +231,8 @@ export function createViewerInput(options: ViewerInputOptions) {
     }
   };
 
-  const handleKeyUp = (event: KeyboardEvent) => {
-    if (isScrollUpKey(event.key) || isScrollDownKey(event.key)) {
-      const direction = isScrollUpKey(event.key) ? -1 : 1;
-      const shouldRunShortScroll = pressedScrollKey === event.key && !holdScrollDirection;
-      pressedScrollKey = null;
-      stopHoldScroll();
-      if (shouldRunShortScroll) scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
-    }
-  };
-
   const handleBlur = () => {
-    pressedScrollKey = null;
-    stopHoldScroll();
     stopTouchInertia();
-    stopWheelMotion();
-  };
-
-  const handleWheel = (event: WheelEvent) => {
-    if (!eventBelongsToReader(event)) return;
-    if (options.getFlow() !== "scrolled" || event.ctrlKey || event.metaKey) return;
-    if (isWheelScrollSuppressed()) return;
-    stopTouchInertia();
-
-    const deltaX = wheelDeltaInPixels(event.deltaX, event, window.innerWidth);
-    const deltaY = wheelDeltaInPixels(event.deltaY, event, window.innerHeight);
-    if (Math.abs(deltaX) >= Math.abs(deltaY) * WHEEL_SWIPE_AXIS_RATIO) return;
-    const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
-    const direction = Math.sign(delta);
-    if (!direction) return;
-    event.preventDefault();
-
-    const isDiscreteWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
-      || Math.abs(delta) >= WHEEL_DISCRETE_DELTA_THRESHOLD_PX;
-    queueWheelMotion(isDiscreteWheel ? compressWheelDelta(delta) : delta, isDiscreteWheel);
   };
 
   const edgeDirection = (sourceDocument: Document, clientX: number): PageTurnDirection | null => {
@@ -446,76 +246,6 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (x <= rect.width * TOUCH_EDGE_RATIO) return "left";
     if (x >= rect.width * (1 - TOUCH_EDGE_RATIO)) return "right";
     return null;
-  };
-
-  const clearPointerGesture = () => {
-    if (pointerGesture?.longPressTimer !== undefined) {
-      window.clearTimeout(pointerGesture.longPressTimer);
-    }
-    pointerGesture = null;
-  };
-
-  const handlePointerDown = (event: PointerEvent) => {
-    if (!eventBelongsToReader(event)) return;
-    if (!event.isPrimary || event.button !== 0 || isInteractiveTarget(event.target)) return;
-    stopTouchInertia();
-    stopWheelMotion();
-    const targetDocument = event.currentTarget as Document;
-    pointerGesture = {
-      document: targetDocument,
-      pointerId: event.pointerId,
-      pointerType: event.pointerType,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      lastTime: event.timeStamp,
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
-      mode: "pending",
-      velocityX: 0,
-      velocityY: 0,
-    };
-    if (event.pointerType === "touch") {
-      const pointerId = event.pointerId;
-      pointerGesture.longPressTimer = window.setTimeout(() => {
-        if (pointerGesture?.pointerId === pointerId && pointerGesture.mode === "pending") {
-          pointerGesture.mode = "selection";
-        }
-      }, TOUCH_LONG_PRESS_DELAY_MS);
-    }
-  };
-
-  const handlePointerMove = (event: PointerEvent) => {
-    const gesture = pointerGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    if (gesture.mode === "selection") return;
-    const totalX = event.clientX - gesture.startX;
-    const totalY = event.clientY - gesture.startY;
-    if (!gesture.moved && totalX * totalX + totalY * totalY < TOUCH_PAN_THRESHOLD_PX ** 2) return;
-    if (gesture.pointerType === "mouse") {
-      clearPointerGesture();
-      return;
-    }
-    if (gesture.mode === "pending") {
-      if (gesture.longPressTimer !== undefined) window.clearTimeout(gesture.longPressTimer);
-      gesture.longPressTimer = undefined;
-      gesture.mode = "pan";
-    }
-    gesture.moved = true;
-    event.preventDefault();
-    event.stopPropagation();
-
-    const dx = gesture.lastX - event.clientX;
-    const dy = gesture.lastY - event.clientY;
-    const elapsed = Math.max(1, event.timeStamp - gesture.lastTime);
-    gesture.velocityX = dx / elapsed;
-    gesture.velocityY = dy / elapsed;
-    gesture.lastX = event.clientX;
-    gesture.lastY = event.clientY;
-    gesture.lastTime = event.timeStamp;
-
-    if (options.getFlow() === "scrolled") options.getNavigation()?.scrollBy(dy);
-    else options.getView()?.renderer?.scrollBy?.(dx, dy);
   };
 
   const stepTouchInertia = (time: number) => {
@@ -551,54 +281,152 @@ export function createViewerInput(options: ViewerInputOptions) {
     inertiaFrame = window.requestAnimationFrame(stepTouchInertia);
   };
 
-  const handlePointerEnd = (event: PointerEvent) => {
-    const gesture = pointerGesture;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    clearPointerGesture();
-    if (event.type === "pointercancel" || gesture.mode === "selection") return;
-    if (gesture.moved) {
-      if (options.getFlow() === "paginated") {
-        options.getView()?.renderer?.settle?.(gesture.velocityX, gesture.velocityY);
-      } else {
-        startTouchInertia(gesture.velocityY);
+  const bindDragGesture = (target: EventTarget, sourceDocument: Document) => {
+    let longPressTimer: number | undefined;
+    let active = false;
+    let selecting = false;
+    const clearLongPress = () => {
+      if (longPressTimer !== undefined) window.clearTimeout(longPressTimer);
+      longPressTimer = undefined;
+    };
+    const drag = new DragGesture<PointerEvent>(target, (state) => {
+      const event = state.event;
+      const starting = event.type === "pointerdown";
+      const ending = event.type === "pointerup" || event.type === "pointercancel";
+      if (starting) {
+        if (state.canceled) return;
+        active = false;
+        selecting = false;
+        if (!eventBelongsToReader(event) || !event.isPrimary || event.button !== 0
+          || isInteractiveTarget(event.target)) {
+          state.cancel();
+          return;
+        }
+        active = true;
+        stopTouchInertia();
+        if (event.pointerType === "touch") {
+          longPressTimer = window.setTimeout(() => {
+            if (!state.intentional) selecting = true;
+          }, TOUCH_LONG_PRESS_DELAY_MS);
+        }
       }
-      return;
-    }
-    const direction = edgeDirection(gesture.document, event.clientX);
-    if (direction) {
+
+      if (!active) return;
+      if (state.intentional) clearLongPress();
+      if (selecting) {
+        if (ending) {
+          active = false;
+          clearLongPress();
+        }
+        return;
+      }
+      if (ending) {
+        active = false;
+        clearLongPress();
+        if (state.canceled || event.type === "pointercancel") return;
+        if (state.tap) {
+          const direction = edgeDirection(sourceDocument, event.clientX);
+          if (direction) {
+            event.preventDefault();
+            event.stopPropagation();
+            turnPage(direction);
+          }
+        } else if (event.pointerType !== "mouse") {
+          const velocityX = -state.direction[0] * state.velocity[0];
+          const velocityY = -state.direction[1] * state.velocity[1];
+          if (options.getFlow() === "paginated") options.getView()?.renderer?.settle?.(velocityX, velocityY);
+          else startTouchInertia(velocityY);
+        }
+        return;
+      }
+      if (!state.intentional || event.pointerType === "mouse") return;
+
       event.preventDefault();
       event.stopPropagation();
-      turnPage(direction);
-    }
+      const dx = -state.delta[0];
+      const dy = -state.delta[1];
+      if (options.getFlow() === "scrolled") options.getNavigation()?.scrollBy(dy);
+      else options.getView()?.renderer?.scrollBy?.(dx, dy);
+    }, {
+      eventOptions: { capture: true, passive: false },
+      filterTaps: true,
+      pointer: { buttons: 1, capture: false, keys: false },
+      threshold: TOUCH_PAN_THRESHOLD_PX,
+      triggerAllEvents: true,
+      window: sourceDocument.defaultView ?? window,
+    });
+    return () => {
+      clearLongPress();
+      drag.destroy();
+    };
   };
 
-  const stopWheelListener = wheelGestures.on("wheel", (state) => {
-    if (state.isStart || state.isEnding || state.isMomentumCancel) resetWheelSwipe();
-    if (state.isEnding || state.isMomentum || wheelSwipeConsumed) return;
+  const bindWheelGesture = (targetDocument: Document) => {
+    const wheel = WheelGestures({ preventWheelAction: false });
+    let swipeConsumed = false;
+    const stopListening = wheel.on("wheel", (state) => {
+      if (state.isStart) {
+        activeWheelTargets.add(targetDocument);
+        swipeConsumed = false;
+        if (!wheelBoundaryInFlight && wheelBoundaryTimer === undefined) wheelBoundaryConsumed = false;
+      }
+      if (state.isEnding || state.isMomentumCancel) {
+        activeWheelTargets.delete(targetDocument);
+        swipeConsumed = false;
+        if (!activeWheelTargets.size && !wheelBoundaryInFlight && wheelBoundaryTimer === undefined) {
+          wheelBoundaryConsumed = false;
+        }
+        return;
+      }
 
-    const event = state.event;
-    if (!eventBelongsToReader(event)) return;
-    if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || event.ctrlKey) return;
+      const event = state.event as WheelEvent;
+      if (!eventBelongsToReader(event) || event.ctrlKey || event.metaKey) return;
+      const [axisX, axisY] = state.axisDelta;
+      const deltaX = -axisX;
+      const deltaY = -axisY;
+      const isHorizontal = Math.abs(deltaX) >= Math.abs(deltaY) * WHEEL_SWIPE_AXIS_RATIO;
+      if (isHorizontal) event.preventDefault();
 
-    const [movementX, movementY] = state.axisMovement;
-    const [velocityX] = state.axisVelocity;
-    const absMovementX = Math.abs(movementX);
-    const absMovementY = Math.abs(movementY);
-    const isClearHorizontalIntent = absMovementX >= WHEEL_SWIPE_MIN_DISTANCE
-      && absMovementX >= absMovementY * WHEEL_SWIPE_AXIS_RATIO
-      && Math.abs(velocityX) >= WHEEL_SWIPE_MIN_VELOCITY;
-    if (!isClearHorizontalIntent) return;
+      if (!state.isMomentum && !swipeConsumed && event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+        const [movementX, movementY] = state.axisMovement;
+        const [velocityX] = state.axisVelocity;
+        const isHorizontalSwipe = Math.abs(movementX) >= WHEEL_SWIPE_MIN_DISTANCE
+          && Math.abs(movementX) >= Math.abs(movementY) * WHEEL_SWIPE_AXIS_RATIO
+          && Math.abs(velocityX) >= WHEEL_SWIPE_MIN_VELOCITY;
+        if (isHorizontalSwipe) {
+          swipeConsumed = true;
+          suppressWheelScroll();
+          turnPage(movementX < 0 ? "left" : "right");
+          return;
+        }
+      }
 
-    wheelSwipeConsumed = true;
-    suppressWheelScroll();
-    const direction = movementX < 0 ? "left" : "right";
-    if (options.getFlow() === "scrolled") {
-      turnReaderSection(direction);
-      return;
-    }
-
-    turnPage(direction);
-  });
+      if (options.getFlow() !== "scrolled" || isWheelScrollSuppressed() || isHorizontal) return;
+      const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
+      const direction = Math.sign(delta);
+      if (!direction) return;
+      if (wheelBoundaryTimer !== undefined && direction !== wheelBoundaryDirection) {
+        clearWheelBoundary();
+        wheelBoundaryConsumed = false;
+      }
+      stopTouchInertia();
+      event.preventDefault();
+      const isDiscreteWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
+        || Math.abs(delta) >= WHEEL_DISCRETE_DELTA_THRESHOLD_PX;
+      if (isDiscreteWheel) {
+        scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
+      } else {
+        scrollWheelBy(delta * WHEEL_SCROLL_DISTANCE_RATIO);
+      }
+    });
+    const stopObserving = wheel.observe(targetDocument);
+    return () => {
+      activeWheelTargets.delete(targetDocument);
+      stopObserving();
+      stopListening();
+      wheel.disconnect();
+    };
+  };
 
   const bindInputTarget = (targetDocument: Document) => {
     if (inputTargets.has(targetDocument)) return;
@@ -608,23 +436,15 @@ export function createViewerInput(options: ViewerInputOptions) {
       targetDocument.head?.append(touchStyle);
     }
     targetDocument.addEventListener("keydown", handleKeyDown);
-    targetDocument.addEventListener("keyup", handleKeyUp);
-    targetDocument.addEventListener("wheel", handleWheel, { passive: false });
-    targetDocument.addEventListener("pointerdown", handlePointerDown, { capture: true });
-    targetDocument.addEventListener("pointermove", handlePointerMove, { capture: true, passive: false });
-    targetDocument.addEventListener("pointerup", handlePointerEnd, { capture: true });
-    targetDocument.addEventListener("pointercancel", handlePointerEnd, { capture: true });
     targetDocument.defaultView?.addEventListener("blur", handleBlur);
-    const stopObservingWheel = wheelGestures.observe(targetDocument);
+    const stopDrag = targetDocument === document
+      ? () => {}
+      : bindDragGesture(targetDocument, targetDocument);
+    const stopWheel = bindWheelGesture(targetDocument);
     inputTargets.set(targetDocument, () => {
-      stopObservingWheel();
+      stopDrag();
+      stopWheel();
       targetDocument.removeEventListener("keydown", handleKeyDown);
-      targetDocument.removeEventListener("keyup", handleKeyUp);
-      targetDocument.removeEventListener("wheel", handleWheel);
-      targetDocument.removeEventListener("pointerdown", handlePointerDown, { capture: true });
-      targetDocument.removeEventListener("pointermove", handlePointerMove, { capture: true });
-      targetDocument.removeEventListener("pointerup", handlePointerEnd, { capture: true });
-      targetDocument.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
       targetDocument.defaultView?.removeEventListener("blur", handleBlur);
       touchStyle?.remove();
     });
@@ -637,37 +457,21 @@ export function createViewerInput(options: ViewerInputOptions) {
 
   const bindReaderView = (view: ReaderView) => {
     if (bindings.has(view)) return;
-    const documents = new Set<Document>();
     const previousTouchAction = view.style.touchAction;
     view.style.touchAction = "pinch-zoom";
-    const bindDocument = (doc: Document) => {
-      documents.add(doc);
+    const stopShellDrag = bindDragGesture(view, document);
+    const stopDocuments = observeRenderedDocuments(view, ({ doc }, signal) => {
       bindInputTarget(doc);
-    };
-    view.renderer?.getContents?.().forEach((content) => {
-      if (content.doc) bindDocument(content.doc);
+      signal.addEventListener("abort", () => unbindInputTarget(doc), { once: true });
     });
-    const onLoad: EventListener = (event) => {
-      const detail = (event as CustomEvent<{ doc?: Document }>).detail;
-      if (detail?.doc) bindDocument(detail.doc);
-    };
-    const onUnload: EventListener = (event) => {
-      const doc = (event as CustomEvent<{ doc?: Document }>).detail?.doc;
-      if (!doc) return;
-      documents.delete(doc);
-      unbindInputTarget(doc);
-    };
-    view.addEventListener("load", onLoad);
-    view.addEventListener("unload", onUnload);
-    bindings.set(view, { documents, onLoad, onUnload, previousTouchAction });
+    bindings.set(view, { previousTouchAction, stopDocuments, stopShellDrag });
   };
 
   const unbindReaderView = (view: ReaderView) => {
     const binding = bindings.get(view);
     if (!binding) return;
-    view.removeEventListener("load", binding.onLoad);
-    view.removeEventListener("unload", binding.onUnload);
-    binding.documents.forEach(unbindInputTarget);
+    binding.stopShellDrag();
+    binding.stopDocuments();
     if (binding.previousTouchAction) view.style.touchAction = binding.previousTouchAction;
     else view.style.removeProperty("touch-action");
     bindings.delete(view);
@@ -677,17 +481,13 @@ export function createViewerInput(options: ViewerInputOptions) {
   return {
     bindReaderView,
     destroy: () => {
-      clearPointerGesture();
-      stopHoldScroll();
       stopTouchInertia();
-      stopWheelMotion();
+      activeWheelTargets.clear();
+      clearWheelBoundary();
       bindings.forEach((_, view) => unbindReaderView(view));
       inputTargets.forEach((dispose) => dispose());
       inputTargets.clear();
-      stopWheelListener();
-      wheelGestures.disconnect();
     },
-    turnPage,
     unbindReaderView,
   };
 }

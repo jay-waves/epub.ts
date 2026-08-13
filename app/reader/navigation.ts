@@ -146,14 +146,6 @@ export class Navigation {
     return this.#getRenderer().next(distance);
   }
 
-  previousSection() {
-    return this.#getRenderer().prevSection?.();
-  }
-
-  nextSection() {
-    return this.#getRenderer().nextSection?.();
-  }
-
   scrollBy(distance: number) {
     this.#getRenderer().scrollBy?.(distance, distance);
   }

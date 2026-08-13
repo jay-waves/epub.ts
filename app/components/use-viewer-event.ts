@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { listenViewerEvent } from "../viewer-events";
+import { useStore } from "zustand";
+import { viewerStore } from "../viewer-events";
 import type { ViewerEventDetailMap } from "../viewer-events";
 
 export function useViewerEvent<EventName extends keyof ViewerEventDetailMap>(
@@ -11,8 +12,11 @@ export function useViewerEvent<EventName extends keyof ViewerEventDetailMap>(
     handlerRef.current = handler;
   }, [handler]);
 
-  useEffect(
-    () => listenViewerEvent(eventName, (detail) => handlerRef.current(detail)),
-    [eventName],
-  );
+  const update = useStore(viewerStore, (state) => state.updates[eventName]);
+  const revisionRef = useRef(0);
+  useEffect(() => {
+    if (!update || update.revision === revisionRef.current) return;
+    revisionRef.current = update.revision;
+    handlerRef.current(update.detail as ViewerEventDetailMap[EventName]);
+  }, [update]);
 }
