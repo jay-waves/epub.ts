@@ -76,6 +76,7 @@ export type Renderer = HTMLElement & {
   setAttribute(name: string, value: string): void;
   scrollToAnchor?: (anchor: number, select?: boolean) => Promise<void>;
   scrollBy?: (dx: number, dy: number) => void;
+  settle?: (velocityX: number, velocityY: number) => void;
   setStyles?: (cssText: string | [string, string]) => void;
   start?: number;
   viewSize?: number;

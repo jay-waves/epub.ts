@@ -33,7 +33,7 @@ import { createSearch } from "./reader/search";
 import { createBookInfo } from "./book-info";
 import { App } from "./App";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
-import { setupViewerKeybindings } from "./viewer-keybindings";
+import { createViewerInput } from "./viewer-input";
 import { createInteractions } from "./reader/interactions";
 import {
   getSavedPosition,
@@ -59,7 +59,7 @@ type ViewerRuntime = {
   disposed: boolean;
   isSearchOpen: boolean;
   interactions: ReturnType<typeof createInteractions> | null;
-  keybindings: ReturnType<typeof setupViewerKeybindings> | null;
+  input: ReturnType<typeof createViewerInput> | null;
   lastScrollEdgeFeedbackAt: number;
   listeners: AbortController | null;
   reader: Reader | null;
@@ -71,7 +71,7 @@ const runtime: ViewerRuntime = {
   disposed: false,
   isSearchOpen: false,
   interactions: null,
-  keybindings: null,
+  input: null,
   lastScrollEdgeFeedbackAt: 0,
   listeners: null,
   reader: null,
@@ -114,14 +114,11 @@ const readerLayoutTarget = {
 };
 const renderState = createRenderState(readerRoot);
 runtime.interactions = createInteractions({
-  getFlow: () => readerSettings.flow,
   navigate: async (href) => {
     const navigation = getNavigation();
     return navigation ? renderState.run(() => navigation.go(href)) : undefined;
   },
   openExternal: platform.openExternal,
-  root: readerRoot,
-  turn: (direction) => ensureKeybindings().turnPage(direction),
 });
 
 function queryRequired<T extends Element>(selector: string) {
@@ -151,8 +148,8 @@ const highlightState = createHighlights({
   translationModelPolicy: platform.translationModelPolicy,
 });
 
-function ensureKeybindings() {
-  runtime.keybindings ??= setupViewerKeybindings({
+function ensureViewerInput() {
+  runtime.input ??= createViewerInput({
     getView,
     getNavigation,
     getFlow: () => readerSettings.flow,
@@ -165,8 +162,8 @@ function ensureKeybindings() {
     saveBook: () => { void saveAnnotatedBook(); },
   });
   const view = getView();
-  if (view) runtime.keybindings.bindReaderView(view);
-  return runtime.keybindings;
+  if (view) runtime.input.bindReaderView(view);
+  return runtime.input;
 }
 
 function emitTocUpdate() {
@@ -399,7 +396,7 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
   runtime.search?.dispose();
   runtime.search = null;
   if (reader) {
-    runtime.keybindings?.unbindReaderView(reader.view);
+    runtime.input?.unbindReaderView(reader.view);
     runtime.interactions?.unbindView(reader.view);
   }
   highlightState.reset();
@@ -431,7 +428,7 @@ async function mountView() {
     enhanceContent(doc, !view.isFixedLayout, signal);
   readerRoot.replaceChildren(view);
   runtime.interactions?.bindView(view);
-  runtime.keybindings?.bindReaderView(view);
+  runtime.input?.bindReaderView(view);
   return view;
 }
 
@@ -563,12 +560,12 @@ async function replaceBook(platformDocument: PlatformDocument) {
     runtime.search = null;
     if (runtime.reader === reader) runtime.reader = null;
     if (reader) {
-      runtime.keybindings?.unbindReaderView(reader.view);
+      runtime.input?.unbindReaderView(reader.view);
       runtime.interactions?.unbindView(reader.view);
       await reader.dispose();
     } else {
       if (view) {
-        runtime.keybindings?.unbindReaderView(view);
+        runtime.input?.unbindReaderView(view);
         runtime.interactions?.unbindView(view);
         view.destroy();
       }
@@ -708,7 +705,7 @@ async function bootstrap() {
   applyReaderSettings(undefined);
   runtime.listeners = new AbortController();
   setupEventListeners(runtime.listeners.signal);
-  ensureKeybindings();
+  ensureViewerInput();
   try {
     const initialDocument = await platform.loadInitialDocument();
     if (initialDocument) {
@@ -737,7 +734,7 @@ async function disposeViewer() {
   await highlightState.flushPendingWrites();
 
   runtime.listeners?.abort();
-  runtime.keybindings?.destroy();
+  runtime.input?.destroy();
   runtime.interactions?.destroy();
   highlightState.destroy();
   runtime.search?.dispose();

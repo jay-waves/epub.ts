@@ -541,7 +541,6 @@ export class Paginator extends HTMLElement {
     #mediaQuery = matchMedia('(prefers-color-scheme: dark)')
     #mediaQueryListener
     #scrollBounds
-    #touchState
     #lastVisibleRange
     #renderFrame
     #fillingSpread = false
@@ -675,27 +674,6 @@ export class Paginator extends HTMLElement {
                 else this.#afterScroll('scroll')
             }
         }, 250))
-
-        const opts = { passive: false }
-        this.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
-        this.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-        this.addEventListener('touchend', this.#onTouchEnd.bind(this))
-        this.addEventListener('touchcancel', this.#onTouchCancel.bind(this))
-        this.addEventListener('load', ({ detail: { doc } }) => {
-            doc.addEventListener('touchstart', this.#onTouchStart.bind(this), opts)
-            doc.addEventListener('touchmove', this.#onTouchMove.bind(this), opts)
-            doc.addEventListener('touchend', this.#onTouchEnd.bind(this))
-            doc.addEventListener('touchcancel', this.#onTouchCancel.bind(this))
-            doc.addEventListener('wheel', event => {
-                if (!this.scrolled || event.ctrlKey) return
-                const delta = this.#vertical
-                    ? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY)
-                    : (Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX)
-                if (!delta) return
-                event.preventDefault()
-                this.#container[this.scrollProp] += delta
-            }, { passive: false })
-        })
 
         this.addEventListener('relocate', ({ detail }) => {
             if (detail.reason === 'selection') setSelectionTo(this.#anchor, 0)
@@ -1089,6 +1067,10 @@ export class Paginator extends HTMLElement {
         const delta = this.#vertical ? dy : dx
         const element = this.#container
         const { scrollProp } = this
+        if (this.scrolled) {
+            element[scrollProp] += delta
+            return
+        }
         const [offset, a, b] = this.#scrollBounds
         const rtl = this.#rtl
         const min = rtl ? offset - b : offset - a
@@ -1115,56 +1097,9 @@ export class Paginator extends HTMLElement {
             })
         }).catch(error => console.warn('Failed to snap reader page.', error))
     }
-    #onTouchStart(e) {
-        const touch = e.changedTouches[0]
-        const target = e.target?.nodeType === Node.ELEMENT_NODE ? e.target : null
-        this.#touchState = {
-            x: touch?.screenX, y: touch?.screenY,
-            t: e.timeStamp,
-            vx: 0, vy: 0,
-            moved: false,
-            interactive: Boolean(target?.closest(
-                'a[href], button, input, select, textarea, label, summary, '
-                + '[contenteditable="true"], audio[controls], video[controls]')),
-        }
-    }
-    #onTouchMove(e) {
-        const state = this.#touchState
-        if (!state || state.interactive || state.pinched) return
-        state.pinched = globalThis.visualViewport.scale > 1
-        if (this.scrolled || state.pinched) return
-        if (e.touches.length > 1) {
-            if (state.moved) e.preventDefault()
-            return
-        }
-        e.preventDefault()
-        const touch = e.changedTouches[0]
-        const x = touch.screenX, y = touch.screenY
-        const dx = state.x - x, dy = state.y - y
-        const dt = e.timeStamp - state.t
-        state.x = x
-        state.y = y
-        state.t = e.timeStamp
-        state.vx = dx / dt
-        state.vy = dy / dt
-        state.moved = true
-        this.scrollBy(dx, dy)
-    }
-    #onTouchEnd() {
-        const state = this.#touchState
-        this.#touchState = null
-        if (!state?.moved || this.scrolled || state.interactive) return
-
-        // XXX: Firefox seems to report scale as 1... sometimes...?
-        // at this point I'm basically throwing `requestAnimationFrame` at
-        // anything that doesn't work
-        requestAnimationFrame(() => {
-            if (globalThis.visualViewport.scale === 1)
-                this.#snap(state.vx, state.vy)
-        })
-    }
-    #onTouchCancel() {
-        this.#touchState = null
+    settle(velocityX, velocityY) {
+        if (!this.scrolled && globalThis.visualViewport.scale === 1)
+            this.#snap(velocityX, velocityY)
     }
     // allows one to process rects as if they were LTR and horizontal
     #getRectMapper() {
