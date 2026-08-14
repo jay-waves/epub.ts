@@ -15,6 +15,7 @@ export type OverlayDrawOptions = {
 export type OverlayDraw<T extends OverlayDrawOptions = OverlayDrawOptions> = (
   rects: DOMRectList,
   options?: T,
+  range?: Range,
 ) => SVGElement;
 
 type Item<T extends OverlayDrawOptions = OverlayDrawOptions> = {
@@ -58,7 +59,7 @@ export class Overlay {
     if (this.#items.has(key)) this.remove(key);
     const range = typeof target === "function" ? target(this.#element.getRootNode()) : target;
     const rects = range.getClientRects();
-    const element = draw(rects, options);
+    const element = draw(rects, options, range);
     this.#element.append(element);
     this.#items.set(key, { draw, element, options, range, rects } as Item);
   }
@@ -74,7 +75,7 @@ export class Overlay {
     for (const item of this.#items.values()) {
       item.element.remove();
       const rects = item.range.getClientRects();
-      const element = item.draw(rects, item.options);
+      const element = item.draw(rects, item.options, item.range);
       this.#element.append(element);
       item.element = element;
       item.rects = rects;

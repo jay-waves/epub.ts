@@ -4,6 +4,10 @@ import type { PageTurnDirection, ReaderView } from "./reader/model";
 import type { Navigation } from "./reader/navigation";
 import { observeRenderedDocuments } from "./reader/documents";
 import { KineticScroller } from "./reader/kinetic-scroller";
+import {
+  consumeReaderPointerClaim,
+  resolveReaderPointerIntent,
+} from "./reader/interaction-arbiter";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const SECTION_EDGE_EPSILON = 2;
@@ -25,11 +29,8 @@ function isEditableTarget(target: EventTarget | null) {
   ));
 }
 
-function isInteractiveTarget(target: EventTarget | null) {
-  if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
-  return Boolean((target as Element).closest(
-    "a[href], button, input, select, textarea, label, summary, audio[controls], video[controls], [contenteditable='true']",
-  ));
+function isInteractiveTarget(event: PointerEvent) {
+  return resolveReaderPointerIntent(event.target) !== "content";
 }
 
 function getKeyboardScrollDistance() {
@@ -243,11 +244,13 @@ export function createViewerInput(options: ViewerInputOptions) {
         if (state.canceled) return;
         active = false;
         selecting = false;
-        if (!eventBelongsToReader(event) || !event.isPrimary || event.button !== 0
-          || isInteractiveTarget(event.target)) {
+        if (!eventBelongsToReader(event) || !event.isPrimary || event.button !== 0) {
           state.cancel();
           return;
         }
+        // A higher-priority owner still needs the browser's original pointer
+        // sequence so it can receive its synthesized click.
+        if (isInteractiveTarget(event)) return;
         active = true;
         inertia.stop();
         if (event.pointerType === "touch") {
@@ -269,8 +272,11 @@ export function createViewerInput(options: ViewerInputOptions) {
       if (ending) {
         active = false;
         clearLongPress();
+        if (consumeReaderPointerClaim(event.pointerId)) return;
         if (state.canceled || event.type === "pointercancel") return;
         if (state.tap) {
+          const selection = sourceDocument.defaultView?.getSelection();
+          if (selection && !selection.isCollapsed) return;
           const direction = edgeDirection(sourceDocument, event.clientX);
           if (direction) {
             event.preventDefault();

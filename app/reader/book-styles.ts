@@ -9,10 +9,8 @@ import type { ReaderTheme, ReaderThemeId } from "./model";
 
 const readerProfile = platform.readerProfile;
 
-export const READER_FONT_FAMILY = readerProfile.fontFamily;
 export const READER_LATIN_FONT_FAMILY = "EB Garamond EPUB";
 export const READER_MONO_FONT_FAMILY = "Monaspace Argon EPUB";
-const READER_FONT_LOCAL_NAME = readerProfile.fontLocalName;
 const READER_LATIN_FONT_URL = readerProfile.latinFontUrl;
 const READER_LATIN_ITALIC_FONT_URL = readerProfile.latinItalicFontUrl;
 const READER_MONO_FONT_URL = readerProfile.monoFontUrl;
@@ -22,9 +20,41 @@ const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
 const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
 
 const READER_SERIF_STACK =
-  `"${READER_LATIN_FONT_FAMILY}", "${READER_FONT_FAMILY}", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;
 const READER_SANS_STACK =
-  `"${READER_FONT_FAMILY}", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`;
+  `"Noto Sans", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`;
+const READER_HANT_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif TC", "Noto Serif CJK TC", "Source Han Serif TC", "Songti TC", "PMingLiU", "MingLiU", Georgia, "Times New Roman", serif`;
+const READER_HANT_SANS_STACK =
+  `"Noto Sans", "Noto Sans TC", "Noto Sans CJK TC", "Source Han Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif`;
+const READER_HK_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif TC", "Noto Serif CJK HK", "Source Han Serif HC", "Songti HK", "LiSong Pro", Georgia, "Times New Roman", serif`;
+const READER_HK_SANS_STACK =
+  `"Noto Sans", "Noto Sans HK", "Noto Sans CJK HK", "Source Han Sans HC", "PingFang HK", "LiHei Pro", system-ui, sans-serif`;
+const READER_JA_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif JP", "Noto Serif CJK JP", "Yu Mincho", "Hiragino Mincho ProN", serif`;
+const READER_JA_SANS_STACK =
+  `"Noto Sans", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic", "Hiragino Kaku Gothic ProN", system-ui, sans-serif`;
+const READER_KO_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif KR", "Noto Serif CJK KR", "Batang", serif`;
+const READER_KO_SANS_STACK =
+  `"Noto Sans", "Noto Sans KR", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif`;
+const READER_ARABIC_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Naskh Arabic", "Noto Serif Arabic", "Amiri", serif`;
+const READER_ARABIC_SANS_STACK =
+  `"Noto Sans Arabic", "Noto Kufi Arabic", sans-serif`;
+const READER_HEBREW_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif Hebrew", "Times New Roman", serif`;
+const READER_HEBREW_SANS_STACK =
+  `"Noto Sans Hebrew", Arial, sans-serif`;
+const READER_DEVANAGARI_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif Devanagari", "Nirmala UI", serif`;
+const READER_DEVANAGARI_SANS_STACK =
+  `"Noto Sans Devanagari", "Nirmala UI", sans-serif`;
+const READER_THAI_SERIF_STACK =
+  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif Thai", "Th Sarabun New", Tahoma, serif`;
+const READER_THAI_SANS_STACK =
+  `"Noto Sans Thai", Tahoma, sans-serif`;
 const READER_MONO_STACK =
   `"${READER_MONO_FONT_FAMILY}", "Sarasa Mono SC", "Maple Mono SC NF", "Cascadia Code", "SFMono-Regular", Consolas, monospace`;
 
@@ -69,15 +99,6 @@ const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
 };
 
 const READER_BOOK_FOUNDATION_STYLES = `
-  ${READER_FONT_LOCAL_NAME ? `
-  @font-face {
-    font-family: "${READER_FONT_FAMILY}";
-    src: local("${READER_FONT_LOCAL_NAME}");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
-  ` : ""}
   @font-face {
     font-family: "${READER_LATIN_FONT_FAMILY}";
     src: url("${READER_LATIN_FONT_URL}") format("${READER_LATIN_FONT_FORMAT}");
@@ -140,6 +161,24 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
       --reader-config-font-serif: ${READER_SERIF_STACK};
       --reader-config-font-sans: ${READER_SANS_STACK};
       --reader-config-font-mono: ${READER_MONO_STACK};
+      --reader-config-font-serif-zh-hans: ${READER_SERIF_STACK};
+      --reader-config-font-sans-zh-hans: ${READER_SANS_STACK};
+      --reader-config-font-serif-zh-hant: ${READER_HANT_SERIF_STACK};
+      --reader-config-font-sans-zh-hant: ${READER_HANT_SANS_STACK};
+      --reader-config-font-serif-zh-hant-hk: ${READER_HK_SERIF_STACK};
+      --reader-config-font-sans-zh-hant-hk: ${READER_HK_SANS_STACK};
+      --reader-config-font-serif-ja: ${READER_JA_SERIF_STACK};
+      --reader-config-font-sans-ja: ${READER_JA_SANS_STACK};
+      --reader-config-font-serif-ko: ${READER_KO_SERIF_STACK};
+      --reader-config-font-sans-ko: ${READER_KO_SANS_STACK};
+      --reader-config-font-serif-arabic: ${READER_ARABIC_SERIF_STACK};
+      --reader-config-font-sans-arabic: ${READER_ARABIC_SANS_STACK};
+      --reader-config-font-serif-hebrew: ${READER_HEBREW_SERIF_STACK};
+      --reader-config-font-sans-hebrew: ${READER_HEBREW_SANS_STACK};
+      --reader-config-font-serif-devanagari: ${READER_DEVANAGARI_SERIF_STACK};
+      --reader-config-font-sans-devanagari: ${READER_DEVANAGARI_SANS_STACK};
+      --reader-config-font-serif-thai: ${READER_THAI_SERIF_STACK};
+      --reader-config-font-sans-thai: ${READER_THAI_SANS_STACK};
       --reader-font-size-adjust: ${readerProfile.fontSizeAdjust};
       color-scheme: ${theme.mode};
     }

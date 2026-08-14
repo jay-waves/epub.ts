@@ -134,7 +134,7 @@ function getViewerAssetUrl(filename: string) {
 }
 
 export const platform: ViewerPlatform = {
-  readerProfile: createBundledReaderProfile(getViewerAssetUrl, 16),
+  readerProfile: createBundledReaderProfile(getViewerAssetUrl),
   translationModelPolicy: "allow-download",
   async loadInitialDocument() {
     if (!launcher) {

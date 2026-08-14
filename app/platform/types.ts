@@ -27,8 +27,6 @@ export interface PlatformDocument {
 
 export interface ReaderProfile {
   readonly defaultFontSize: number;
-  readonly fontFamily: string;
-  readonly fontLocalName?: string;
   readonly latinFontUrl: string;
   readonly latinFontFormat: string;
   readonly latinItalicFontUrl: string;

@@ -3,9 +3,6 @@ import type { BookInfo } from "./book-info";
 import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
-  highlightContextAction: "reader:highlight-context-action",
-  highlightContextClose: "reader:highlight-context-close",
-  highlightContextOpen: "reader:highlight-context-open",
   annotationClose: "reader:annotation-close",
   annotationDelete: "reader:annotation-delete",
   annotationOpen: "reader:annotation-open",
@@ -31,17 +28,7 @@ export const VIEWER_EVENTS = {
   tocUpdate: "reader:toc-update",
 } as const;
 
-export type HighlightContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
 type TranslationStatus = "error" | "loading" | "success";
-
-export type HighlightContextOpenDetail = {
-  canCopy: boolean;
-  canDelete: boolean;
-  canHighlight: boolean;
-  kind: "media" | "text";
-  x: number;
-  y: number;
-};
 
 export type TranslationDetail = {
   message?: string;
@@ -113,9 +100,6 @@ export type TocNavigateDetail = {
 };
 
 export type ViewerEventDetailMap = {
-  [VIEWER_EVENTS.highlightContextAction]: HighlightContextAction;
-  [VIEWER_EVENTS.highlightContextClose]: void;
-  [VIEWER_EVENTS.highlightContextOpen]: HighlightContextOpenDetail;
   [VIEWER_EVENTS.annotationClose]: void;
   [VIEWER_EVENTS.annotationDelete]: { value: string };
   [VIEWER_EVENTS.annotationOpen]: AnnotationDetail;
@@ -143,8 +127,6 @@ export type ViewerEventDetailMap = {
 
 const viewerEvents = new EventTarget();
 const STATE_EVENTS = new Set<string>([
-  VIEWER_EVENTS.highlightContextClose,
-  VIEWER_EVENTS.highlightContextOpen,
   VIEWER_EVENTS.annotationClose,
   VIEWER_EVENTS.annotationOpen,
   VIEWER_EVENTS.translationClose,

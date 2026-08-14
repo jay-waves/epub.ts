@@ -1,27 +1,9 @@
-import { useState } from "react";
 import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useStore } from "zustand";
 import { useFloatingPosition } from "./floating-position";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type {
-  HighlightContextAction,
-  HighlightContextOpenDetail,
-} from "../viewer-events";
-import { useViewerEvent } from "./use-viewer-event";
-
-type MenuState = HighlightContextOpenDetail & {
-  open: boolean;
-};
-
-const closedState: MenuState = {
-  canCopy: false,
-  canDelete: false,
-  canHighlight: false,
-  kind: "text",
-  open: false,
-  x: 0,
-  y: 0,
-};
+import type { HighlightContextAction } from "../context-menu-store";
+import { contextMenuStore } from "../context-menu-store";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
@@ -32,20 +14,12 @@ const menuItems = [
 ] as const;
 
 export function HighlightContextMenu() {
-  const [state, setState] = useState<MenuState>(closedState);
-  const close = () => emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
+  const state = useStore(contextMenuStore);
   const { floatingProps, floatingStyles, refs } = useFloatingPosition({
     gap: 4,
-    onDismiss: close,
+    onDismiss: state.close,
     open: state.open,
     point: { x: state.x, y: state.y },
-  });
-
-  useViewerEvent(VIEWER_EVENTS.highlightContextOpen, (detail) => {
-    setState({ ...detail, open: true });
-  });
-  useViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
-    setState((current) => ({ ...current, open: false }));
   });
 
   if (!state.open) return null;
@@ -64,6 +38,7 @@ export function HighlightContextMenu() {
           {...item}
           disabled={!state[item.enabledBy]}
           key={item.action}
+          onSelect={state.select}
         />
       ))}
     </div>
@@ -76,12 +51,14 @@ function ContextMenuItem({
   disabled,
   icon: Icon,
   label,
+  onSelect,
 }: {
   action: HighlightContextAction;
   destructive?: boolean;
   disabled: boolean;
   icon: LucideIcon;
   label: string;
+  onSelect: (action: HighlightContextAction) => void;
 }) {
   return (
     <button
@@ -90,10 +67,7 @@ function ContextMenuItem({
       disabled={disabled}
       role="menuitem"
       type="button"
-      onClick={() => {
-        emitViewerEvent(VIEWER_EVENTS.highlightContextAction, action);
-        emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
-      }}
+      onClick={() => onSelect(action)}
     >
       <Icon size={20} aria-hidden="true" />
       {label}

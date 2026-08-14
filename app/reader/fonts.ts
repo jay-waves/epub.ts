@@ -1,9 +1,5 @@
 import { platform } from "#platform";
-import {
-  READER_FONT_FAMILY,
-  READER_LATIN_FONT_FAMILY,
-  READER_MONO_FONT_FAMILY,
-} from "./book-styles";
+import { READER_LATIN_FONT_FAMILY, READER_MONO_FONT_FAMILY } from "./book-styles";
 
 const documentFontLoads = new WeakMap<Document, Promise<void>>();
 const FONT_LOAD_TIMEOUT = 2_000;
@@ -11,7 +7,6 @@ let readerFontsReady: Promise<void> | undefined;
 
 export function getReaderFontQueries(fontSize: number) {
   return [
-    `${fontSize}px "${READER_FONT_FAMILY}"`,
     `${fontSize}px "${READER_LATIN_FONT_FAMILY}"`,
     `italic ${fontSize}px "${READER_LATIN_FONT_FAMILY}"`,
     `${fontSize}px "${READER_MONO_FONT_FAMILY}"`,

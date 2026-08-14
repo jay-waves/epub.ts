@@ -173,6 +173,10 @@ export class ScrolledRenderer extends HTMLElement {
                     // destination page. Defer the layout so the new, landed
                     // range becomes the anchor instead of jumping back.
                     if (this.#navigation.deferReflow()) return
+                    // ResizeObserver can run before the throttled/idle scroll
+                    // sample. Commit the physical position first so this
+                    // reflow never restores an anchor from the previous tick.
+                    this.#scrolledViewport.flush()
                     const activeEntry = this.#entryAtReadingEdge()
                     const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
                     this.#layoutEntries()
@@ -371,6 +375,9 @@ export class ScrolledRenderer extends HTMLElement {
     }
     render() {
         if (!this.#view) return
+        // A viewport resize may race the final idle scroll sample in exactly
+        // the same way as section content expansion.
+        this.#scrolledViewport.flush()
         if (!this.#navigation.beginReflow()) return
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeWhere(entry => entry.view !== this.#view)

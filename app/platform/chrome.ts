@@ -34,7 +34,7 @@ function getFileName(sourceUrl: string) {
 }
 
 export const platform: ViewerPlatform = {
-  readerProfile: createBundledReaderProfile((filename) => chrome.runtime.getURL(filename), 15),
+  readerProfile: createBundledReaderProfile((filename) => chrome.runtime.getURL(filename)),
   translationModelPolicy: "allow-download",
   async loadInitialDocument() {
     const rawSourceUrl = getInitialSourceUrl();

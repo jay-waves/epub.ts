@@ -5,10 +5,14 @@ import {
 } from "./browser-storage";
 import { BrowserEpubFileHandle } from "./browser-file-handle";
 import { openExternal } from "./external";
-import { webReaderProfile } from "./reader-profile";
+import { createWebReaderProfile } from "./reader-profile";
 import type { PlatformDocument, ViewerPlatform } from "./types";
 
 const RECENT_FILE_KEY = "web:recent-epub";
+
+function getWebAssetUrl(filename: string) {
+  return new URL(filename, document.baseURI).href;
+}
 
 class DownloadEpubFileHandle {
   constructor(readonly name: string) {}
@@ -57,7 +61,7 @@ function documentFromFile(
 }
 
 export const platform: ViewerPlatform = {
-  readerProfile: webReaderProfile,
+  readerProfile: createWebReaderProfile(getWebAssetUrl),
   translationModelPolicy: "external-fallback",
   async loadInitialDocument() {
     return undefined;

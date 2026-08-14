@@ -1,6 +1,7 @@
 import type { ReaderView } from "./model";
 import type { Resolved } from "../renderer";
 import { observeRenderedDocuments } from "./documents";
+import { consumeReaderInteraction, resolveReaderPointerIntent } from "./interaction-arbiter";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
@@ -123,9 +124,11 @@ export function createInteractions(options: InteractionOptions) {
     doc.addEventListener("click", (event) => {
       if (!isPlainClick(event)) return;
 
-      const anchor = asElement(event.target)?.closest<HTMLAnchorElement>("a[href]");
-      if (anchor) {
-        event.preventDefault();
+      if (resolveReaderPointerIntent(event.target) === "link") {
+        const anchor = asElement(event.target)?.closest<HTMLAnchorElement>("a[href]");
+        if (!anchor) return;
+        consumeReaderInteraction(event);
+        doc.defaultView?.getSelection()?.removeAllRanges();
         const sourceHref = anchor.getAttribute("href");
         if (!sourceHref) return;
         const section = view.book?.sections?.[index];

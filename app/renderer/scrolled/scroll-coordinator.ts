@@ -146,10 +146,20 @@ export class ScrollCoordinator {
     }
     window.clearTimeout(this.#idleTimer);
     this.#idleTimer = window.setTimeout(() => {
-      window.clearTimeout(this.#updateTimer);
-      this.#updateTimer = undefined;
-      update();
+      this.flush();
     }, IDLE_DELAY);
+  }
+
+  /** Commits the latest physical scroll before a reflow can restore its anchor. */
+  flush() {
+    if (this.#updateTimer === undefined && this.#idleTimer === undefined) return false;
+    window.clearTimeout(this.#updateTimer);
+    window.clearTimeout(this.#idleTimer);
+    this.#updateTimer = undefined;
+    this.#idleTimer = undefined;
+    this.#lastUpdate = performance.now();
+    this.#update();
+    return true;
   }
 
   cancel() {

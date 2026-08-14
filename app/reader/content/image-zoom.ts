@@ -1,3 +1,5 @@
+import { consumeReaderInteraction, resolveReaderPointerIntent } from "../interaction-arbiter";
+
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;
 
@@ -16,6 +18,7 @@ export function enhanceImages(doc: Document, signal: AbortSignal) {
   enhancedDocuments.add(doc);
 
   for (const image of doc.querySelectorAll<HTMLImageElement>("img")) {
+    if (isContentImage(image)) image.classList.add("reader-content-image");
     if (image.complete) {
       markZoomableImage(image, signal);
     } else {
@@ -26,8 +29,14 @@ export function enhanceImages(doc: Document, signal: AbortSignal) {
 
 function markZoomableImage(image: HTMLImageElement, signal?: AbortSignal) {
   if (!isZoomableImage(image)) return;
+  image.classList.add("reader-content-image");
   image.classList.add("reader-zoomable-image");
   image.addEventListener("click", handleReaderImageClick, { passive: false, signal });
+}
+
+function isContentImage(image: HTMLImageElement) {
+  if (image.closest("[data-reader-footnote-target='true']")) return false;
+  return Boolean(image.closest("figure, [data-reader-role~='figure'], [data-reader-media-block='true']"));
 }
 
 function ensureMediumZoom() {
@@ -115,9 +124,11 @@ function isZoomableImage(image: HTMLImageElement) {
 }
 
 function handleReaderImageClick(event: MouseEvent) {
-  event.preventDefault();
-  event.stopPropagation();
-  void openReaderImageZoom(event.currentTarget as HTMLImageElement).catch((error) => {
+  if (resolveReaderPointerIntent(event.target) !== "image") return;
+  consumeReaderInteraction(event);
+  const image = event.currentTarget as HTMLImageElement;
+  image.ownerDocument.defaultView?.getSelection()?.removeAllRanges();
+  void openReaderImageZoom(image).catch((error) => {
     console.warn("Failed to open reader image zoom.", error);
   });
 }

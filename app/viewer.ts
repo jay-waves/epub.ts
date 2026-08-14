@@ -585,9 +585,6 @@ function setupEventListeners(signal: AbortSignal) {
     void runtime.search?.next();
   }, { signal });
   listenViewerEvent(VIEWER_EVENTS.searchClear, clearSearchState, { signal });
-  listenViewerEvent(VIEWER_EVENTS.highlightContextAction, (action) => {
-    highlightState.handleContextAction(action);
-  }, { signal });
   listenViewerEvent(VIEWER_EVENTS.unsavedChange, () => setHasUnsavedChanges(true), { signal });
   listenViewerEvent(VIEWER_EVENTS.dockAction, (action) => {
     void handleDockAction(action).catch((error) => {

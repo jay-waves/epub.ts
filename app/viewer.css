@@ -101,6 +101,7 @@
   }
 
   .reader-tooltip {
+    --reader-tooltip-delay: 500ms;
     position: relative;
   }
 
@@ -123,14 +124,21 @@
     transform: var(--tooltip-offset, none) scale(0.96);
     transition:
       opacity 120ms ease,
-      transform 120ms ease;
+      transform 120ms ease,
+      visibility 0s linear 120ms;
+    visibility: hidden;
     white-space: nowrap;
   }
 
   .reader-tooltip:hover::before,
-  .reader-tooltip:focus-visible::before {
+  .reader-tooltip:focus-within::before {
     opacity: 1;
     transform: var(--tooltip-offset, none) scale(1);
+    transition-delay:
+      var(--reader-tooltip-delay),
+      var(--reader-tooltip-delay),
+      var(--reader-tooltip-delay);
+    visibility: visible;
   }
 
   .reader-tooltip-right::before {
@@ -182,6 +190,7 @@
 
   .reader-dock-shell {
     @apply fixed inset-y-0 left-0 z-20 flex w-16 items-center justify-start;
+    pointer-events: none;
   }
 
   .reader-dock,
@@ -197,12 +206,20 @@
   }
 
   .reader-dock {
-    @apply pointer-events-auto flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
+    @apply pointer-events-auto relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
     opacity: 0;
     transform: translateX(calc(-100% + 0.5rem)) translateY(-4vh);
     transition:
       opacity 200ms ease,
       transform 200ms ease;
+  }
+
+  .reader-dock::after {
+    position: absolute;
+    inset-block: 0;
+    right: 100%;
+    width: 0.75rem;
+    content: "";
   }
 
   .reader-dock-shell:hover .reader-dock,

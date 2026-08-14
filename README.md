@@ -61,19 +61,23 @@ pnpm build:linux   # epub.ts, embedded web app
 
 主要跨端差异：
 
-| 形态 | 打开本地 EPUB | 保存 | 字体与翻译 |
-| --- | --- | --- | --- |
-| 插件 | 拦截 `file://*.epub`；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 西文与等宽字体随插件提供；内置翻译模型可按需下载 |
-| Web | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 正文使用系统字体，西文与等宽字体来自 CDN；未安装内置翻译模型时转到 Google 翻译 |
-| 桌面 | 支持系统文件关联，通过 `epub.ts.localhost` 本地服务读取 | 本地服务写回批注；检测到外部修改时改存冲突副本 | 西文与等宽字体随应用提供；内置翻译模型可按需下载 |
+| 形态 | 最低运行环境 | 打开本地 EPUB | 保存 | 翻译 |
+| --- | --- | --- | --- | --- |
+| 插件 | Chrome 120+ | 拦截 `file://*.epub`；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
+| Web | Chrome/Edge 120+、Firefox 121+、Safari/iOS 17.2+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 未安装内置翻译模型时转到 Google 翻译 |
+| 桌面 | 系统浏览器：Chrome/Edge 120+ 或 Firefox 121+ | 支持系统文件关联，通过 `epub.ts.localhost` 本地服务读取 | 本地服务写回批注；检测到外部修改时改存冲突副本 | 内置翻译模型可按需下载 |
+
+各形态共享 ES2022、现代 HTML 与 CSS API 的基线；最低浏览器版本由构建配置统一约束。
 
 Key differences between platforms:
 
-| Application | Opening local EPUBs | Saving | Fonts and translation |
-| --- | --- | --- | --- |
-| Extension | Intercepts `file://*.epub`; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Latin and monospace fonts are bundled; built-in translation models may be downloaded on demand |
-| Web | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Body text uses system fonts, while Latin and monospace fonts come from a CDN; translation falls back to Google Translate when no built-in model is installed |
-| Desktop | Supports OS file association and reads through the local `epub.ts.localhost` service | The local service writes annotations back; external changes produce a conflict copy | Latin and monospace fonts are bundled; built-in translation models may be downloaded on demand |
+| Application | Minimum runtime | Opening local EPUBs | Saving | Translation |
+| --- | --- | --- | --- | --- |
+| Extension | Chrome 120+ | Intercepts `file://*.epub`; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
+| Web | Chrome/Edge 120+, Firefox 121+, Safari/iOS 17.2+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Translation falls back to Google Translate when no built-in model is installed |
+| Desktop | System browser: Chrome/Edge 120+ or Firefox 121+ | Supports OS file association and reads through the local `epub.ts.localhost` service | The local service writes annotations back; external changes produce a conflict copy | Built-in translation models may be downloaded on demand |
+
+All variants share an ES2022 baseline and modern HTML and CSS APIs. Minimum browser versions are enforced by the build configuration.
 
 <img src="assets/screenshot1.png" width="800">
 
@@ -107,9 +111,18 @@ Create the iframe Document and inject reader styles
 章节卸载或换书时清理 / Clean up on unload or book change
 ```
 
+## 交互与界面层 / Interaction and UI Layers
+
+一次指针操作只交给一个处理者，优先级为：控件 > 链接 > 高亮与批注 > 图片 > 文本选择 > 翻页。右键操作同样优先命中高亮，再处理图片或普通文本。
+
+Each pointer gesture has one owner: controls > links > highlights and annotations > images > text selection > page turning. Right-clicks also prefer highlights before media or ordinary text.
+
+界面简化为三层：EPUB iframe 正文、SVG 内容装饰层（高亮与批注）、应用界面层（Dock、菜单、弹窗与图片放大）。
+
+The UI has three broad layers: EPUB iframe content, SVG content decorations (highlights and annotations), and application chrome (Dock, menus, dialogs, and image zoom).
+
 ## 致谢 / Acknowledgements
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js)（初始 renderer 与 EPUB parser）
 - EB Garamond font
-- LXGW font
 - Monaspace Argon

@@ -26,7 +26,6 @@
       font-size-adjust: var(--reader-font-size-adjust);
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
-      text-autospace: ideograph-alpha ideograph-numeric;
     }
     body :where(
       *:not(math):not(math *):not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *)
@@ -165,28 +164,26 @@
       fill: #c2413b !important;
       stroke: #c2413b !important;
     }
-    :is(p, li, blockquote, dd, dt, td, th, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) {
+    :is(p, li, blockquote, dd, dt, td, th, [data-reader-role~="paragraph"]) {
       font-size: var(--reader-font-size) !important;
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
       text-align: justify;
       hyphens: auto !important;
       hyphenate-limit-chars: 8 3 3 !important;
-      hanging-punctuation: allow-end last;
       word-spacing: var(--reader-word-spacing) !important;
-      text-autospace: ideograph-alpha ideograph-numeric;
     }
-    :is(p, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) {
+    :is(p, [data-reader-role~="paragraph"]) {
       margin-block-start: 0 !important;
       margin-block-end: var(--reader-paragraph-spacing) !important;
     }
-    :is(p, li, blockquote, dd, dt, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) {
+    :is(p, li, blockquote, dd, dt, [data-reader-role~="paragraph"]) {
       text-wrap: pretty !important;
     }
     :is(ul, ol),
     blockquote,
     li,
-    li :is(p, li, blockquote, dd, dt, td, th, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) {
+    li :is(p, li, blockquote, dd, dt, td, th, [data-reader-role~="paragraph"]) {
       font-size: var(--reader-list-font-size) !important;
       line-height: var(--reader-line-height) !important;
     }
@@ -202,17 +199,15 @@
     li > :last-child {
       margin-block-end: 0 !important;
     }
-    :is(p, li, blockquote, dd, dt, td, th, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) :where(span, a, em, strong, b, i) {
-
+    :is(p, li, blockquote, dd, dt, td, th, [data-reader-role~="paragraph"]) :where(span, a, em, strong, b, i) {
       font-size: inherit !important;
       line-height: inherit !important;
       letter-spacing: inherit !important;
       word-spacing: inherit !important;
-
     }
     :is(h1, h2, h3, h4, h5, h6, [data-reader-role~="heading"]),
     :is(h1, h2, h3, h4, h5, h6, [data-reader-role~="heading"]) * {
-      font-family: var(--reader-font-serif) !important;
+      font-family: var(--reader-font-sans) !important;
       font-weight: 700 !important;
       font-style: normal !important;
       letter-spacing: 0 !important;
@@ -284,9 +279,9 @@
       padding-inline-start: 1em !important;
       border-inline-start: 0.18em solid var(--reader-border-color) !important;
     }
-    blockquote :is(p, li, blockquote, dd, dt, td, th, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]),
+    blockquote :is(p, li, blockquote, dd, dt, td, th, [data-reader-role~="paragraph"]),
     blockquote :where(span, a, em, strong, b, i),
-    blockquote :is(p, li, blockquote, dd, dt, td, th, [epub|type~="bodymatter"] p, [data-reader-role~="paragraph"]) :where(span, a, em, strong, b, i) {
+    blockquote :is(p, li, blockquote, dd, dt, td, th, [data-reader-role~="paragraph"]) :where(span, a, em, strong, b, i) {
       font-size: var(--reader-list-font-size) !important;
       line-height: var(--reader-line-height) !important;
     }
@@ -298,10 +293,8 @@
     }
     :is(aside, details, [data-reader-role~="note"]):not([data-reader-role~="footnote"]),
     :is(aside, details, [data-reader-role~="note"]):not([data-reader-role~="footnote"]) * {
-
       font-size: calc(var(--reader-font-size) * 0.9) !important;
       line-height: var(--reader-small-line-height) !important;
-
       word-spacing: 0 !important;
     }
     :is(aside, details, [data-reader-role~="note"]):not([data-reader-role~="footnote"]) {
@@ -383,19 +376,21 @@
       filter: var(--reader-media-filter) !important;
     }
     :is(figure, [data-reader-media-block="true"]) img,
-    img.reader-zoomable-image {
+    img.reader-content-image {
       display: block !important;
       margin-inline: auto !important;
     }
-    img.reader-zoomable-image {
+    img.reader-content-image {
       inline-size: auto !important;
       width: auto !important;
       max-inline-size: var(--reader-image-max-inline-size) !important;
       max-width: var(--reader-image-max-inline-size) !important;
       border-radius: 0.5rem !important;
+    }
+    img.reader-zoomable-image {
       cursor: zoom-in !important;
     }
-    figure img.reader-zoomable-image {
+    figure img.reader-content-image {
       margin-block-end: 0.75em !important;
     }
     :is(table, [data-reader-role~="table"]) {

@@ -4,8 +4,14 @@ import {
   getSavedHighlights,
   setSavedHighlights,
 } from "../viewer-storage";
-import type { HighlightContextAction } from "../viewer-events";
+import type { HighlightContextAction } from "../context-menu-store";
+import { contextMenuStore } from "../context-menu-store";
 import type { ReaderHighlight } from "../epub/annotations";
+import {
+  claimReaderPointer,
+  consumeReaderInteraction,
+  consumeReaderPointerClaim,
+} from "./interaction-arbiter";
 import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
 import type { ReaderView } from "./model";
 import { createTranslation } from "./translation";
@@ -50,6 +56,7 @@ type HighlightDrawOptions = OverlayDrawOptions & {
   annotationValue?: string;
   color: string;
   hasNote?: boolean;
+  onActivate?: (event: MouseEvent) => void;
   onBadgeClick?: (event: MouseEvent) => void;
 };
 
@@ -60,9 +67,43 @@ function createSvgElement(tagName: string) {
 function drawHighlightWithAnnotationBadge(
   rects: DOMRectList,
   options: HighlightDrawOptions = { color: THEME_HIGHLIGHT_COLOR },
+  range?: Range,
 ) {
   const group = createSvgElement("g");
   group.append(Overlay.highlight(rects, { color: options.color }));
+  if (options.annotationValue && !rangeTouchesLink(range)) {
+    const hitTarget = createSvgElement("g");
+    hitTarget.setAttribute("data-reader-interaction", "highlight");
+    hitTarget.setAttribute("data-reader-highlight-value", options.annotationValue);
+    hitTarget.style.cursor = "pointer";
+    hitTarget.style.pointerEvents = "all";
+    for (const rect of Array.from(rects)) {
+      const hitRect = createSvgElement("rect");
+      hitRect.setAttribute("x", String(rect.left));
+      hitRect.setAttribute("y", String(rect.top));
+      hitRect.setAttribute("width", String(rect.width));
+      hitRect.setAttribute("height", String(rect.height));
+      hitRect.setAttribute("fill", "transparent");
+      hitRect.style.pointerEvents = "all";
+      hitTarget.append(hitRect);
+    }
+    hitTarget.addEventListener("pointerdown", (event) => {
+      claimReaderPointer(event.pointerId, "highlight");
+    });
+    hitTarget.addEventListener("pointercancel", (event) => {
+      consumeReaderPointerClaim(event.pointerId);
+    });
+    hitTarget.addEventListener("pointerup", (event) => {
+      queueMicrotask(() => consumeReaderPointerClaim(event.pointerId));
+    });
+    const activate = (event: MouseEvent) => {
+      consumeReaderInteraction(event);
+      options.onActivate?.(event);
+    };
+    hitTarget.addEventListener("click", activate);
+    hitTarget.addEventListener("contextmenu", activate);
+    group.append(hitTarget);
+  }
 
   if (!options.hasNote || rects.length === 0) return group;
 
@@ -126,6 +167,17 @@ function drawHighlightWithAnnotationBadge(
   return group;
 }
 
+function rangeTouchesLink(range?: Range) {
+  if (!range) return false;
+  const container = range.commonAncestorContainer;
+  const element = container.nodeType === Node.ELEMENT_NODE
+    ? container as Element
+    : container.parentElement;
+  if (element?.closest("a[href]")) return true;
+  return Array.from(element?.querySelectorAll("a[href]") ?? [])
+    .some((anchor) => range.intersectsNode(anchor));
+}
+
 export function createHighlights(options: HighlightOptions) {
   const viewerEvents = new AbortController();
   let contextView: ReaderView | null = null;
@@ -144,9 +196,6 @@ export function createHighlights(options: HighlightOptions) {
     return pendingWrites.track(task);
   };
 
-  listenViewerEvent(VIEWER_EVENTS.highlightContextClose, () => {
-    activeContext = null;
-  }, { signal: viewerEvents.signal });
   listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
     run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
   }, { signal: viewerEvents.signal });
@@ -165,7 +214,7 @@ export function createHighlights(options: HighlightOptions) {
 
   const close = () => {
     activeContext = null;
-    emitViewerEvent(VIEWER_EVENTS.highlightContextClose);
+    contextMenuStore.getState().close();
   };
 
   const getSelectedReaderRange = () => {
@@ -237,26 +286,26 @@ export function createHighlights(options: HighlightOptions) {
     }
 
     activeContext = { highlight, point: { x: pageX, y: pageY }, selection };
-    emitViewerEvent(VIEWER_EVENTS.highlightContextOpen, {
+    contextMenuStore.getState().openMenu({
       canCopy: hasSelection || hasHighlight,
       canDelete: hasHighlight,
       canHighlight: hasSelection,
       kind: "text",
       x: pageX,
       y: pageY,
-    });
+    }, handleContextAction, () => { activeContext = null; });
   };
 
   const openMedia = (media: Element, pageX: number, pageY: number) => {
     activeContext = { media, point: { x: pageX, y: pageY } };
-    emitViewerEvent(VIEWER_EVENTS.highlightContextOpen, {
+    contextMenuStore.getState().openMenu({
       canCopy: true,
       canDelete: false,
       canHighlight: false,
       kind: "media",
       x: pageX,
       y: pageY,
-    });
+    }, handleContextAction, () => { activeContext = null; });
   };
 
   const getAnnotationText = (highlight: ReaderHighlight) => highlight.text?.trim() || highlight.value;
@@ -407,6 +456,12 @@ export function createHighlights(options: HighlightOptions) {
         if (!hasAnnotationNote(highlight)) return;
         openAnnotationPopover(highlight, getPagePointFromDocumentEvent(event));
         close();
+      },
+      onActivate: (event) => {
+        const highlight = currentHighlights.find((item) => item.value === detail.annotation.value)
+          ?? detail.annotation;
+        options.getNavigation()?.clearSelection();
+        open({ highlight, pageX: event.clientX, pageY: event.clientY });
       },
     });
   };
@@ -668,7 +723,6 @@ export function createHighlights(options: HighlightOptions) {
     },
     flushPendingWrites: () => pendingWrites.idle(),
     getAll: () => currentHighlights.slice(),
-    handleContextAction,
     openFromAnnotation,
     reset,
     restore,

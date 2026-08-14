@@ -3,6 +3,7 @@ import { normalizeInlineText } from "../../text";
 import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";
 import { getEpubType, markReaderSemantics } from "./semantics";
+import { enhanceTypography } from "./typography";
 
 export { closeContentOverlays, disposeContent } from "./image-zoom";
 export { clearMathCache } from "./math";
@@ -19,6 +20,7 @@ export async function prepareContent(doc: Document, options: {
   if (!options.reflowable) return;
 
   markReaderSemantics(doc);
+  enhanceTypography(doc);
   labelFootnotes(doc);
   enhanceImages(doc, options.signal);
 
