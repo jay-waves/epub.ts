@@ -1,3 +1,4 @@
+/** Direction in logical reading order. */
 export type NavigationDirection = -1 | 1;
 
 type NavigationTask<T> = () => T | Promise<T>;
@@ -48,29 +49,6 @@ export class ViewportNavigation {
     this.#queue = result.then(() => undefined, () => undefined);
     return result;
   }
-}
-
-type EntryOffsetOptions = {
-  continuous: boolean;
-  leadingRemainder: number;
-  scrolled: boolean;
-  start?: number;
-  viewportSize: number;
-};
-
-export function getEntryOffset({
-  continuous,
-  leadingRemainder,
-  scrolled,
-  start = 0,
-  viewportSize,
-}: EntryOffsetOptions) {
-  return continuous ? (scrolled ? 0 : viewportSize + leadingRemainder) + start : 0;
-}
-
-/** Physical track size required to make every cached scroll anchor reachable. */
-export function getScrolledTrackSize(contentExtent: number, viewportSize: number) {
-  return Math.max(contentExtent + viewportSize, viewportSize);
 }
 
 /** Converts a section-relative fraction to a stable track coordinate. */

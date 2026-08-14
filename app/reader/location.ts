@@ -1,6 +1,6 @@
-import type { TocItem } from "../renderer/view.js";
+import type { TocItem } from "../renderer/reader-view.js";
 
-export type { TocItem } from "../renderer/view.js";
+export type { TocItem } from "../renderer/reader-view.js";
 
 type Section = {
   linear?: string;

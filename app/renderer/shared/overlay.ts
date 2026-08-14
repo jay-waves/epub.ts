@@ -2,6 +2,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 type Rects = DOMRectList | readonly DOMRect[];
 
+/** Draws document-relative decorations independently from a render mode. */
 export type OverlayDrawOptions = {
   color?: string;
   radius?: number;

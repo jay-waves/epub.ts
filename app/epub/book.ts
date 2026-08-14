@@ -6,7 +6,7 @@ import {
   ZipReader,
 } from "@zip.js/zip.js";
 import type { FileEntry } from "@zip.js/zip.js";
-import type { Book } from "../renderer/view.js";
+import type { Book } from "../renderer/reader-view.js";
 
 class ResponseError extends Error {}
 class NotFoundError extends Error {}

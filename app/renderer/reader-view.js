@@ -1,4 +1,6 @@
-import { Overlay } from './overlay.ts'
+import { Overlay } from './shared/overlay.ts'
+import { createRenderer, rendererModeForBook } from './renderer-factory.ts'
+import { installBookCssNormalization } from './shared/book-css.ts'
 
 const languageInfo = lang => {
     if (!lang) return {}
@@ -14,47 +16,135 @@ const languageInfo = lang => {
     }
 }
 
-export class View extends HTMLElement {
+export class ReaderView extends HTMLElement {
     #root = this.attachShadow({ mode: 'closed' })
     #events
     #contents = new Map()
     #destroyed = false
     #opened = false
     #decorations = new Map()
-    isFixedLayout = false
+    #rendererEvents = new WeakMap()
+    #relocations = new WeakMap()
+    #styles
+    #switch = Promise.resolve()
+    get renderMode() {
+        return this.renderer?.mode ?? 'paginated'
+    }
     async open(book, navigation) {
         if (this.#opened) throw new Error('A renderer view can only open one book')
         this.#opened = true
         this.#events = new AbortController()
         const { signal } = this.#events
         this.book = book
+        installBookCssNormalization(book)
         this.navigation = navigation
         this.language = languageInfo(book.metadata?.language)
 
-        this.isFixedLayout = this.book.rendition?.layout === 'pre-paginated'
-        if (this.isFixedLayout) {
-            await import('./fixed-layout.js')
-            if (this.#destroyed) throw new DOMException('View destroyed', 'AbortError')
-            this.renderer = document.createElement('epub-fixed')
-        } else {
-            await import('./paginator.js')
-            if (this.#destroyed) throw new DOMException('View destroyed', 'AbortError')
-            this.renderer = document.createElement('epub-paginator')
-        }
-        this.renderer.beforeRenderDocument = (doc, index) => {
+        this.renderer = await createRenderer(rendererModeForBook(book))
+        if (this.#destroyed) throw new DOMException('View destroyed', 'AbortError')
+        this.#wireRenderer(this.renderer, signal)
+        await this.renderer.open(book)
+        this.#root.append(this.renderer.element)
+
+    }
+    #wireRenderer(renderer, signal) {
+        const events = new AbortController()
+        this.#rendererEvents.set(renderer, events)
+        signal.addEventListener('abort', () => events.abort(), { once: true })
+        const rendererSignal = events.signal
+        renderer.beforeRenderDocument = (doc, index) => {
             const content = new AbortController()
             this.#contents.set(doc, content)
             return this.enhanceRenderedDocument?.(doc, index, content.signal)
         }
-        this.renderer.setAttribute('exportparts', 'head,foot,filter')
-        this.renderer.addEventListener('load', e => this.#onLoad(e.detail), { signal })
-        this.renderer.addEventListener('unload', e => this.#onUnload(e.detail), { signal })
-        this.renderer.addEventListener('relocate', e => this.#emit('relocate', e.detail), { signal })
-        this.renderer.addEventListener('request-overlay', e =>
-            e.detail.attach(this.#createOverlay(e.detail)), { signal })
-        this.renderer.open(book)
-        this.#root.append(this.renderer)
+        renderer.element.setAttribute('exportparts', 'filter')
+        renderer.element.addEventListener('load', e => this.#onLoad(e.detail), { signal: rendererSignal })
+        renderer.element.addEventListener('unload', e => this.#onUnload(e.detail), { signal: rendererSignal })
+        renderer.element.addEventListener('relocate', e => {
+            this.#relocations.set(renderer, e.detail)
+            if (renderer === this.renderer) this.#emit('relocate', e.detail)
+        }, { signal: rendererSignal })
+        renderer.element.addEventListener('request-overlay', e =>
+            e.detail.attach(this.#createOverlay(e.detail)), { signal: rendererSignal })
+    }
+    setRenderMode(mode, configure) {
+        this.#switch = this.#switch.catch(() => {}).then(() =>
+            this.#replaceRenderer(mode, configure))
+        return this.#switch
+    }
+    async #replaceRenderer(mode, configure) {
+        if (this.#destroyed) throw new DOMException('View destroyed', 'AbortError')
+        const current = this.renderer
+        if (!current || current.mode === 'fixed' || mode === 'fixed'
+        || current.mode === mode) {
+            if (current?.mode === mode) configure?.(current)
+            return
+        }
 
+        const target = this.#readingTarget(current)
+        const next = await createRenderer(mode)
+        if (this.#destroyed) {
+            next.destroy()
+            throw new DOMException('View destroyed', 'AbortError')
+        }
+        this.#copyRendererAttributes(current, next)
+        configure?.(next)
+        if (this.#styles) next.setStyles?.(this.#styles)
+        this.#wireRenderer(next, this.#events.signal)
+        const { width, height } = this.getBoundingClientRect()
+        Object.assign(next.element.style, {
+            position: 'fixed',
+            left: '-100000px',
+            top: '0',
+            width: `${width}px`,
+            height: `${height}px`,
+            visibility: 'hidden',
+        })
+        this.#root.append(next.element)
+        try {
+            await next.open(this.book)
+            if (target) await next.goTo(target)
+            if (this.#destroyed) throw new DOMException('View destroyed', 'AbortError')
+        } catch (error) {
+            next.destroy()
+            this.#rendererEvents.get(next)?.abort()
+            this.#rendererEvents.delete(next)
+            next.element.remove()
+            throw error
+        }
+
+        this.renderer = next
+        this.navigation.attach?.(next)
+        for (const property of ['position', 'left', 'top', 'width', 'height', 'visibility'])
+            next.element.style.removeProperty(property)
+        current.destroy()
+        this.#rendererEvents.get(current)?.abort()
+        this.#rendererEvents.delete(current)
+        current.element.remove()
+        const relocation = this.#relocations.get(next)
+        if (relocation) this.#emit('relocate', relocation)
+    }
+    #readingTarget(renderer) {
+        const location = this.#relocations.get(renderer)
+        if (!location) return
+        const { fraction = 0, index, range } = location
+        try {
+            const cfi = range && this.navigation.cfi?.(index, range)
+            return cfi ? this.navigation.resolve(cfi) ?? { index, anchor: fraction }
+                : { index, anchor: fraction }
+        } catch (error) {
+            console.warn('Could not transfer the exact reading position.', error)
+            return { index, anchor: fraction }
+        }
+    }
+    #copyRendererAttributes(source, target) {
+        for (const { name, value } of source.element.attributes) {
+            if (name !== 'flow' && name !== 'style') target.element.setAttribute(name, value)
+        }
+    }
+    setStyles(styles) {
+        this.#styles = styles
+        this.renderer?.setStyles?.(styles)
     }
     destroy() {
         if (this.#destroyed) return
@@ -63,7 +153,7 @@ export class View extends HTMLElement {
         for (const content of this.#contents.values()) content.abort()
         this.#contents.clear()
         this.renderer?.destroy()
-        this.renderer?.remove()
+        this.renderer?.element.remove()
         this.#decorations.clear()
         this.navigation = null
         this.book = null
@@ -186,4 +276,4 @@ export class View extends HTMLElement {
     }
 }
 
-customElements.define('epub-view', View)
+customElements.define('epub-view', ReaderView)

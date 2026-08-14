@@ -372,21 +372,22 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
   emitViewerEvent(VIEWER_EVENTS.progressUpdate, { fraction: 0, reset: true });
 }
 
-function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
+async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
   const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings };
-  const flow = getView()?.isFixedLayout ? "paginated" : nextSettings.flow;
+  const flow = getView()?.renderMode === "fixed" ? "paginated" : nextSettings.flow;
 
   applyReaderTheme(nextSettings.theme);
-  applyReaderFlow(flow, { root: readerRoot, view: null });
   applyReaderFontSize(nextSettings.fontSize);
-  applyReaderLayoutLevel(nextSettings.layoutLevel, readerLayoutTarget);
+  applyReaderLayoutLevel(nextSettings.layoutLevel, { root: readerRoot, view: null });
+  await applyReaderFlow(flow, readerLayoutTarget);
+  getView()?.setStyles(getBookStyles());
   emitDockUpdate();
 }
 
 async function mountView() {
   const view = await createView<ReaderHighlight>();
   view.enhanceRenderedDocument = (doc, _index, signal) =>
-    enhanceContent(doc, !view.isFixedLayout, signal);
+    enhanceContent(doc, view.renderMode !== "fixed", signal);
   readerRoot.replaceChildren(view);
   runtime.interactions?.bindView(view);
   runtime.input?.bindReaderView(view);
@@ -513,7 +514,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     });
     const savedPosition = await getSavedPosition(bookKey);
     reader.signal.throwIfAborted();
-    applyReaderSettings(savedPosition?.settings);
+    await applyReaderSettings(savedPosition?.settings);
 
     emitBookInfoUpdate();
     session.tocItems = view.book?.toc ?? [];
@@ -595,12 +596,12 @@ function setupEventListeners(signal: AbortSignal) {
   }, { signal });
 }
 
-async function runReaderStyleChange(action: () => void) {
+async function runReaderStyleChange(action: () => void | Promise<void>) {
   if (isReaderRenderPending()) return;
 
   await renderState.run(async () => {
     await preloadReaderFonts();
-    action();
+    await action();
   });
 }
 
@@ -622,7 +623,7 @@ async function handleDockAction(action: DockAction) {
       return;
     case "toggle-flow":
       await runReaderStyleChange(() => {
-        changeReaderFlow(readerLayoutTarget);
+        return changeReaderFlow(readerLayoutTarget);
       });
       saveCurrentReaderSettings();
       emitDockUpdate();
@@ -630,7 +631,7 @@ async function handleDockAction(action: DockAction) {
     case "toggle-theme":
       await runReaderStyleChange(() => {
         applyReaderTheme(getNextReaderThemeId());
-        getView()?.renderer?.setStyles?.(getBookStyles());
+        getView()?.setStyles(getBookStyles());
       });
       saveCurrentReaderSettings();
       emitDockUpdate();
@@ -680,7 +681,7 @@ async function restoreHighlights(reader: Reader, bookKey: string) {
 }
 
 async function bootstrap() {
-  applyReaderSettings(undefined);
+  await applyReaderSettings(undefined);
   runtime.listeners = new AbortController();
   setupEventListeners(runtime.listeners.signal);
   ensureViewerInput();

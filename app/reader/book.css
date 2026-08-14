@@ -20,7 +20,6 @@
       inline-size: auto !important;
       width: auto !important;
       scrollbar-width: none !important;
-      -ms-overflow-style: none !important;
     }
     body {
       font-family: var(--reader-font-serif) !important;
@@ -85,8 +84,6 @@
       word-break: normal !important;
       hyphens: none !important;
       break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      -webkit-column-break-inside: avoid !important;
     }
     math[display="block"] {
       display: block !important;
@@ -101,8 +98,6 @@
       overflow-y: hidden !important;
       text-align: center !important;
       break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      -webkit-column-break-inside: avoid !important;
     }
     math :is(
       mi[data-reader-math-latin="true"],
@@ -137,8 +132,6 @@
       text-transform: none !important;
       word-spacing: normal !important;
       break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      -webkit-column-break-inside: avoid !important;
     }
     mjx-container.reader-math[display="true"] {
       display: block !important;
@@ -424,8 +417,6 @@
       word-break: normal !important;
 
       break-inside: auto !important;
-      page-break-inside: auto !important;
-      -webkit-column-break-inside: auto !important;
 
     }
     :is(table, [data-reader-role~="table"]) :is(thead, tbody, tfoot, tr, th, td) {
@@ -452,13 +443,9 @@
     }
     :is(table, [data-reader-role~="table"]) thead {
       break-after: avoid !important;
-      page-break-after: avoid !important;
-      -webkit-column-break-after: avoid !important;
     }
     :is(table, [data-reader-role~="table"]) tr {
       break-inside: avoid !important;
-      page-break-inside: avoid !important;
-      -webkit-column-break-inside: avoid !important;
     }
     :is(table, [data-reader-role~="table"]) tbody tr:nth-child(even) {
       background: color-mix(in srgb, var(--reader-fg-color) 4%, transparent) !important;
@@ -530,8 +517,6 @@
       overflow: visible !important;
 
       break-inside: auto !important;
-      page-break-inside: auto !important;
-      -webkit-column-break-inside: auto !important;
 
       box-decoration-break: clone !important;
       -webkit-box-decoration-break: clone !important;
@@ -543,7 +528,6 @@
       overflow-wrap: inherit !important;
       word-break: inherit !important;
       break-inside: auto !important;
-      page-break-inside: auto !important;
       border: 0 !important;
       background: transparent !important;
       padding: 0 !important;

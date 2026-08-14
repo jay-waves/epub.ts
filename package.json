@@ -4,6 +4,15 @@
 	"private": true,
 	"version": "0.5.4",
 	"type": "module",
+	"browserslist": {
+		"production": [
+			"Chrome >= 120",
+			"Edge >= 120",
+			"Firefox >= 121",
+			"Safari >= 17.2",
+			"iOS >= 17.2"
+		]
+	},
 	"scripts": {
 		"build:chrome": "pnpm typecheck && node scripts/build-chrome.mjs",
 		"build:linux": "pnpm build:web && node scripts/build-launcher.mjs linux-amd64",

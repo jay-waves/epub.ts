@@ -1,4 +1,4 @@
-import type { ChapterEntry } from "./chapter-window";
+import type { SpineEntry } from "./spine-buffer";
 
 type MappedRect = { left: number; right: number };
 
@@ -10,31 +10,38 @@ export type VisibleLocationView = {
 };
 
 type VisibleLocationOptions<View extends VisibleLocationView> = {
-  continuous: boolean;
-  current?: ChapterEntry<View>;
+  current?: SpineEntry<View>;
   end: number;
-  entryOffset: (entry: ChapterEntry<View>) => number;
-  findAt: (offset: number) => ChapterEntry<View> | undefined;
+  entryOffset: (entry: SpineEntry<View>) => number;
+  findAt: (offset: number) => SpineEntry<View> | undefined;
+  layout:
+    | {
+      kind: "paginated";
+      continuous: boolean;
+      rtl: boolean;
+    }
+    | {
+      kind: "scrolled";
+      continuous: boolean;
+      range: (entry: SpineEntry<View>) => Range | undefined;
+    };
   margin: number;
   page: number;
   pages: number;
-  rtl: boolean;
-  scrolled: boolean;
-  scrolledRange?: (entry: ChapterEntry<View>) => Range | undefined;
   start: number;
   viewportSize: number;
 };
 
 type ReadingEdgeOptions = {
   contentOffset: number;
+  layout: "paginated" | "scrolled";
   margin: number;
-  scrolled: boolean;
   start: number;
 };
 
 /** Coordinate used to decide which chapter owns the viewport's reading edge. */
-export function getReadingEdge({ contentOffset, margin, scrolled, start }: ReadingEdgeOptions) {
-  return Math.max(0, start + (scrolled ? margin : -contentOffset));
+export function getReadingEdge({ contentOffset, layout, margin, start }: ReadingEdgeOptions) {
+  return Math.max(0, start + (layout === "scrolled" ? margin : -contentOffset));
 }
 
 const makeRange = (doc: Document, node: Node, start: number, end = start) => {
@@ -86,6 +93,7 @@ export function getVisibleRange(
   mapRect: (rect: DOMRect) => MappedRect,
 ) {
   const filter = NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_CDATA_SECTION;
+  const measurementRange = doc.createRange();
   const acceptNode = (node: Node) => {
     const name = (node as Element).localName?.toLowerCase();
     if (name === "script" || name === "style") return NodeFilter.FILTER_REJECT;
@@ -95,19 +103,22 @@ export function getVisibleRange(
       if (left >= start && right <= end) return NodeFilter.FILTER_ACCEPT;
     } else {
       if (!node.nodeValue?.trim()) return NodeFilter.FILTER_SKIP;
-      const range = doc.createRange();
-      range.selectNodeContents(node);
-      const { left, right } = mapRect(range.getBoundingClientRect());
+      measurementRange.selectNodeContents(node);
+      const { left, right } = mapRect(measurementRange.getBoundingClientRect());
       if (right >= start && left <= end) return NodeFilter.FILTER_ACCEPT;
     }
     return NodeFilter.FILTER_SKIP;
   };
 
   const walker = doc.createTreeWalker(doc.body, filter, { acceptNode });
-  const nodes: Node[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
-  const from = nodes[0] ?? doc.body;
-  const to = nodes.at(-1) ?? from;
+  let from: Node | undefined;
+  let to: Node | undefined;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    from ??= node;
+    to = node;
+  }
+  from ??= doc.body;
+  to ??= from;
 
   const startOffset = from.nodeType === Node.ELEMENT_NODE ? 0
     : bisectNode(doc, from, (a, b) => {
@@ -132,24 +143,22 @@ export function getVisibleRange(
 
 /** Resolves one immutable relocation snapshot from viewport geometry. */
 export function resolveVisibleLocation<View extends VisibleLocationView>({
-  continuous,
   current,
   end,
   entryOffset,
   findAt,
+  layout,
   margin,
   page,
   pages,
-  rtl,
-  scrolled,
-  scrolledRange,
   start,
   viewportSize,
 }: VisibleLocationOptions<View>) {
-  const contentOffset = continuous && !scrolled && current
+  const { continuous } = layout;
+  const contentOffset = continuous && layout.kind === "paginated" && current
     ? entryOffset(current) - current.start
     : 0;
-  const readingEdge = getReadingEdge({ contentOffset, margin, scrolled, start });
+  const readingEdge = getReadingEdge({ contentOffset, layout: layout.kind, margin, start });
   const entry = continuous
     ? findAt(readingEdge)
     : current;
@@ -157,8 +166,8 @@ export function resolveVisibleLocation<View extends VisibleLocationView>({
 
   const offset = entryOffset(entry);
   const { view } = entry;
-  const range = scrolled
-    ? scrolledRange?.(entry)
+  const range = layout.kind === "scrolled"
+    ? layout.range(entry)
     : continuous
       ? view.visibleRange(
         Math.max(0, start - offset),
@@ -166,14 +175,14 @@ export function resolveVisibleLocation<View extends VisibleLocationView>({
       )
       : getVisibleRange(
         view.document,
-        start - (rtl ? -viewportSize : viewportSize),
-        end - (rtl ? -viewportSize : viewportSize),
+        start - (layout.rtl ? -viewportSize : viewportSize),
+        end - (layout.rtl ? -viewportSize : viewportSize),
         (rect) => view.mapRect(rect),
       );
 
   let fraction: number | undefined;
   let visibleSize: number | undefined;
-  if (scrolled) {
+  if (layout.kind === "scrolled") {
     fraction = Math.min(1, Math.max(0, (readingEdge - offset) / view.extent));
     visibleSize = Math.min(1, viewportSize / view.extent);
   } else if (pages > 0) {

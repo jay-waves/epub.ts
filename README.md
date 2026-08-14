@@ -52,10 +52,6 @@ Auto-hiding Dock toolbar:
 
 ## 构建 / Build
 
-运行环境至少需要 Chrome 120。
-
-Chrome 120 or newer is required.
-
 ```bash
 pnpm build:web     # static web app
 pnpm build:chrome  # Chrome extension

@@ -8,6 +8,7 @@ import { KineticScroller } from "./reader/kinetic-scroller";
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const SECTION_EDGE_EPSILON = 2;
 const COARSE_WHEEL_DELTA_PX = 32;
+const WHEEL_SCROLL_GAIN = 1.4;
 const WHEEL_SWIPE_AXIS_RATIO = 1.35;
 const WHEEL_SWIPE_MIN_DISTANCE = 42;
 const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
@@ -291,7 +292,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       const dx = -state.delta[0];
       const dy = -state.delta[1];
       if (options.getFlow() === "scrolled") options.getNavigation()?.scrollBy(dy);
-      else options.getView()?.renderer?.scrollBy?.(dx, dy);
+      else options.getView()?.renderer?.panBy?.(dx, dy);
     }, {
       eventOptions: { capture: true, passive: false },
       filterTaps: true,
@@ -349,7 +350,8 @@ export function createViewerInput(options: ViewerInputOptions) {
       }
 
       if (options.getFlow() !== "scrolled" || isWheelScrollSuppressed() || isHorizontal) return;
-      const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
+      const rawDelta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
+      const delta = rawDelta * WHEEL_SCROLL_GAIN;
       const direction = Math.sign(delta);
       if (!direction) return;
       event.preventDefault();

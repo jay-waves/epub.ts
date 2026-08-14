@@ -1,4 +1,8 @@
-import type { OverlayDraw, OverlayDrawOptions } from "./overlay";
+import type { OverlayDraw, OverlayDrawOptions } from "./shared/overlay";
+import type { RenderMode } from "./shared/flow-geometry";
+import type { Renderer, RendererStyles } from "./renderer";
+
+export type { Renderer } from "./renderer";
 
 export type TocItem = {
   label?: string;
@@ -58,28 +62,9 @@ export type Content = {
   doc?: Document;
   index: number;
   overlay?: {
-    element?: SVGSVGElement;
-    hitTest?: (event: { x: number; y: number }) => [string | undefined, Range | undefined];
+    element?: SVGElement;
+    hitTest?: (event: { x: number; y: number }) => [string, Range] | [];
   };
-};
-
-export type Renderer = HTMLElement & {
-  atEnd?: boolean;
-  atStart?: boolean;
-  beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
-  end?: number;
-  next: (distance?: number) => Promise<void>;
-  removeAttribute(name: string): void;
-  prev: (distance?: number) => Promise<void>;
-  setAttribute(name: string, value: string): void;
-  scrollToAnchor?: (anchor: number, select?: boolean) => Promise<void>;
-  scrollBy?: (dx: number, dy: number) => void;
-  settle?: (velocityX: number, velocityY: number) => void;
-  setStyles?: (cssText: string | [string, string]) => void;
-  start?: number;
-  viewSize?: number;
-  getContents?: () => Content[];
-  goTo: (target: Resolved) => Promise<unknown>;
 };
 
 export type RawRelocateDetail = {
@@ -91,6 +76,8 @@ export type RawRelocateDetail = {
 };
 
 type ViewNavigation = {
+  attach?(renderer: Renderer): void;
+  cfi?(index: number, range?: Range): string;
   go(target: string, options?: { select?: boolean }): Promise<Resolved>;
   label(index: number): string;
   resolve(target: string): Resolved | undefined;
@@ -123,7 +110,7 @@ type ViewEvents<Item extends Annotation = Annotation> = {
   "show-annotation": { index: number; range?: Range; value: string };
 };
 
-export interface View<Item extends Annotation = Annotation> extends HTMLElement {
+export interface ReaderView<Item extends Annotation = Annotation> extends HTMLElement {
   addEventListener<EventName extends keyof ViewEvents<Item>>(
     type: EventName,
     listener: (
@@ -139,9 +126,14 @@ export interface View<Item extends Annotation = Annotation> extends HTMLElement 
   ): void;
   book?: Book;
   enhanceRenderedDocument?: (doc: Document, index: number, signal: AbortSignal) => Promise<void> | void;
-  isFixedLayout: boolean;
+  readonly renderMode: RenderMode;
   navigation?: ViewNavigation;
   renderer: Renderer;
+  setRenderMode: (
+    mode: Exclude<RenderMode, "fixed">,
+    configure?: (renderer: Renderer) => void,
+  ) => Promise<void>;
+  setStyles: (styles: RendererStyles) => void;
   addDecoration: (index: number, decoration: Decoration) => void;
   removeDecoration: (index: number, key: string) => void;
   destroy: () => void;
@@ -150,3 +142,5 @@ export interface View<Item extends Annotation = Annotation> extends HTMLElement 
   deleteAnnotation?: (annotation: Item) => Promise<{ index: number; label: string } | undefined>;
   showAnnotation?: (annotation: Item) => Promise<void>;
 }
+
+export type View<Item extends Annotation = Annotation> = ReaderView<Item>;

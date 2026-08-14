@@ -36,7 +36,7 @@ const getViewport = (doc, viewport) => {
     return { width: 1000, height: 2000 }
 }
 
-export class FixedLayout extends HTMLElement {
+export class FixedRenderer extends HTMLElement {
     static observedAttributes = ['zoom']
     #root = this.attachShadow({ mode: 'closed' })
     #observer = new ResizeObserver(() => this.#render())
@@ -64,15 +64,15 @@ export class FixedLayout extends HTMLElement {
             align-items: center;
             overflow: auto;
             scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-        :host::-webkit-scrollbar {
-            width: 0;
-            height: 0;
-            display: none;
         }`)
 
         this.#observer.observe(this)
+    }
+    get element() {
+        return this
+    }
+    get mode() {
+        return 'fixed'
     }
     attributeChangedCallback(name, _, value) {
         switch (name) {
@@ -376,4 +376,4 @@ export class FixedLayout extends HTMLElement {
     }
 }
 
-customElements.define('epub-fixed', FixedLayout)
+customElements.define('epub-fixed-renderer', FixedRenderer)

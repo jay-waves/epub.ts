@@ -54,6 +54,8 @@ export default defineConfig({
     },
   ],
   build: {
+    target: ["chrome120", "edge120", "firefox121", "safari17.2"],
+    cssTarget: ["chrome120", "edge120", "firefox121", "safari17.2"],
     outDir: outputDir,
     emptyOutDir: true,
     rollupOptions: {

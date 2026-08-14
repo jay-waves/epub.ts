@@ -1,4 +1,4 @@
-import type { Book } from "../renderer/view.js";
+import type { Book } from "../renderer/reader-view.js";
 
 export class EPUB {
   constructor(source: unknown);

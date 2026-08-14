@@ -1,5 +1,5 @@
 import * as CFI from "../epub/cfi.js";
-import type { Book, RawRelocateDetail, Renderer, Resolved } from "../renderer/view.js";
+import type { Book, RawRelocateDetail, Renderer, Resolved } from "../renderer/reader-view.js";
 import { SectionIndex, TocIndex } from "./location";
 import type { SectionLocation, TocItem } from "./location";
 
@@ -160,7 +160,7 @@ export class Navigation {
   }
 
   scrollBy(distance: number) {
-    this.#getRenderer().scrollBy?.(distance, distance);
+    this.#getRenderer().panBy?.(distance, distance);
   }
 
   scrollTo(anchor: number) {

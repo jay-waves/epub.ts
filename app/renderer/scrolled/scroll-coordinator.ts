@@ -110,7 +110,8 @@ function getReadingRange(
 }
 
 /** Owns the scroll-mode hot path: geometry, throttling, and reading-edge sampling. */
-export class ScrolledViewport {
+/** Scroll-mode geometry sampling and anchor projection. */
+export class ScrollCoordinator {
   readonly #container: HTMLElement;
   readonly #update: () => void;
   #updateTimer: number | undefined;

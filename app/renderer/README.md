@@ -1,21 +1,28 @@
 # Renderer
 
-The EPUB rendering core used by this application.
+The reader exposes exactly three renderer identities:
 
-It owns pagination, fixed-layout frames, rendered-document events, and range
-decorations and overlays. Book loading, CFI, navigation, progress,
-interaction policy, and document lifecycle live elsewhere under `app/`.
+- `paginated/PaginatedRenderer` owns paginated reflowable presentation.
+- `scrolled/ScrolledRenderer` owns continuous reflowable presentation.
+- `fixed/FixedRenderer` owns pre-paginated and fixed-layout presentation.
 
-`viewport-navigation.ts` is the positioning core shared by the paginator's
-TOC jumps, progress seeks, page turns, and gesture settling. It owns navigation
-transactions and the conversion from logical section anchors to physical
-viewport coordinates; `paginator.js` supplies DOM measurements and rendering.
+`ReaderView` selects and atomically swaps these renderers. A renderer's mode is
+fixed for its lifetime; switching mode creates a new renderer and transfers the
+stable reading target, styles, and reusable book resources.
 
-`chapter-window.ts` owns the ordered set of loaded chapters, load de-duplication,
-stale-load invalidation, and disposal. `visible-location.ts` turns a viewport
-snapshot into the active chapter, visible range, and section-relative progress.
-`scrolled-viewport.ts` owns scroll-mode target projection and throttled
-reading-edge sampling, keeping full DOM range scans out of the scroll hot path.
+The folders reflect implementation ownership:
+
+- `paginated/` contains column geometry and paginated renderer entry points.
+- `scrolled/` contains scroll sampling, anchor projection, and its renderer.
+- `fixed/` contains the fixed-layout renderer.
+- `shared/` contains mode-neutral mechanisms only: section frames, spine
+  buffering and projection, navigation transactions, visible-location
+  resolution, overlays, and coordinate types.
+
+`SectionFrame` owns one loaded reflowable spine iframe, including document
+lifecycle, layout application, measurement, media constraints, overlay
+geometry, and range projection. Reader styles and content enhancement enter
+through hooks and remain outside the frame.
 
 The JavaScript renderer started as a trimmed copy of
 [`johnfactotum/foliate-js`](https://github.com/johnfactotum/foliate-js).
