@@ -8,7 +8,7 @@ import { LayoutTemplate, Palette, Minus, Plus, Minimize2, Maximize2, Save, Searc
 
 const dockItems = [
   {
-    action: "toggle-flow",
+    action: "toggle-layout",
     label: "Switch to scrolling mode",
     icon: LayoutTemplate,
   },
@@ -29,7 +29,7 @@ const dockItems = [
 
 export function ReaderDock() {
   const [dockState, setDockState] = useState<DockUpdateDetail>({
-    canSearch: false, flowLabel: "Switch to two-column stepping", hasUnsavedChanges: false, searchActive: false,
+    canSearch: false, layoutLabel: "Switch to Stepping", hasUnsavedChanges: false, searchActive: false,
   });
 
   useViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);
@@ -65,7 +65,7 @@ export function ReaderDock() {
 }
 
 function getDockItemLabel(action: DockAction, fallback: string, dockState: DockUpdateDetail) {
-  if (action === "toggle-flow") return dockState.flowLabel;
+  if (action === "toggle-layout") return dockState.layoutLabel;
   if (action === "save-book" && dockState.hasUnsavedChanges) return "Save changes";
   return fallback;
 }

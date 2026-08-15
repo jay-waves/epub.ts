@@ -2,6 +2,7 @@ import { loadDocumentFonts } from "../fonts";
 import { normalizeInlineText } from "../../text";
 import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";
+import { preservePublisherFontScale } from "./font-scaling";
 import { getEpubType, markReaderSemantics } from "./semantics";
 import { enhanceTypography } from "./typography";
 
@@ -19,6 +20,7 @@ export async function prepareContent(doc: Document, options: {
 
   if (!options.reflowable) return;
 
+  preservePublisherFontScale(doc);
   markReaderSemantics(doc);
   enhanceTypography(doc);
   labelFootnotes(doc);

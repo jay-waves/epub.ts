@@ -218,6 +218,7 @@ export class ScrolledRenderer extends HTMLElement {
                 const $styleBefore = doc.createElement('style')
                 doc.head.prepend($styleBefore)
                 const $style = doc.createElement('style')
+                $style.dataset.readerBookStyles = ''
                 doc.head.append($style)
                 this.#styleMap.set(doc, [$styleBefore, $style])
                 this.#applyStyles(doc, this.#styles)
@@ -524,10 +525,6 @@ export class ScrolledRenderer extends HTMLElement {
             this.#afterScroll(reason)
         }
     }
-    async #scrollToPage(page: number, reason: string, smooth = false) {
-        const offset = this.size * (this.#rtl ? -page : page)
-        return this.#scrollTo(offset, reason, smooth)
-    }
     async scrollToAnchor(anchor: number, select = false) {
         return this.#runNavigation(() => this.#scrollToAnchor(
             anchor, select ? 'selection' : 'navigation'))
@@ -681,16 +678,6 @@ export class ScrolledRenderer extends HTMLElement {
             const action = planViewportNavigation(this.#navigationState(), dir, distance)
             if (action.kind === 'scroll') {
                 await this.#scrollTo(action.offset, 'scroll', true)
-            } else if (action.kind === 'page') {
-                await this.#scrollToPage(action.page, 'page', true)
-                // A background chapter may have extended the cache during the
-                // animation. Cross only if the landed viewport is still at the
-                // physical cache edge; otherwise that chapter is already next.
-                const stillAtCacheEdge = dir < 0
-                    ? this.page <= 0 : this.page >= this.pages - 1
-                if (action.crossWindowAfter && stillAtCacheEdge) {
-                    await this.#crossCacheWindow(dir)
-                }
             } else if (action.kind === 'cross-window') {
                 await this.#crossCacheWindow(dir)
             }

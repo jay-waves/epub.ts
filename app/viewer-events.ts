@@ -51,7 +51,7 @@ export type AnnotationDetail = {
 };
 
 export type DockAction =
-  | "toggle-flow"
+  | "toggle-layout"
   | "toggle-theme"
   | "decrease-font"
   | "increase-font"
@@ -64,7 +64,7 @@ export type DockAction =
 
 export type DockUpdateDetail = {
   canSearch: boolean;
-  flowLabel: string;
+  layoutLabel: string;
   hasUnsavedChanges: boolean;
   searchActive: boolean;
 };

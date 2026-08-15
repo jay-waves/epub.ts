@@ -2,16 +2,15 @@ import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
-  applyReaderFlow,
   applyReaderFontSize,
   applyReaderLayoutLevel,
-  applyReaderLayout,
-  applyReaderPagination,
+  applyReaderLayoutMode,
   applyReaderTheme,
   canChangeReaderFontSize,
   canChangeReaderLayoutLevel,
   changeReaderLayoutMode,
   getBookStyles,
+  getReaderFlow,
   getNextReaderThemeId,
   READER_FONT_SIZE_STEP,
   READER_LAYOUT_LEVEL_STEP,
@@ -112,7 +111,6 @@ const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
 const initialDocumentTitle = document.title;
 const session = createBookSession();
 const readerLayoutTarget = {
-  root: readerRoot,
   get view() { return getView(); },
 };
 const renderState = createRenderState(readerRoot);
@@ -155,7 +153,7 @@ function ensureViewerInput() {
   runtime.input ??= createViewerInput({
     getView,
     getNavigation,
-    getFlow: () => readerSettings.flow,
+    getFlow: () => getReaderFlow(),
     canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
     onChapterBoundary: showChapterBoundaryPending,
     onScrollEdge: showScrollEdgeFeedback,
@@ -274,16 +272,15 @@ function wireReaderEvents(reader: Reader) {
 }
 
 function emitDockUpdate() {
-  const isPaginated = readerSettings.flow === "paginated";
-  const flowLabel = !isPaginated
-    ? "Switch to paginated spread"
-    : readerSettings.pagination === "spread"
-      ? "Switch to two-column stepping"
-      : "Switch to scrolling";
+  const layoutLabel = readerSettings.layoutMode === "paginated"
+    ? "Switch to Stepping"
+    : readerSettings.layoutMode === "stepping"
+      ? "Switch to Scrolling"
+      : "Switch to Paginated";
 
   emitViewerEvent(VIEWER_EVENTS.dockUpdate, {
     canSearch: Boolean(runtime.reader?.book),
-    flowLabel,
+    layoutLabel,
     hasUnsavedChanges: session.dirty,
     searchActive: runtime.isSearchOpen,
   });
@@ -378,14 +375,21 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
 }
 
 async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
-  const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings };
-  const flow = getView()?.renderMode === "fixed" ? "paginated" : nextSettings.flow;
+  const legacySettings = settings as (Partial<ReaderSettings> & {
+    flow?: "paginated" | "scrolled";
+    pagination?: "spread" | "column";
+  }) | undefined;
+  const layoutMode = settings?.layoutMode
+    ?? (legacySettings?.flow === "scrolled"
+      ? "scrolling"
+      : legacySettings?.pagination === "column" ? "stepping" : "paginated");
+  const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings, layoutMode };
+  const nextLayoutMode = getView()?.renderMode === "fixed" ? "paginated" : nextSettings.layoutMode;
 
   applyReaderTheme(nextSettings.theme);
   applyReaderFontSize(nextSettings.fontSize);
-  applyReaderPagination(nextSettings.pagination, { root: readerRoot, view: null });
-  applyReaderLayoutLevel(nextSettings.layoutLevel, { root: readerRoot, view: null });
-  await applyReaderFlow(flow, readerLayoutTarget);
+  applyReaderLayoutLevel(nextSettings.layoutLevel, { view: null });
+  await applyReaderLayoutMode(nextLayoutMode, readerLayoutTarget);
   getView()?.setStyles(getBookStyles());
   emitDockUpdate();
 }
@@ -562,7 +566,6 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
 function setupEventListeners(signal: AbortSignal) {
   window.addEventListener("resize", () => {
-    applyReaderLayout(readerLayoutTarget);
     highlightState.close();
   }, { signal });
 
@@ -624,7 +627,7 @@ async function handleDockAction(action: DockAction) {
     case "save-book":
       await saveAnnotatedBook();
       return;
-    case "toggle-flow":
+    case "toggle-layout":
       await runReaderStyleChange(() => {
         return changeReaderLayoutMode(readerLayoutTarget);
       });

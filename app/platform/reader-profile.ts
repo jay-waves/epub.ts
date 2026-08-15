@@ -1,6 +1,6 @@
 import type { ReaderProfile } from "./types";
 
-export const DEFAULT_READER_FONT_SIZE = 18;
+export const DEFAULT_READER_FONT_SIZE = 19;
 
 export function createBundledReaderProfile(
   assetUrl: (filename: string) => string,

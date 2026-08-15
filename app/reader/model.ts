@@ -4,15 +4,14 @@ import type { ReaderHighlight } from "../epub/annotations";
 
 type ReaderThemeMode = "light" | "dark";
 export type ReaderFlow = "paginated" | "scrolled";
-export type ReaderPagination = "spread" | "column";
+export type ReaderLayoutMode = "paginated" | "stepping" | "scrolling";
 export type PageTurnDirection = "left" | "right";
 export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark" | "gruvbox";
 
 export type ReaderSettings = {
-  flow: ReaderFlow;
   fontSize: number;
+  layoutMode: ReaderLayoutMode;
   layoutLevel: number;
-  pagination: ReaderPagination;
   theme: ReaderThemeId;
 };
 
@@ -37,10 +36,9 @@ export type ReadingPosition = {
 export type ReaderView = View<ReaderHighlight>;
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
-  flow: "paginated",
   fontSize: platform.readerProfile.defaultFontSize,
+  layoutMode: "paginated",
   layoutLevel: 1,
-  pagination: "spread",
   theme: "light",
 };
 

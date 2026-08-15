@@ -1,12 +1,10 @@
 import { createBookStyles } from "./book-styles";
-import { paginatedGeometry } from "../renderer/paginated/paginated-geometry";
 import { readerSettings } from "./model";
-import type { ReaderFlow, ReaderPagination, ReaderTheme, ReaderThemeId } from "./model";
+import type { ReaderFlow, ReaderLayoutMode, ReaderTheme, ReaderThemeId } from "./model";
 import type { ReaderView } from "./model";
 import type { Renderer } from "../renderer";
 
 type ReaderLayoutTarget = {
-  root: HTMLElement;
   view: ReaderView | null;
 };
 
@@ -115,6 +113,12 @@ const MIN_READER_LAYOUT_LEVEL = 0;
 export const READER_LAYOUT_LEVEL_STEP = 1;
 
 const PAGINATED_GAP = "2.5%";
+const READER_LAYOUT_MODES = {
+  paginated: { flow: "paginated", pagination: "paginated" },
+  stepping: { flow: "paginated", pagination: "stepping" },
+  scrolling: { flow: "scrolled", pagination: undefined },
+} as const satisfies Record<ReaderLayoutMode, { flow: ReaderFlow; pagination?: "paginated" | "stepping" }>;
+const READER_LAYOUT_MODE_ORDER = Object.keys(READER_LAYOUT_MODES) as ReaderLayoutMode[];
 const READER_LAYOUT_PRESETS = [
   {
     margin: 24,
@@ -174,7 +178,6 @@ const READER_LAYOUT_PRESETS = [
 
 const MAX_READER_LAYOUT_LEVEL = READER_LAYOUT_PRESETS.length - 1;
 const SCROLLED_LAYOUT_WIDTH_BASELINE = READER_LAYOUT_PRESETS[3];
-const PAGINATED_VIEWPORT_WIDTH = READER_LAYOUT_PRESETS[MAX_READER_LAYOUT_LEVEL];
 
 function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
   return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
@@ -189,46 +192,36 @@ export function getBookStyles(themeId = readerSettings.theme): [string, string] 
   });
 }
 
-export function applyReaderLayout({ root, view }: ReaderLayoutTarget) {
+export function applyReaderLayout({ view }: ReaderLayoutTarget) {
   if (!view || view.renderMode === "fixed") return;
 
-  configureReaderRenderer(view.renderer, readerSettings.flow, root);
+  configureReaderRenderer(view.renderer, readerSettings.layoutMode);
 }
 
-function configureReaderRenderer(renderer: Renderer, flow: ReaderFlow, root: HTMLElement) {
+function configureReaderRenderer(renderer: Renderer, mode: ReaderLayoutMode) {
 
   const layout = getLayoutPreset();
-  const readerWidth = root.getBoundingClientRect().width;
-  const paginatedColumnCount = readerSettings.pagination === "column"
-    ? 2
-    : paginatedGeometry.columnCount(readerWidth);
-  const maxInlineSize = paginatedColumnCount > 1
-    ? layout.multiColumnMaxInlineSize
-    : layout.singleColumnMaxInlineSize;
-
+  const { flow, pagination } = READER_LAYOUT_MODES[mode];
   const element = renderer.element;
   element.setAttribute("gap", flow === "paginated" ? PAGINATED_GAP : "1.5%");
   element.setAttribute("animated", "");
   if (flow === "paginated") {
-    const viewportInlineSize = paginatedColumnCount > 1
-      ? PAGINATED_VIEWPORT_WIDTH.multiColumnMaxInlineSize
-      : PAGINATED_VIEWPORT_WIDTH.singleColumnMaxInlineSize;
     element.setAttribute("margin", `${layout.margin}px`);
-    element.setAttribute("max-inline-size", `${maxInlineSize}px`);
-    element.setAttribute("max-viewport-inline-size", `${viewportInlineSize}px`);
+    element.setAttribute("max-inline-size", `${layout.singleColumnMaxInlineSize}px`);
+    element.setAttribute("max-column-inline-size", `${layout.multiColumnMaxInlineSize}px`);
     // Keep the visible spread count independent from the chosen text width.
     // Otherwise Zoom out can make a second off-screen column fit and silently
     // turn a single-page viewport into a multi-page canvas.
-    element.setAttribute("max-column-count", String(paginatedColumnCount));
-    element.setAttribute("turn-step", readerSettings.pagination);
+    element.setAttribute("max-column-count", "3");
+    element.setAttribute("pagination-mode", pagination ?? "paginated");
     return;
   }
 
   element.setAttribute("margin", `${SCROLLED_LAYOUT_WIDTH_BASELINE.margin}px`);
   element.setAttribute("max-inline-size", `${SCROLLED_LAYOUT_WIDTH_BASELINE.singleColumnMaxInlineSize}px`);
-  element.removeAttribute("max-viewport-inline-size");
+  element.removeAttribute("max-column-inline-size");
   element.removeAttribute("max-column-count");
-  element.removeAttribute("turn-step");
+  element.removeAttribute("pagination-mode");
 }
 
 function clampReaderFontSize(fontSize: number) {
@@ -260,12 +253,17 @@ export function canChangeReaderLayoutLevel(delta: number) {
   return clampLayoutLevel(currentLevel + delta) !== currentLevel;
 }
 
-export async function applyReaderFlow(flow: ReaderFlow, target: ReaderLayoutTarget) {
-  readerSettings.flow = flow;
+export function getReaderFlow(mode = readerSettings.layoutMode): ReaderFlow {
+  return READER_LAYOUT_MODES[mode].flow;
+}
+
+export async function applyReaderLayoutMode(mode: ReaderLayoutMode, target: ReaderLayoutTarget) {
+  readerSettings.layoutMode = mode;
+  const flow = getReaderFlow(mode);
   const { view } = target;
   if (view && view.renderMode !== "fixed" && view.renderMode !== flow) {
     await view.setRenderMode(flow, (renderer) => {
-      configureReaderRenderer(renderer, flow, target.root);
+      configureReaderRenderer(renderer, mode);
       renderer.setStyles?.(getBookStyles());
     });
     return;
@@ -273,28 +271,14 @@ export async function applyReaderFlow(flow: ReaderFlow, target: ReaderLayoutTarg
   applyReaderLayout(target);
 }
 
-export function applyReaderPagination(pagination: ReaderPagination, target: ReaderLayoutTarget) {
-  readerSettings.pagination = pagination;
-  applyReaderLayout(target);
-}
-
 export async function changeReaderLayoutMode(target: ReaderLayoutTarget) {
   if (target.view?.renderMode === "fixed") {
-    readerSettings.flow = "paginated";
-    readerSettings.pagination = "spread";
+    readerSettings.layoutMode = "paginated";
     return;
   }
-  if (readerSettings.flow === "scrolled") {
-    readerSettings.pagination = "spread";
-    await applyReaderFlow("paginated", target);
-    return;
-  }
-  if (readerSettings.pagination === "spread") {
-    applyReaderPagination("column", target);
-    return;
-  }
-  readerSettings.pagination = "spread";
-  await applyReaderFlow("scrolled", target);
+  const index = READER_LAYOUT_MODE_ORDER.indexOf(readerSettings.layoutMode);
+  const nextMode = READER_LAYOUT_MODE_ORDER[(index + 1) % READER_LAYOUT_MODE_ORDER.length] ?? "paginated";
+  await applyReaderLayoutMode(nextMode, target);
 }
 
 function clamp(value: number, min: number, max: number) {
