@@ -53,8 +53,8 @@
       color: var(--reader-link-color) !important;
       -webkit-text-fill-color: var(--reader-link-color) !important;
     }
-    :is(code, pre, kbd, samp, textarea, [data-reader-role~="mono"]),
-    :is(code, pre, kbd, samp, [data-reader-role~="mono"]) :where(*) {
+    :is(code, pre, kbd, samp, tt, textarea, [data-reader-role~="mono"]),
+    :is(code, pre, kbd, samp, tt, [data-reader-role~="mono"]) :where(*) {
       font-family: var(--reader-font-mono) !important;
     }
     :is(code, pre, kbd, samp, textarea, [data-reader-role~="mono"]):not(textarea):not(.hljs),
@@ -205,8 +205,8 @@
       letter-spacing: inherit !important;
       word-spacing: inherit !important;
     }
-    :is(h1, h2, h3, h4, h5, h6, [data-reader-role~="heading"]),
-    :is(h1, h2, h3, h4, h5, h6, [data-reader-role~="heading"]) * {
+    :is(h1, h2, h3, h4, h5, h6, th, dt, caption, figcaption, [data-reader-role~="heading"]),
+    :is(h1, h2, h3, h4, h5, h6, th, dt, caption, figcaption, [data-reader-role~="heading"]) * {
       font-family: var(--reader-font-sans) !important;
       font-weight: 700 !important;
       font-style: normal !important;

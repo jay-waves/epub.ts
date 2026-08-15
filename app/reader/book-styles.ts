@@ -18,7 +18,9 @@ const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
 const READER_LATIN_ITALIC_FONT_FORMAT = readerProfile.latinItalicFontFormat;
 const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
 const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
-const READER_LATIN_FONT_SIZE_ADJUST = "108%";
+// 18px * 114% preserves the previous EB Garamond glyph size of 19px * 108%,
+// while CJK and other fallback fonts use the smaller reader base size.
+const READER_LATIN_FONT_SIZE_ADJUST = "114%";
 
 const READER_SERIF_STACK =
   `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;

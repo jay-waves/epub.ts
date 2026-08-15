@@ -1,5 +1,6 @@
 import { loadDocumentFonts } from "../fonts";
 import { normalizeInlineText } from "../../text";
+import { getReaderFontFamily } from "../../renderer/shared/font-family";
 import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";
 import { preservePublisherFontScale } from "./font-scaling";
@@ -21,6 +22,7 @@ export async function prepareContent(doc: Document, options: {
   if (!options.reflowable) return;
 
   preservePublisherFontScale(doc);
+  mapInlinePublisherFontFamilies(doc);
   markReaderSemantics(doc);
   enhanceTypography(doc);
   labelFootnotes(doc);
@@ -48,6 +50,19 @@ export async function prepareContent(doc: Document, options: {
       console.warn("Failed to load syntax highlighting; keeping the original code blocks.", error);
     }),
   ]);
+}
+
+function mapInlinePublisherFontFamilies(doc: Document) {
+  for (const element of doc.body.querySelectorAll<HTMLElement>("[style]")) {
+    const family = getReaderFontFamily(element.style.fontFamily);
+    if (family) element.style.setProperty("font-family", family, "important");
+  }
+  for (const element of doc.body.querySelectorAll<HTMLElement>("font[face]")) {
+    const family = getReaderFontFamily(element.getAttribute("face") ?? "");
+    if (!family) continue;
+    element.removeAttribute("face");
+    element.style.setProperty("font-family", family, "important");
+  }
 }
 
 function prepareReaderCodeBlocks(doc: Document) {

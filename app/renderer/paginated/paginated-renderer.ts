@@ -59,10 +59,22 @@ export class PaginatedRenderer extends HTMLElement {
         'max-column-count', 'pagination-mode',
     ]
     #root = this.attachShadow({ mode: 'closed' })
-    #observer = new ResizeObserver(([entry]) => {
-        const { width, height } = entry.contentRect
-        this.#containerWidth = width
-        this.#containerHeight = height
+    #observer = new ResizeObserver(() => {
+        const containerRect = this.#container.getBoundingClientRect()
+        const viewportRect = this.getBoundingClientRect()
+        const changed = containerRect.width !== this.#containerWidth
+            || containerRect.height !== this.#containerHeight
+            || viewportRect.width !== this.#viewportWidth
+            || viewportRect.height !== this.#viewportHeight
+        if (!changed) return
+
+        this.#containerWidth = containerRect.width
+        this.#containerHeight = containerRect.height
+        this.#viewportWidth = viewportRect.width
+        this.#viewportHeight = viewportRect.height
+        if (this.#lastVisibleRange) this.#anchor = this.#lastVisibleRange.cloneRange()
+        this.#pageSize = 0
+        this.#scrollBounds = null
         this.#scheduleRender()
     })
     #top!: HTMLElement
@@ -97,6 +109,8 @@ export class PaginatedRenderer extends HTMLElement {
     #cacheFrame?: number
     #containerWidth = 0
     #containerHeight = 0
+    #viewportWidth = 0
+    #viewportHeight = 0
     #pageSize = 0
     #turnSize = 1
     #edgeTurns = 1
@@ -180,6 +194,7 @@ export class PaginatedRenderer extends HTMLElement {
         this.#background = this.#root.getElementById('background')!
         this.#container = this.#root.getElementById('container')!
         this.#track = this.#root.getElementById('track')!
+        this.#observer.observe(this)
         this.#observer.observe(this.#container)
         this.#container.addEventListener('scroll', () =>
             this.dispatchEvent(new Event('scroll')))
