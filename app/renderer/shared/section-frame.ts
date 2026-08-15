@@ -217,8 +217,12 @@ export class SectionFrame {
       "box-sizing": "border-box",
       "column-fill": "auto",
       "column-gap": `${gap}px`,
-      "column-width": `${Math.trunc(columnWidth)}px`,
-      ...(this.#vertical ? { width: `${width}px` } : { height: `${height}px` }),
+      "column-width": `${columnWidth}px`,
+      // Apply both viewport dimensions before measuring the column flow.
+      // Keeping the old inline dimension until expand() made the first reflow
+      // after a resize use stale, sometimes wider, columns.
+      "height": `${height}px`,
+      "width": `${width}px`,
       "margin": "0",
       "max-height": "none",
       "max-width": "none",

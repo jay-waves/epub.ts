@@ -108,6 +108,7 @@ export type ViewportNavigationState = {
   atBookEnd: boolean;
   atBookStart: boolean;
   end: number;
+  edgeTurns?: number;
   extent: number;
   mode: "paginated" | "scrolled";
   page: number;
@@ -125,8 +126,9 @@ export type ViewportNavigationAction =
 const EDGE_EPSILON = 2;
 
 export function isAtBookEdge(state: ViewportNavigationState, direction: NavigationDirection) {
-  if (direction < 0) return state.atBookStart && state.page <= 1;
-  return state.atBookEnd && state.page >= state.pages - 2;
+  const edgeTurns = state.edgeTurns ?? 1;
+  if (direction < 0) return state.atBookStart && state.page <= edgeTurns;
+  return state.atBookEnd && state.page >= state.pages - edgeTurns - 1;
 }
 
 export function planViewportNavigation(

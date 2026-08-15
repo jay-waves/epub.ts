@@ -3,15 +3,14 @@ import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import type { DockAction, DockUpdateDetail } from "../viewer-events";
 import { Button, Tooltip } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
-import type { LucideIcon } from "lucide-react";
 
-import { BookOpen, Palette, Minus, Plus, Minimize2, Maximize2, Save, Scroll, Search, Info, TableOfContents } from "lucide-react";
+import { LayoutTemplate, Palette, Minus, Plus, Minimize2, Maximize2, Save, Search, Info, TableOfContents } from "lucide-react";
 
 const dockItems = [
   {
     action: "toggle-flow",
     label: "Switch to scrolling mode",
-    icon: BookOpen,
+    icon: LayoutTemplate,
   },
   {
     action: "toggle-theme",
@@ -30,7 +29,7 @@ const dockItems = [
 
 export function ReaderDock() {
   const [dockState, setDockState] = useState<DockUpdateDetail>({
-    canSearch: false, flowActive: false, flowLabel: "Switch to scrolling mode", hasUnsavedChanges: false, searchActive: false,
+    canSearch: false, flowLabel: "Switch to two-column stepping", hasUnsavedChanges: false, searchActive: false,
   });
 
   useViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);
@@ -42,7 +41,7 @@ export function ReaderDock() {
       <div className="reader-dock">
         {dockItems.map((item) => {
           const label = getDockItemLabel(item.action, item.label, dockState);
-          const Icon = getDockItemIcon(item.action, item.icon, dockState);
+          const Icon = item.icon;
           const disabled = item.action === "toggle-search" && !dockState.canSearch
             || item.action === "save-book" && !dockState.hasUnsavedChanges;
 
@@ -68,10 +67,5 @@ export function ReaderDock() {
 function getDockItemLabel(action: DockAction, fallback: string, dockState: DockUpdateDetail) {
   if (action === "toggle-flow") return dockState.flowLabel;
   if (action === "save-book" && dockState.hasUnsavedChanges) return "Save changes";
-  return fallback;
-}
-
-function getDockItemIcon(action: DockAction, fallback: LucideIcon, dockState: DockUpdateDetail) {
-  if (action === "toggle-flow") return dockState.flowActive ? BookOpen : Scroll;
   return fallback;
 }

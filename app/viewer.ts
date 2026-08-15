@@ -6,10 +6,11 @@ import {
   applyReaderFontSize,
   applyReaderLayoutLevel,
   applyReaderLayout,
+  applyReaderPagination,
   applyReaderTheme,
   canChangeReaderFontSize,
   canChangeReaderLayoutLevel,
-  changeReaderFlow,
+  changeReaderLayoutMode,
   getBookStyles,
   getNextReaderThemeId,
   READER_FONT_SIZE_STEP,
@@ -274,11 +275,15 @@ function wireReaderEvents(reader: Reader) {
 
 function emitDockUpdate() {
   const isPaginated = readerSettings.flow === "paginated";
+  const flowLabel = !isPaginated
+    ? "Switch to paginated spread"
+    : readerSettings.pagination === "spread"
+      ? "Switch to two-column stepping"
+      : "Switch to scrolling";
 
   emitViewerEvent(VIEWER_EVENTS.dockUpdate, {
     canSearch: Boolean(runtime.reader?.book),
-    flowActive: !isPaginated,
-    flowLabel: isPaginated ? "Switch to scrolling" : "Switch to paginated",
+    flowLabel,
     hasUnsavedChanges: session.dirty,
     searchActive: runtime.isSearchOpen,
   });
@@ -378,6 +383,7 @@ async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined
 
   applyReaderTheme(nextSettings.theme);
   applyReaderFontSize(nextSettings.fontSize);
+  applyReaderPagination(nextSettings.pagination, { root: readerRoot, view: null });
   applyReaderLayoutLevel(nextSettings.layoutLevel, { root: readerRoot, view: null });
   await applyReaderFlow(flow, readerLayoutTarget);
   getView()?.setStyles(getBookStyles());
@@ -620,7 +626,7 @@ async function handleDockAction(action: DockAction) {
       return;
     case "toggle-flow":
       await runReaderStyleChange(() => {
-        return changeReaderFlow(readerLayoutTarget);
+        return changeReaderLayoutMode(readerLayoutTarget);
       });
       saveCurrentReaderSettings();
       emitDockUpdate();

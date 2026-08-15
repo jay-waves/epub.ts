@@ -393,7 +393,7 @@
     figure img.reader-content-image {
       margin-block-end: 0.75em !important;
     }
-    :is(table, [data-reader-role~="table"]) {
+    :is(table, [data-reader-role~="table"]):not(#reader-table-theme) {
       max-inline-size: 100% !important;
       max-width: 100% !important;
       inline-size: fit-content !important;
@@ -414,8 +414,9 @@
       break-inside: auto !important;
 
     }
-    :is(table, [data-reader-role~="table"]) :is(thead, tbody, tfoot, tr, th, td) {
+    :is(table, [data-reader-role~="table"]):not(#reader-table-theme) :is(thead, tbody, tfoot, tr, th, td) {
       border-color: var(--reader-border-color) !important;
+      background: transparent !important;
     }
     :is(table, [data-reader-role~="table"]) :is(th, td) {
       min-inline-size: 0 !important;
@@ -430,7 +431,7 @@
       hyphens: auto !important;
       line-height: inherit !important;
     }
-    :is(table, [data-reader-role~="table"]) th {
+    :is(table, [data-reader-role~="table"]):not(#reader-table-theme) th {
       background: color-mix(in srgb, var(--reader-fg-color) 9%, var(--reader-panel-bg)) !important;
       font-family: var(--reader-font-sans) !important;
       font-weight: 650 !important;
@@ -442,7 +443,7 @@
     :is(table, [data-reader-role~="table"]) tr {
       break-inside: avoid !important;
     }
-    :is(table, [data-reader-role~="table"]) tbody tr:nth-child(even) {
+    :is(table, [data-reader-role~="table"]):not(#reader-table-theme) tbody tr:nth-child(even) {
       background: color-mix(in srgb, var(--reader-fg-color) 4%, transparent) !important;
     }
     :is(table, [data-reader-role~="table"]) :is(th, td) > :first-child {

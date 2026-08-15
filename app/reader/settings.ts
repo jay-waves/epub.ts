@@ -1,7 +1,7 @@
 import { createBookStyles } from "./book-styles";
 import { paginatedGeometry } from "../renderer/paginated/paginated-geometry";
 import { readerSettings } from "./model";
-import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
+import type { ReaderFlow, ReaderPagination, ReaderTheme, ReaderThemeId } from "./model";
 import type { ReaderView } from "./model";
 import type { Renderer } from "../renderer";
 
@@ -199,7 +199,9 @@ function configureReaderRenderer(renderer: Renderer, flow: ReaderFlow, root: HTM
 
   const layout = getLayoutPreset();
   const readerWidth = root.getBoundingClientRect().width;
-  const paginatedColumnCount = paginatedGeometry.columnCount(readerWidth);
+  const paginatedColumnCount = readerSettings.pagination === "column"
+    ? 2
+    : paginatedGeometry.columnCount(readerWidth);
   const maxInlineSize = paginatedColumnCount > 1
     ? layout.multiColumnMaxInlineSize
     : layout.singleColumnMaxInlineSize;
@@ -218,6 +220,7 @@ function configureReaderRenderer(renderer: Renderer, flow: ReaderFlow, root: HTM
     // Otherwise Zoom out can make a second off-screen column fit and silently
     // turn a single-page viewport into a multi-page canvas.
     element.setAttribute("max-column-count", String(paginatedColumnCount));
+    element.setAttribute("turn-step", readerSettings.pagination);
     return;
   }
 
@@ -225,6 +228,7 @@ function configureReaderRenderer(renderer: Renderer, flow: ReaderFlow, root: HTM
   element.setAttribute("max-inline-size", `${SCROLLED_LAYOUT_WIDTH_BASELINE.singleColumnMaxInlineSize}px`);
   element.removeAttribute("max-viewport-inline-size");
   element.removeAttribute("max-column-count");
+  element.removeAttribute("turn-step");
 }
 
 function clampReaderFontSize(fontSize: number) {
@@ -269,13 +273,28 @@ export async function applyReaderFlow(flow: ReaderFlow, target: ReaderLayoutTarg
   applyReaderLayout(target);
 }
 
-export async function changeReaderFlow(target: ReaderLayoutTarget) {
+export function applyReaderPagination(pagination: ReaderPagination, target: ReaderLayoutTarget) {
+  readerSettings.pagination = pagination;
+  applyReaderLayout(target);
+}
+
+export async function changeReaderLayoutMode(target: ReaderLayoutTarget) {
   if (target.view?.renderMode === "fixed") {
     readerSettings.flow = "paginated";
+    readerSettings.pagination = "spread";
     return;
   }
-  const nextFlow = readerSettings.flow === "paginated" ? "scrolled" : "paginated";
-  await applyReaderFlow(nextFlow, target);
+  if (readerSettings.flow === "scrolled") {
+    readerSettings.pagination = "spread";
+    await applyReaderFlow("paginated", target);
+    return;
+  }
+  if (readerSettings.pagination === "spread") {
+    applyReaderPagination("column", target);
+    return;
+  }
+  readerSettings.pagination = "spread";
+  await applyReaderFlow("scrolled", target);
 }
 
 function clamp(value: number, min: number, max: number) {

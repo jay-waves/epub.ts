@@ -12,6 +12,7 @@ export type VisibleLocationView = {
 type VisibleLocationOptions<View extends VisibleLocationView> = {
   current?: SpineEntry<View>;
   end: number;
+  edgeTurns?: number;
   entryOffset: (entry: SpineEntry<View>) => number;
   findAt: (offset: number) => SpineEntry<View> | undefined;
   layout:
@@ -145,6 +146,7 @@ export function getVisibleRange(
 export function resolveVisibleLocation<View extends VisibleLocationView>({
   current,
   end,
+  edgeTurns = 1,
   entryOffset,
   findAt,
   layout,
@@ -190,8 +192,9 @@ export function resolveVisibleLocation<View extends VisibleLocationView>({
       fraction = Math.min(1, Math.max(0, (start - offset) / view.extent));
       visibleSize = Math.min(1, viewportSize / view.extent);
     } else {
-      fraction = (page - 1) / (pages - 2);
-      visibleSize = 1 / (pages - 2);
+      const contentTurns = pages - edgeTurns * 2;
+      fraction = (page - edgeTurns) / contentTurns;
+      visibleSize = edgeTurns / contentTurns;
     }
   }
 

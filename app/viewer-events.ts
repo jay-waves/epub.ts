@@ -64,7 +64,6 @@ export type DockAction =
 
 export type DockUpdateDetail = {
   canSearch: boolean;
-  flowActive: boolean;
   flowLabel: string;
   hasUnsavedChanges: boolean;
   searchActive: boolean;
