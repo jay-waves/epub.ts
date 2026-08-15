@@ -18,6 +18,7 @@ const READER_LATIN_FONT_FORMAT = readerProfile.latinFontFormat;
 const READER_LATIN_ITALIC_FONT_FORMAT = readerProfile.latinItalicFontFormat;
 const READER_MONO_FONT_FORMAT = readerProfile.monoFontFormat;
 const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
+const READER_LATIN_FONT_SIZE_ADJUST = "108%";
 
 const READER_SERIF_STACK =
   `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;
@@ -104,6 +105,7 @@ const READER_BOOK_FOUNDATION_STYLES = `
     src: url("${READER_LATIN_FONT_URL}") format("${READER_LATIN_FONT_FORMAT}");
     font-weight: 400 800;
     font-style: normal;
+    size-adjust: ${READER_LATIN_FONT_SIZE_ADJUST};
     font-display: swap;
     unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
   }
@@ -112,6 +114,7 @@ const READER_BOOK_FOUNDATION_STYLES = `
     src: url("${READER_LATIN_ITALIC_FONT_URL}") format("${READER_LATIN_ITALIC_FONT_FORMAT}");
     font-weight: 400 800;
     font-style: italic;
+    size-adjust: ${READER_LATIN_FONT_SIZE_ADJUST};
     font-display: swap;
     unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2150-218F, U+FB00-FB06;
   }

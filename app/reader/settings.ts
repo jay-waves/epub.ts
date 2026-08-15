@@ -113,12 +113,7 @@ const MIN_READER_LAYOUT_LEVEL = 0;
 export const READER_LAYOUT_LEVEL_STEP = 1;
 
 const PAGINATED_GAP = "2.5%";
-const READER_LAYOUT_MODES = {
-  paginated: { flow: "paginated", pagination: "paginated" },
-  stepping: { flow: "paginated", pagination: "stepping" },
-  scrolling: { flow: "scrolled", pagination: undefined },
-} as const satisfies Record<ReaderLayoutMode, { flow: ReaderFlow; pagination?: "paginated" | "stepping" }>;
-const READER_LAYOUT_MODE_ORDER = Object.keys(READER_LAYOUT_MODES) as ReaderLayoutMode[];
+const READER_LAYOUT_MODE_ORDER: ReaderLayoutMode[] = ["paginated", "stepping", "scrolling"];
 const READER_LAYOUT_PRESETS = [
   {
     margin: 24,
@@ -201,7 +196,7 @@ export function applyReaderLayout({ view }: ReaderLayoutTarget) {
 function configureReaderRenderer(renderer: Renderer, mode: ReaderLayoutMode) {
 
   const layout = getLayoutPreset();
-  const { flow, pagination } = READER_LAYOUT_MODES[mode];
+  const flow = getReaderFlow(mode);
   const element = renderer.element;
   element.setAttribute("gap", flow === "paginated" ? PAGINATED_GAP : "1.5%");
   element.setAttribute("animated", "");
@@ -213,7 +208,7 @@ function configureReaderRenderer(renderer: Renderer, mode: ReaderLayoutMode) {
     // Otherwise Zoom out can make a second off-screen column fit and silently
     // turn a single-page viewport into a multi-page canvas.
     element.setAttribute("max-column-count", "3");
-    element.setAttribute("pagination-mode", pagination ?? "paginated");
+    element.setAttribute("pagination-mode", mode);
     return;
   }
 
@@ -254,7 +249,7 @@ export function canChangeReaderLayoutLevel(delta: number) {
 }
 
 export function getReaderFlow(mode = readerSettings.layoutMode): ReaderFlow {
-  return READER_LAYOUT_MODES[mode].flow;
+  return mode === "scrolling" ? "scrolled" : "paginated";
 }
 
 export async function applyReaderLayoutMode(mode: ReaderLayoutMode, target: ReaderLayoutTarget) {

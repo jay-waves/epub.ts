@@ -21,12 +21,6 @@ import type { RendererStyles } from '../renderer'
 import type { TrackProjection } from '../shared/flow-geometry'
 
 type ResolvedAnchor = number | Node | Range
-type PaginationMode = 'paginated' | 'stepping'
-
-const PAGINATION_STRATEGIES = {
-    paginated: { maxColumns: 3, turn: 'viewport' },
-    stepping: { maxColumns: 2, turn: 'column' },
-} as const
 
 const debounce = <Args extends unknown[]>(
     f: (...args: Args) => void,
@@ -472,7 +466,6 @@ export class PaginatedRenderer extends HTMLElement {
         const maxColumnCount = Math.min(
             parseInt(style.getPropertyValue('--_max-column-count-spread')),
             this.#geometry.columnCount(this.getBoundingClientRect().width),
-            this.#paginationStrategy.maxColumns,
         )
         const maxInlineSize = parseFloat(style.getPropertyValue(
             maxColumnCount > 1 ? '--_max-column-inline-size' : '--_max-inline-size'))
@@ -511,7 +504,7 @@ export class PaginatedRenderer extends HTMLElement {
         } = getPaginatedColumnGeometry(
             size, maxColumnCount, maxInlineSize, baseGap)
         this.#pageSize = pageSize
-        this.#turnSize = this.#paginationStrategy.turn === 'column' ? columnStep : pageSize
+        this.#turnSize = this.#stepsByColumn ? columnStep : pageSize
         this.#edgeTurns = Math.max(1, Math.round(pageSize / this.#turnSize))
         this.setAttribute('dir', rtl ? 'rtl' : 'ltr')
 
@@ -584,9 +577,8 @@ export class PaginatedRenderer extends HTMLElement {
             ? this.#containerWidth : this.#containerHeight
         return size || this.#container.getBoundingClientRect()[this.sideProp]
     }
-    get #paginationStrategy() {
-        const mode = this.getAttribute('pagination-mode') as PaginationMode
-        return PAGINATION_STRATEGIES[mode] ?? PAGINATION_STRATEGIES.paginated
+    get #stepsByColumn() {
+        return this.getAttribute('pagination-mode') === 'stepping'
     }
     get turnSize() {
         return this.#turnSize
