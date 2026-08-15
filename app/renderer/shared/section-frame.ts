@@ -140,9 +140,13 @@ export class SectionFrame {
   }
 
   set compact(value: boolean) {
+    this.setCompact(value);
+  }
+
+  setCompact(value: boolean, notify = true) {
     if (this.#compact === value) return;
     this.#compact = value;
-    this.expand();
+    this.expand(notify);
   }
 
   async load(source: string, afterLoad?: AfterLoad, resolveLayout?: ResolveLayout) {
@@ -178,13 +182,13 @@ export class SectionFrame {
     });
   }
 
-  render(layout: SectionLayout) {
+  render(layout: SectionLayout, notify = true) {
     this.#layout = layout;
-    if (layout.kind === "columns") this.#columnize(layout);
-    else this.#renderScrolled(layout);
+    if (layout.kind === "columns") this.#columnize(layout, notify);
+    else this.#renderScrolled(layout, notify);
   }
 
-  #renderScrolled({ gap, columnWidth }: ScrolledSectionLayout) {
+  #renderScrolled({ gap, columnWidth }: ScrolledSectionLayout, notify: boolean) {
     const doc = this.document;
     this.#iframe.style.flex = "0 0 auto";
     this.#element.style.justifyContent = "center";
@@ -201,10 +205,10 @@ export class SectionFrame {
       "margin": "auto",
     });
     this.#setMediaSize();
-    this.expand();
+    this.expand(notify);
   }
 
-  #columnize(layout: PaginatedSectionLayout) {
+  #columnize(layout: PaginatedSectionLayout, notify: boolean) {
     const { width, height, gap, columnWidth, columnCount, columnStep } = layout;
     this.#size = this.#vertical ? height : width;
     this.#columnCount = columnCount;
@@ -239,7 +243,7 @@ export class SectionFrame {
       "max-width": "none",
     });
     this.#setMediaSize();
-    this.expand();
+    this.expand(notify);
   }
 
   #setMediaSize() {
@@ -283,8 +287,9 @@ export class SectionFrame {
     });
   }
 
-  expand() {
+  expand(notify = true) {
     if (this.#destroyed || !this.#layout) return;
+    const previousExtent = this.extent;
     const { documentElement } = this.document;
     if (this.#layout.kind === "columns") {
       const side = this.#vertical ? "height" : "width";
@@ -338,7 +343,7 @@ export class SectionFrame {
         this.#overlay.redraw();
       }
     }
-    this.#onExpand();
+    if (notify && this.extent !== previousExtent) this.#onExpand();
   }
 
   set overlay(overlay: Overlay | undefined) {

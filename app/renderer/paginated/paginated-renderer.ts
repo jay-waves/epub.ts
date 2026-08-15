@@ -72,10 +72,7 @@ export class PaginatedRenderer extends HTMLElement {
         this.#containerHeight = containerRect.height
         this.#viewportWidth = viewportRect.width
         this.#viewportHeight = viewportRect.height
-        if (this.#lastVisibleRange) this.#anchor = this.#lastVisibleRange.cloneRange()
-        this.#pageSize = 0
-        this.#scrollBounds = null
-        this.#scheduleRender()
+        this.#invalidateViewportGeometry()
     })
     #top!: HTMLElement
     #background!: HTMLElement
@@ -114,6 +111,8 @@ export class PaginatedRenderer extends HTMLElement {
     #pageSize = 0
     #turnSize = 1
     #edgeTurns = 1
+    #layoutRevision = 0
+    #trackProjectionInvalid = false
     #destroyed = false
     constructor() {
         super()
@@ -249,7 +248,7 @@ export class PaginatedRenderer extends HTMLElement {
         }
         this.#mediaQuery.addEventListener('change', this.#mediaQueryListener)
     }
-    attributeChangedCallback(name: string, oldValue: string | null, value: string | null) {
+    attributeChangedCallback(name: string, _oldValue: string | null, value: string | null) {
         if (value == null) return
         switch (name) {
             case 'gap':
@@ -264,8 +263,6 @@ export class PaginatedRenderer extends HTMLElement {
                 this.#scheduleRender()
                 break
             case 'pagination-mode':
-                if (oldValue != null && oldValue !== value && this.#lastVisibleRange)
-                    this.#anchor = this.#lastVisibleRange.cloneRange()
                 this.#scrollBounds = null
                 this.#scheduleRender()
                 break
@@ -293,8 +290,6 @@ export class PaginatedRenderer extends HTMLElement {
                             this.#container[this.scrollProp] += shift
                             if (this.#scrollBounds) this.#scrollBounds[0] += shift
                         }
-                        if (activeEntry.view === view && this.#anchorBelongsTo(view))
-                            void this.#scrollToAnchor(this.#anchor, 'anchor', activeEntry)
                     }
                 }
             },
@@ -395,6 +390,7 @@ export class PaginatedRenderer extends HTMLElement {
     }
     async #fillPaginatedSpread(insideNavigation = false) {
         if (this.#loadingChapters || !this.continuous || !this.#spine.entries.length) return
+        const layoutRevision = this.#layoutRevision
         this.#loadingChapters = true
         try {
             const firstView = this.#spine.entries[0].view
@@ -407,7 +403,9 @@ export class PaginatedRenderer extends HTMLElement {
                 const section = this.sections[nextIndex]
                 if (!this.sections[active.index]?.pageSpread && !section?.pageSpread) {
                     const entry = await this.#spine.prepare(nextIndex)
+                    if (layoutRevision !== this.#layoutRevision) return
                     const commit = () => {
+                        if (layoutRevision !== this.#layoutRevision) return false
                         this.#commitSpineChange(this.#spine.changeFor([entry]))
                         return true
                     }
@@ -417,6 +415,7 @@ export class PaginatedRenderer extends HTMLElement {
             }
         } finally {
             this.#loadingChapters = false
+            if (layoutRevision !== this.#layoutRevision) this.#scheduleAdjacentCache()
         }
     }
     async #cacheAdjacentSections() {
@@ -425,6 +424,7 @@ export class PaginatedRenderer extends HTMLElement {
             this.#scheduleAdjacentCache()
             return
         }
+        const layoutRevision = this.#layoutRevision
         this.#loadingChapters = true
         try {
             const { start, end } = this.#contentViewportRange()
@@ -435,7 +435,12 @@ export class PaginatedRenderer extends HTMLElement {
                 viewportSize: this.size,
                 viewportStart: start,
             })
+            if (layoutRevision !== this.#layoutRevision) {
+                this.#scheduleAdjacentCache()
+                return
+            }
             const committed = await this.#runNavigation(() => {
+                if (layoutRevision !== this.#layoutRevision) return false
                 this.#commitSpineChange(change)
                 return true
             })
@@ -532,14 +537,19 @@ export class PaginatedRenderer extends HTMLElement {
     render() {
         if (!this.#view) return
         if (!this.#navigation.beginReflow()) return
+        if (this.#lastVisibleRange) this.#anchor = this.#lastVisibleRange.cloneRange()
+        if (this.#trackProjectionInvalid) {
+            this.#spineTrack.reset()
+            this.#trackProjectionInvalid = false
+        }
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeWhere(entry => entry.view !== this.#view)
         for (const { view } of this.#spine.entries) {
-            view.compact = this.continuous && this.#geometry.sectionLayout === 'columns'
+            view.setCompact(this.continuous && this.#geometry.sectionLayout === 'columns', false)
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
-            }))
+            }), false)
         }
         if (!this.continuous) {
             const { style } = this.#view.element
@@ -564,6 +574,14 @@ export class PaginatedRenderer extends HTMLElement {
             this.#renderFrame = undefined
             this.render()
         })
+    }
+    #invalidateViewportGeometry() {
+        if (this.#destroyed) return
+        this.#layoutRevision += 1
+        this.#trackProjectionInvalid = true
+        this.#pageSize = 0
+        this.#scrollBounds = null
+        this.#scheduleRender()
     }
     get mode() {
         return this.#geometry.mode
@@ -672,11 +690,6 @@ export class PaginatedRenderer extends HTMLElement {
         return entries.find(entry =>
             edge >= entry.start && edge < entry.start + entry.extent)
             ?? entries.at(-1)
-    }
-    #anchorBelongsTo(view: SectionFrame) {
-        if (typeof this.#anchor === 'number') return true
-        const node = this.#anchor instanceof Range ? this.#anchor.startContainer : this.#anchor
-        return (node?.ownerDocument ?? node) === view.document
     }
     #entryOffset(entry = this.#entryForView()) {
         return this.#spineTrack.entryOffset(entry, this.#trackProjection())

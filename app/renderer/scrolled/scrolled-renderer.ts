@@ -186,8 +186,6 @@ export class ScrolledRenderer extends HTMLElement {
                             this.#container[this.scrollProp] += shift
                             if (this.#scrollBounds) this.#scrollBounds[0] += shift
                         }
-                        if (activeEntry.view === view && this.#anchorBelongsTo(view))
-                            void this.#scrollToAnchor(this.#anchor, 'anchor', activeEntry)
                     }
                 }
             },
@@ -383,11 +381,11 @@ export class ScrolledRenderer extends HTMLElement {
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeWhere(entry => entry.view !== this.#view)
         for (const { view } of this.#spine.entries) {
-            view.compact = false
+            view.setCompact(false, false)
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
-            }))
+            }), false)
         }
         if (!this.continuous) {
             const { style } = this.#view.element
@@ -481,11 +479,6 @@ export class ScrolledRenderer extends HTMLElement {
         return entries.find(entry =>
             edge >= entry.start && edge < entry.start + entry.extent)
             ?? entries.at(-1)
-    }
-    #anchorBelongsTo(view: SectionFrame) {
-        if (typeof this.#anchor === 'number') return true
-        const node = this.#anchor instanceof Range ? this.#anchor.startContainer : this.#anchor
-        return (node?.ownerDocument ?? node) === view.document
     }
     #entryOffset(entry = this.#entryForView()) {
         return this.#spineTrack.entryOffset(entry, this.#trackProjection())
