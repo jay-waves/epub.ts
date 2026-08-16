@@ -12,6 +12,7 @@ export function createBookSession() {
     tocItem: null as TocItem | null,
     tocIntent: null as TocItem | null,
     progress: 0,
+    sectionIndex: 0,
     restoring: false,
     tocItems: [] as TocItem[],
   };

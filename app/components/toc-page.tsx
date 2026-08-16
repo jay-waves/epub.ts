@@ -18,6 +18,9 @@ export function TocPage() {
     setSelectedKey(null);
     scrollCurrentItemIntoView(rootRef.current);
   });
+  useViewerEvent(VIEWER_EVENTS.tocClose, () => {
+    if (dialogRef.current?.open) dialogRef.current.close();
+  });
   useViewerEvent(VIEWER_EVENTS.tocUpdate, (detail) => {
     setTocState(detail);
     setSelectedKey(null);

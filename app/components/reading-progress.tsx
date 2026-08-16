@@ -97,6 +97,8 @@ export function ReadingProgress() {
     emitViewerEvent(VIEWER_EVENTS.progressSeek, target);
   };
 
+  useViewerEvent(VIEWER_EVENTS.progressReturn, returnToHistory);
+
   const percentage = progress * 100;
   return (
     <div className="reader-progress-shell">

@@ -4,6 +4,7 @@ import type { PageTurnDirection, ReaderView } from "./reader/model";
 import type { Navigation } from "./reader/navigation";
 import { observeRenderedDocuments } from "./reader/documents";
 import { KineticScroller } from "./reader/kinetic-scroller";
+import type { ReaderCommand } from "./viewer-events";
 import {
   consumeReaderPointerClaim,
   resolveReaderPointerIntent,
@@ -37,14 +38,6 @@ function getKeyboardScrollDistance() {
   return Math.max(120, Math.round(window.innerHeight * SCROLL_KEY_DISTANCE_RATIO));
 }
 
-function isScrollUpKey(key: string) {
-  return key === "ArrowUp" || key === "k";
-}
-
-function isScrollDownKey(key: string) {
-  return key === "ArrowDown" || key === "j" || key === " ";
-}
-
 type ViewerInputOptions = {
   getView: () => ReaderView | null;
   getNavigation: () => Navigation | null;
@@ -52,9 +45,9 @@ type ViewerInputOptions = {
   canTurnPage: () => boolean;
   onChapterBoundary: (direction: number, pending: boolean) => void;
   onScrollEdge: (direction: number) => void;
-  openSearch: () => boolean;
-  closeSearch: () => boolean;
-  saveBook: () => void;
+  dispatchCommand: (command: ReaderCommand) => void;
+  dispatchProgressReturn: () => void;
+  dispatchProgressSeek: (progress: number) => void;
 };
 
 /** Normalizes keyboard, wheel, and pointer input from both the shell and reader iframes. */
@@ -69,6 +62,7 @@ export function createViewerInput(options: ViewerInputOptions) {
   let wheelBoundaryConsumed = false;
   let wheelBoundaryDirection = 0;
   let wheelBoundaryInFlight = false;
+  let progressPrefix = "";
   const activeWheelTargets = new Set<Document>();
 
   const clearWheelBoundary = () => {
@@ -177,42 +171,109 @@ export function createViewerInput(options: ViewerInputOptions) {
       ?.catch((error) => console.warn("Failed to turn reader page.", error));
   };
 
-  const handleScrollKeyDown = (event: KeyboardEvent, direction: number) => {
-    event.preventDefault();
+  const scrollByKey = (direction: number) => {
     scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
     inertia.stop();
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    if (event.ctrlKey && event.key.toLowerCase() === "o") {
+      progressPrefix = "";
       event.preventDefault();
       if (event.repeat) return;
-      options.saveBook();
+      options.dispatchProgressReturn();
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      progressPrefix = "";
+      event.preventDefault();
+      if (event.repeat) return;
+      options.dispatchCommand("save-book");
       return;
     }
 
     if (event.key === "Escape") {
-      if (options.closeSearch()) event.preventDefault();
+      progressPrefix = "";
+      event.preventDefault();
+      options.dispatchCommand("escape");
       return;
     }
 
-    if (isEditableTarget(event.target)) return;
-
-    if (event.key === "ArrowLeft" || event.key === "h") {
-      event.preventDefault();
-      if (event.repeat) return;
-      turnPage("left");
-    } else if (event.key === "ArrowRight" || event.key === "l") {
-      event.preventDefault();
-      if (event.repeat) return;
-      turnPage("right");
-    } else if (options.getFlow() === "scrolled" && isScrollUpKey(event.key)) {
-      handleScrollKeyDown(event, -1);
-    } else if (options.getFlow() === "scrolled" && isScrollDownKey(event.key)) {
-      handleScrollKeyDown(event, 1);
-    } else if (event.key === "/") {
-      if (options.openSearch()) event.preventDefault();
+    if (isEditableTarget(event.target)) {
+      progressPrefix = "";
+      return;
     }
+    if (event.repeat) return event.preventDefault();
+
+    if (event.ctrlKey || event.metaKey) {
+      progressPrefix = "";
+      let command: ReaderCommand | undefined;
+      switch (event.key) {
+        case "+":
+        case "=":
+          command = "zoom-in";
+          break;
+        case "-":
+        case "_":
+          command = "zoom-out";
+          break;
+      }
+      if (!command) return;
+      event.preventDefault();
+      options.dispatchCommand(command);
+      return;
+    }
+
+    // Keep the prefix while Shift is pressed to produce the confirming uppercase G.
+    if (event.key === "Shift") return;
+
+    const hasCommandModifiers = event.altKey || event.ctrlKey || event.metaKey;
+    if (!hasCommandModifiers && /^\d$/.test(event.key)) {
+      event.preventDefault();
+      progressPrefix += event.key;
+      return;
+    }
+
+    if (!hasCommandModifiers && event.key === "G" && progressPrefix) {
+      const percentage = Number(progressPrefix);
+      progressPrefix = "";
+      event.preventDefault();
+      if (percentage <= 100) options.dispatchProgressSeek(percentage / 100);
+      return;
+    }
+
+    progressPrefix = "";
+
+    let command: ReaderCommand | undefined;
+    switch (event.key) {
+      case "ArrowLeft":
+      case "h":
+        command = "page-left";
+        break;
+      case "ArrowRight":
+      case "l":
+        command = "page-right";
+        break;
+      case "ArrowUp":
+      case "k":
+        if (options.getFlow() === "scrolled") command = "scroll-up";
+        break;
+      case "ArrowDown":
+      case "j":
+      case " ":
+        if (options.getFlow() === "scrolled") command = "scroll-down";
+        break;
+      case "/":
+        command = "open-search";
+        break;
+      case "t":
+        command = "open-toc";
+        break;
+    }
+    if (!command) return;
+    event.preventDefault();
+    options.dispatchCommand(command);
   };
 
   const edgeDirection = (sourceDocument: Document, clientX: number): PageTurnDirection | null => {
@@ -434,6 +495,8 @@ export function createViewerInput(options: ViewerInputOptions) {
       inputTargets.forEach((dispose) => dispose());
       inputTargets.clear();
     },
+    scrollByKey,
+    turnPage,
     unbindReaderView,
   };
 }

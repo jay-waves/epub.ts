@@ -14,8 +14,10 @@ export const VIEWER_EVENTS = {
   dockAction: "reader:dock-action",
   dockUpdate: "reader:dock-update",
   documentOpen: "reader:document-open",
+  progressReturn: "reader:progress-return",
   progressSeek: "reader:progress-seek",
   progressUpdate: "reader:progress-update",
+  readerCommand: "reader:command",
   searchClear: "reader:search-clear",
   searchCollect: "reader:search-collect",
   searchNext: "reader:search-next",
@@ -24,6 +26,7 @@ export const VIEWER_EVENTS = {
   bookInfoOpen: "reader:book-info-open",
   bookInfoUpdate: "reader:book-info-update",
   tocOpen: "reader:toc-open",
+  tocClose: "reader:toc-close",
   tocNavigate: "reader:toc-navigate",
   tocUpdate: "reader:toc-update",
 } as const;
@@ -69,6 +72,18 @@ export type DockUpdateDetail = {
   searchActive: boolean;
 };
 
+export type ReaderCommand =
+  | "escape"
+  | "open-search"
+  | "open-toc"
+  | "page-left"
+  | "page-right"
+  | "save-book"
+  | "scroll-down"
+  | "scroll-up"
+  | "zoom-in"
+  | "zoom-out";
+
 type SearchCollectDetail = {
   query: string;
   highlightedOnly?: boolean;
@@ -110,8 +125,10 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.dockAction]: DockAction;
   [VIEWER_EVENTS.dockUpdate]: DockUpdateDetail;
   [VIEWER_EVENTS.documentOpen]: void;
+  [VIEWER_EVENTS.progressReturn]: void;
   [VIEWER_EVENTS.progressSeek]: number;
   [VIEWER_EVENTS.progressUpdate]: ProgressUpdateDetail;
+  [VIEWER_EVENTS.readerCommand]: ReaderCommand;
   [VIEWER_EVENTS.searchClear]: void;
   [VIEWER_EVENTS.searchCollect]: SearchCollectDetail;
   [VIEWER_EVENTS.searchNext]: void;
@@ -120,6 +137,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.bookInfoOpen]: void;
   [VIEWER_EVENTS.bookInfoUpdate]: BookInfo;
   [VIEWER_EVENTS.tocOpen]: void;
+  [VIEWER_EVENTS.tocClose]: void;
   [VIEWER_EVENTS.tocNavigate]: TocNavigateDetail;
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
 };
@@ -133,11 +151,13 @@ const STATE_EVENTS = new Set<string>([
   VIEWER_EVENTS.translationUpdate,
   VIEWER_EVENTS.dockUpdate,
   VIEWER_EVENTS.documentOpen,
+  VIEWER_EVENTS.progressReturn,
   VIEWER_EVENTS.progressUpdate,
   VIEWER_EVENTS.searchUpdate,
   VIEWER_EVENTS.bookInfoOpen,
   VIEWER_EVENTS.bookInfoUpdate,
   VIEWER_EVENTS.tocOpen,
+  VIEWER_EVENTS.tocClose,
   VIEWER_EVENTS.tocUpdate,
 ]);
 

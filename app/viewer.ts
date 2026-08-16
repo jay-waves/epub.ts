@@ -157,9 +157,9 @@ function ensureViewerInput() {
     canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
     onChapterBoundary: showChapterBoundaryPending,
     onScrollEdge: showScrollEdgeFeedback,
-    openSearch,
-    closeSearch: clearSearchState,
-    saveBook: () => { void saveAnnotatedBook(); },
+    dispatchCommand: (command) => emitViewerEvent(VIEWER_EVENTS.readerCommand, command),
+    dispatchProgressReturn: () => emitViewerEvent(VIEWER_EVENTS.progressReturn),
+    dispatchProgressSeek: (progress) => emitViewerEvent(VIEWER_EVENTS.progressSeek, progress),
   });
   const view = getView();
   if (view) runtime.input.bindReaderView(view);
@@ -230,6 +230,7 @@ function wireReaderEvents(reader: Reader) {
     const detail = reader.navigation?.location(event.detail);
     if (!detail) return;
     const sectionIndex = detail.index;
+    session.sectionIndex = sectionIndex;
 
     let currentItem: typeof session.tocItem;
     if (detail.reason === "navigation" && session.tocIntent) {
@@ -584,6 +585,40 @@ function setupEventListeners(signal: AbortSignal) {
     });
   }, { signal });
   listenViewerEvent(VIEWER_EVENTS.progressSeek, goToProgress, { signal });
+  listenViewerEvent(VIEWER_EVENTS.readerCommand, (command) => {
+    switch (command) {
+      case "page-left":
+        runtime.input?.turnPage("left");
+        return;
+      case "page-right":
+        runtime.input?.turnPage("right");
+        return;
+      case "scroll-up":
+        runtime.input?.scrollByKey(-1);
+        return;
+      case "scroll-down":
+        runtime.input?.scrollByKey(1);
+        return;
+      case "open-search":
+        openSearch();
+        return;
+      case "escape":
+        clearSearchState();
+        emitViewerEvent(VIEWER_EVENTS.tocClose);
+        return;
+      case "save-book":
+        void saveAnnotatedBook();
+        return;
+      case "zoom-in":
+      case "zoom-out":
+        void handleDockAction(command === "zoom-in" ? "increase-width" : "decrease-width")
+          .catch((error) => console.warn(`Failed to run reader command ${command}.`, error));
+        return;
+      case "open-toc":
+        emitTocUpdate();
+        emitViewerEvent(VIEWER_EVENTS.tocOpen);
+    }
+  }, { signal });
   listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
     void runtime.search?.collect(query, highlightedOnly);
   }, { signal });
