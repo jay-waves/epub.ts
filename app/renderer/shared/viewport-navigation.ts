@@ -137,12 +137,15 @@ export function isAtBookEdge(state: ViewportNavigationState, direction: Navigati
 export function planViewportNavigation(
   state: ViewportNavigationState,
   direction: NavigationDirection,
-  distance?: number,
+  { distance, turns = 1 }: { distance?: number; turns?: number } = {},
 ): ViewportNavigationAction {
   if (isAtBookEdge(state, direction)) return { kind: "book-edge" };
 
   if (state.mode === "paginated") {
-    const turn = state.turn + direction;
+    const turn = Math.max(0, Math.min(
+      state.turns - 1,
+      state.turn + direction * Math.max(1, turns),
+    ));
     return {
       kind: "turn",
       turn,

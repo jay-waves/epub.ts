@@ -1,5 +1,5 @@
 import type { TocItem } from "./renderer";
-import type { BookInfo } from "./book-info";
+import type { BookInfo } from "./reader/book-info";
 import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
@@ -78,6 +78,8 @@ export type ReaderCommand =
   | "open-toc"
   | "page-left"
   | "page-right"
+  | "page-up"
+  | "page-down"
   | "save-book"
   | "scroll-down"
   | "scroll-up"

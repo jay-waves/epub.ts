@@ -1,29 +1,20 @@
 # Renderer
 
-The reader exposes exactly three renderer identities:
+渲染层包含三种实现：
 
-- `paginated/PaginatedRenderer` owns paginated reflowable presentation.
-- `scrolled/ScrolledRenderer` owns continuous reflowable presentation.
-- `fixed/FixedRenderer` owns pre-paginated and fixed-layout presentation.
+- `paginated/`：连续 spine 的多栏投影、步进和整屏翻页
+- `scrolled/`：连续滚动、锚点投影和可见位置采样
+- `fixed/`：固定版式 EPUB
+- `shared/`：章节 iframe、spine 缓存与轨道、导航事务、坐标和选区工具
 
-`ReaderView` selects and atomically swaps these renderers. A renderer's mode is
-fixed for its lifetime; switching mode creates a new renderer and transfers the
-stable reading target, styles, and reusable book resources.
+`ReaderView` 负责选择 renderer。Paginated 与 Scrolled 通过
+`ReflowableSpine` 共享章节加载、样式注入、虚拟缓存和轨道维护；各 renderer
+只处理自身的布局、滚动、吸附与定位投影。
 
-The folders reflect implementation ownership:
+Paginated 始终以栏为最小单位：`prev()` / `next()` 移动一栏，
+`prevPage()` / `nextPage()` 按当前可见栏数移动。`SpineFlow` 以一级目录项
+建立分页边界，未命名的开头内容和嵌套目录内容保持连续。
 
-- `paginated/` contains column geometry and paginated renderer entry points.
-- `scrolled/` contains scroll sampling, anchor projection, and its renderer.
-- `fixed/` contains the fixed-layout renderer.
-- `shared/` contains mode-neutral mechanisms only: section frames, spine
-  buffering and projection, navigation transactions, visible-location
-  resolution, overlays, and coordinate types.
-
-`SectionFrame` owns one loaded reflowable spine iframe, including document
-lifecycle, layout application, measurement, media constraints, overlay
-geometry, and range projection. Reader styles and content enhancement enter
-through hooks and remain outside the frame.
-
-The JavaScript renderer started as a trimmed copy of
-[`johnfactotum/foliate-js`](https://github.com/johnfactotum/foliate-js).
-Its original license is preserved in `LICENSE.txt`.
+初始 renderer 与 EPUB parser 源自
+[`foliate-js`](https://github.com/johnfactotum/foliate-js)，许可证见
+`LICENSE.txt`。

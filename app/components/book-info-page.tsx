@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { VIEWER_EVENTS } from "../viewer-events";
-import type { BookInfo } from "../book-info";
+import type { BookInfo } from "../reader/book-info";
 import { Dialog } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 

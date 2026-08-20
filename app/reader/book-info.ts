@@ -1,4 +1,4 @@
-import type { Book, BookSection } from "./renderer";
+import type { Book, BookSection } from "../renderer";
 
 export type BookInfo = {
   metadataRows: BookInfoRow[];

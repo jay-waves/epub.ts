@@ -5,7 +5,7 @@ import type {
 import type { ReaderHighlight } from "./epub/annotations";
 import type { Location } from "./reader/navigation";
 import { platform } from "#platform";
-import { SerialTaskQueue } from "./async-tasks";
+import { SerialTaskQueue } from "./shared/async-tasks";
 
 const positionWrites = new SerialTaskQueue();
 const highlightAccess = new SerialTaskQueue();

@@ -1,6 +1,6 @@
 import { createBookStyles } from "./book-styles";
 import { readerSettings } from "./model";
-import type { ReaderFlow, ReaderLayoutMode, ReaderTheme, ReaderThemeId } from "./model";
+import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
 import type { ReaderView } from "./model";
 import type { Renderer } from "../renderer";
 
@@ -113,7 +113,7 @@ const MIN_READER_LAYOUT_LEVEL = 0;
 export const READER_LAYOUT_LEVEL_STEP = 1;
 
 const PAGINATED_GAP = "2.5%";
-const READER_LAYOUT_MODE_ORDER: ReaderLayoutMode[] = ["paginated", "stepping", "scrolling"];
+const READER_LAYOUT_MODE_ORDER: ReaderFlow[] = ["paginated", "scrolled"];
 const READER_LAYOUT_PRESETS = [
   {
     margin: 24,
@@ -193,10 +193,8 @@ export function applyReaderLayout({ view }: ReaderLayoutTarget) {
   configureReaderRenderer(view.renderer, readerSettings.layoutMode);
 }
 
-function configureReaderRenderer(renderer: Renderer, mode: ReaderLayoutMode) {
-
+function configureReaderRenderer(renderer: Renderer, flow: ReaderFlow) {
   const layout = getLayoutPreset();
-  const flow = getReaderFlow(mode);
   const element = renderer.element;
   element.setAttribute("gap", flow === "paginated" ? PAGINATED_GAP : "1.5%");
   element.setAttribute("animated", "");
@@ -208,7 +206,6 @@ function configureReaderRenderer(renderer: Renderer, mode: ReaderLayoutMode) {
     // Otherwise Zoom out can make a second off-screen column fit and silently
     // turn a single-page viewport into a multi-page canvas.
     element.setAttribute("max-column-count", "3");
-    element.setAttribute("pagination-mode", mode);
     return;
   }
 
@@ -216,7 +213,6 @@ function configureReaderRenderer(renderer: Renderer, mode: ReaderLayoutMode) {
   element.setAttribute("max-inline-size", `${SCROLLED_LAYOUT_WIDTH_BASELINE.singleColumnMaxInlineSize}px`);
   element.removeAttribute("max-column-inline-size");
   element.removeAttribute("max-column-count");
-  element.removeAttribute("pagination-mode");
 }
 
 function clampReaderFontSize(fontSize: number) {
@@ -248,16 +244,11 @@ export function canChangeReaderLayoutLevel(delta: number) {
   return clampLayoutLevel(currentLevel + delta) !== currentLevel;
 }
 
-export function getReaderFlow(mode = readerSettings.layoutMode): ReaderFlow {
-  return mode === "scrolling" ? "scrolled" : "paginated";
-}
-
-export async function applyReaderLayoutMode(mode: ReaderLayoutMode, target: ReaderLayoutTarget) {
+export async function applyReaderLayoutMode(mode: ReaderFlow, target: ReaderLayoutTarget) {
   readerSettings.layoutMode = mode;
-  const flow = getReaderFlow(mode);
   const { view } = target;
-  if (view && view.renderMode !== "fixed" && view.renderMode !== flow) {
-    await view.setRenderMode(flow, (renderer) => {
+  if (view && view.renderMode !== "fixed" && view.renderMode !== mode) {
+    await view.setRenderMode(mode, (renderer) => {
       configureReaderRenderer(renderer, mode);
       renderer.setStyles?.(getBookStyles());
     });

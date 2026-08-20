@@ -51,3 +51,9 @@ export type ScrolledGeometry = ReflowableGeometry<"scrolled", "scrolled">;
 
 export const supportsContinuousSpine = ({ bookDir, rtl, vertical }: WritingContext) =>
   !vertical && !rtl && bookDir !== "rtl";
+
+/** Makes the inner percentage gap match the renderer's outer padding. */
+export function getLayoutGap(value: string, viewportSize: number) {
+  const fraction = parseFloat(value) / 100;
+  return fraction / (1 - fraction) * viewportSize;
+}

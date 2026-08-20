@@ -3,7 +3,7 @@ import {
   clearBookMathSvgCache,
   getCachedMathSvg,
 } from "./math-svg-cache";
-import { SerialTaskQueue } from "../../async-tasks";
+import { SerialTaskQueue } from "../../shared/async-tasks";
 
 type MathJaxSvgModule = typeof import("./mathjax-svg");
 type MathJaxSvgRenderer = ReturnType<MathJaxSvgModule["createMathJaxSvgRenderer"]>;

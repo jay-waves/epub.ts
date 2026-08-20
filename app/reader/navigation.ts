@@ -159,20 +159,22 @@ export class Navigation {
     return this.#getRenderer().next(distance);
   }
 
+  prevPage() {
+    const renderer = this.#getRenderer();
+    return renderer.prevPage?.() ?? renderer.prev();
+  }
+
+  nextPage() {
+    const renderer = this.#getRenderer();
+    return renderer.nextPage?.() ?? renderer.next();
+  }
+
   scrollBy(distance: number) {
     this.#getRenderer().panBy?.(distance, distance);
   }
 
   scrollTo(anchor: number) {
     return this.#getRenderer().scrollToAnchor?.(anchor);
-  }
-
-  left() {
-    return this.book.dir === "rtl" ? this.next() : this.prev();
-  }
-
-  right() {
-    return this.book.dir === "rtl" ? this.prev() : this.next();
   }
 
   clearSelection() {

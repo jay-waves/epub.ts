@@ -16,8 +16,10 @@ export interface Renderer {
   getContents(): Content[];
   goTo(target: Resolved): Promise<unknown>;
   next(distance?: number): Promise<void>;
+  nextPage?(): Promise<void>;
   open(book: Book): void | Promise<void>;
   prev(distance?: number): Promise<void>;
+  prevPage?(): Promise<void>;
   panBy?(dx: number, dy: number): void;
   scrollToAnchor?(anchor: number, select?: boolean): Promise<void>;
   setStyles?(styles: RendererStyles): void;

@@ -121,6 +121,21 @@ Each pointer gesture has one owner: controls > links > highlights and annotation
 
 The UI has three broad layers: EPUB iframe content, SVG content decorations (highlights and annotations), and application chrome (Dock, menus, dialogs, and image zoom).
 
+## 快捷键与交互 / Shortcuts and Interaction
+
+| 输入 / Input | Paginated | Scrolled |
+| --- | --- | --- |
+| 屏幕左/右侧单击 | 前/后一栏 | 前/后一屏 |
+| 屏幕左/右侧双击 | 前/后一屏 | 前/后一屏 |
+| `←/→`、`h/l` | 前/后一栏 | 前/后一屏 |
+| `↑/↓`、`k/j` | 前/后一屏 | 向上/下滚动 |
+| `Space` | — | 向下滚动 |
+| 打开目录 / Open TOC | `t` | `t` |
+| 打开搜索 / Open search | `/` | `/` |
+| 跳转进度 / Go to progress | 输入百分比后按 `G`，如 `50G` | 同左 / Same |
+| 返回跳转前位置 / Return | `Ctrl+O` | `Ctrl+O` |
+| 保存 / Save | `Ctrl+S` / `⌘S` | 同左 / Same |
+
 ## 致谢 / Acknowledgements
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js)（初始 renderer 与 EPUB parser）

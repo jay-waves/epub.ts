@@ -21,6 +21,7 @@ const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
+const MOUSE_DOUBLE_CLICK_DELAY_MS = 250;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
@@ -152,24 +153,29 @@ export function createViewerInput(options: ViewerInputOptions) {
       : navigation?.next(Math.min(distance, remaining)));
   };
 
-  const turnPage = (direction: PageTurnDirection) => {
+  const turnInReadingOrder = (direction: -1 | 1, wholePage = false) => {
     if (!options.canTurnPage()) return;
-    const view = options.getView();
-    const renderer = view?.renderer;
+    const renderer = options.getView()?.renderer;
     if (!renderer) return;
-
-    const isRtl = view.book?.dir === "rtl";
-    const shouldGoNext = direction === "left" ? isRtl : !isRtl;
-    const isBookEdge = shouldGoNext ? renderer.atEnd : renderer.atStart;
-    if (isBookEdge) {
-      signalScrollEdge(shouldGoNext ? 1 : -1);
+    if (direction < 0 ? renderer.atStart : renderer.atEnd) {
+      signalScrollEdge(direction);
       return;
     }
 
     const navigation = options.getNavigation();
-    void (direction === "left" ? navigation?.left() : navigation?.right())
-      ?.catch((error) => console.warn("Failed to turn reader page.", error));
+    const movement = direction < 0
+      ? wholePage ? navigation?.prevPage() : navigation?.prev()
+      : wholePage ? navigation?.nextPage() : navigation?.next();
+    void movement?.catch((error) => console.warn("Failed to move reader viewport.", error));
   };
+
+  const turnPage = (direction: PageTurnDirection) => {
+    const isRtl = options.getView()?.book?.dir === "rtl";
+    const forward = direction === "left" ? isRtl : !isRtl;
+    turnInReadingOrder(forward ? 1 : -1);
+  };
+
+  const turnWholePage = (direction: -1 | 1) => turnInReadingOrder(direction, true);
 
   const scrollByKey = (direction: number) => {
     scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
@@ -257,10 +263,12 @@ export function createViewerInput(options: ViewerInputOptions) {
         break;
       case "ArrowUp":
       case "k":
-        if (options.getFlow() === "scrolled") command = "scroll-up";
+        command = options.getFlow() === "scrolled" ? "scroll-up" : "page-up";
         break;
       case "ArrowDown":
       case "j":
+        command = options.getFlow() === "scrolled" ? "scroll-down" : "page-down";
+        break;
       case " ":
         if (options.getFlow() === "scrolled") command = "scroll-down";
         break;
@@ -291,11 +299,40 @@ export function createViewerInput(options: ViewerInputOptions) {
 
   const bindDragGesture = (target: EventTarget, sourceDocument: Document) => {
     let longPressTimer: number | undefined;
+    let pendingMouseTap: { direction: PageTurnDirection; timer: number } | undefined;
     let active = false;
     let selecting = false;
     const clearLongPress = () => {
       if (longPressTimer !== undefined) window.clearTimeout(longPressTimer);
       longPressTimer = undefined;
+    };
+    const clearPendingMouseTap = () => {
+      if (pendingMouseTap) window.clearTimeout(pendingMouseTap.timer);
+      pendingMouseTap = undefined;
+    };
+    const handleEdgeTap = (direction: PageTurnDirection, pointerType: string) => {
+      if (pointerType !== "mouse") {
+        turnPage(direction);
+        return;
+      }
+      if (pendingMouseTap?.direction === direction) {
+        clearPendingMouseTap();
+        const isRtl = options.getView()?.book?.dir === "rtl";
+        const forward = direction === "left" ? isRtl : !isRtl;
+        turnInReadingOrder(forward ? 1 : -1, true);
+        return;
+      }
+      if (pendingMouseTap) {
+        const previousDirection = pendingMouseTap.direction;
+        clearPendingMouseTap();
+        turnPage(previousDirection);
+      }
+      const timer = window.setTimeout(() => {
+        if (pendingMouseTap?.timer !== timer) return;
+        pendingMouseTap = undefined;
+        turnPage(direction);
+      }, MOUSE_DOUBLE_CLICK_DELAY_MS);
+      pendingMouseTap = { direction, timer };
     };
     const drag = new DragGesture<PointerEvent>(target, (state) => {
       const event = state.event;
@@ -342,7 +379,7 @@ export function createViewerInput(options: ViewerInputOptions) {
           if (direction) {
             event.preventDefault();
             event.stopPropagation();
-            turnPage(direction);
+            handleEdgeTap(direction, event.pointerType);
           }
         } else if (event.pointerType !== "mouse") {
           const velocityX = -state.direction[0] * state.velocity[0];
@@ -370,6 +407,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     });
     return () => {
       clearLongPress();
+      clearPendingMouseTap();
       drag.destroy();
     };
   };
@@ -497,6 +535,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     },
     scrollByKey,
     turnPage,
+    turnWholePage,
     unbindReaderView,
   };
 }

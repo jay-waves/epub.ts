@@ -4,8 +4,8 @@ import {
   getSavedHighlights,
   setSavedHighlights,
 } from "../viewer-storage";
-import type { HighlightContextAction } from "../context-menu-store";
-import { contextMenuStore } from "../context-menu-store";
+import type { HighlightContextAction } from "./context-menu-store";
+import { contextMenuStore } from "./context-menu-store";
 import type { ReaderHighlight } from "../epub/annotations";
 import {
   claimReaderPointer,
@@ -15,10 +15,10 @@ import {
 import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
 import type { ReaderView } from "./model";
 import { createTranslation } from "./translation";
-import { copyReaderMedia } from "../media-clipboard";
+import { copyReaderMedia } from "./media-clipboard";
 import type { Navigation } from "./navigation";
 import { observeRenderedDocuments } from "./documents";
-import { TaskTracker } from "../async-tasks";
+import { TaskTracker } from "../shared/async-tasks";
 
 type PointerCoordinateSpace = "content" | "viewport";
 

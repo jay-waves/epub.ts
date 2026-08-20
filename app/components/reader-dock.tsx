@@ -29,7 +29,7 @@ const dockItems = [
 
 export function ReaderDock() {
   const [dockState, setDockState] = useState<DockUpdateDetail>({
-    canSearch: false, layoutLabel: "Switch to Stepping", hasUnsavedChanges: false, searchActive: false,
+    canSearch: false, layoutLabel: "Switch to Scrolling", hasUnsavedChanges: false, searchActive: false,
   });
 
   useViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);

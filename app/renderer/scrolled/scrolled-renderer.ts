@@ -1,25 +1,23 @@
-import { SpineBuffer } from '../shared/spine-buffer'
-import { SpineTrack } from '../shared/spine-track'
+import { ReflowableSpine } from '../shared/reflowable-spine'
 import {
     getAnchorRect,
     getFractionTarget,
     getRectTarget,
     isAtBookEdge,
     planViewportNavigation,
-    ViewportNavigation,
 } from '../shared/viewport-navigation'
 import {
     getReadingEdge,
     resolveVisibleLocation,
 } from '../shared/visible-location'
 import { ScrollCoordinator } from './scroll-coordinator'
-import { SectionFrame, getDocumentBackground, type SectionDirection } from '../shared/section-frame'
+import { SectionFrame, type SectionDirection } from '../shared/section-frame'
 import { animateNumber, easeOutQuad } from '../shared/animation'
 import { setSelectionTarget, uncollapseRange } from '../shared/selection'
 import { scrolledGeometry } from './scrolled-geometry'
-import type { Book, Content, RawRelocateDetail, Resolved } from '../reader-view.js'
+import type { Book, RawRelocateDetail, Resolved } from '../reader-view.js'
 import type { RendererStyles } from '../renderer'
-import type { TrackProjection } from '../shared/flow-geometry'
+import { getLayoutGap, type TrackProjection } from '../shared/flow-geometry'
 import type { ScrolledSectionLayout } from '../shared/section-frame'
 
 type ResolvedAnchor = number | Node | Range
@@ -27,7 +25,6 @@ type ResolvedAnchor = number | Node | Range
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
 export class ScrolledRenderer extends HTMLElement {
     bookDir?: string
-    sections: Book['sections'] = []
     beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void
     static observedAttributes = [
         'gap', 'margin', 'max-inline-size',
@@ -44,32 +41,17 @@ export class ScrolledRenderer extends HTMLElement {
     #container!: HTMLElement
     #track!: HTMLElement
     #view: SectionFrame | null = null
-    #spine = new SpineBuffer<SectionFrame>({
-        create: index => this.#createChapter(index),
-        destroy: (index, view) => {
-            this.#destroyView(view)
-            this.sections[index]?.unload?.()
-        },
-        getExtent: view => view.extent,
-    })
-    #spineTrack = new SpineTrack<SectionFrame>()
+    #spine!: ReflowableSpine
     #vertical = false
     #rtl = false
     #margin = 0
     #index = -1
     #anchor: ResolvedAnchor = 0 // anchor view to a fraction (0-1), Range, or Element
     #justAnchored = false
-    #navigation = new ViewportNavigation()
-    #styles?: RendererStyles
-    #styleMap = new WeakMap<Document, [HTMLStyleElement, HTMLStyleElement]>()
-    #mediaQuery = matchMedia('(prefers-color-scheme: dark)')
-    #mediaQueryListener!: () => void
     #scrollBounds: [number, number, number] | null = null
     #renderFrame?: number
     #scrolledViewport!: ScrollCoordinator
     #geometry = scrolledGeometry
-    #loadingChapters = false
-    #cacheFrame?: number
     #containerWidth = 0
     #containerHeight = 0
     #destroyed = false
@@ -123,6 +105,34 @@ export class ScrolledRenderer extends HTMLElement {
         this.#scrolledViewport = new ScrollCoordinator(this.#container, () => {
             if (!this.#destroyed) this.#afterScroll('scroll')
         })
+        this.#spine = new ReflowableSpine({
+            activeEntry: () => this.#entryAtReadingEdge(),
+            backgroundElement: this.#background,
+            beforeRenderDocument: (doc, index) => this.beforeRenderDocument?.(doc, index),
+            compact: () => false,
+            continuous: () => this.continuous,
+            currentView: () => this.#view,
+            host: this,
+            layout: () => this.#layoutEntries(),
+            layoutFor: direction => this.#beforeRender(direction),
+            onDestroyCurrent: view => {
+                if (this.#view === view) this.#view = null
+            },
+            onExpand: view => this.#onViewExpand(view),
+            projection: () => this.#trackProjection(),
+            scheduleRender: () => this.#scheduleRender(),
+            shiftViewport: shift => this.#shiftViewport(shift),
+            trackElement: this.#track,
+            viewport: () => {
+                const { start, end } = this.#contentViewportRange()
+                return {
+                    activeIndex: this.#index,
+                    viewportEnd: end,
+                    viewportSize: this.size,
+                    viewportStart: start,
+                }
+            },
+        })
 
         this.#observer.observe(this.#container)
         this.#container.addEventListener('scroll', () => {
@@ -140,11 +150,6 @@ export class ScrolledRenderer extends HTMLElement {
                 else setSelectionTarget(this.#anchor, -1)
             }
         }) as EventListener)
-        this.#mediaQueryListener = () => {
-            if (!this.#view) return
-            this.#background.style.background = getDocumentBackground(this.#view.document)
-        }
-        this.#mediaQuery.addEventListener('change', this.#mediaQueryListener)
     }
     attributeChangedCallback(name: string, _oldValue: string | null, value: string | null) {
         if (value == null) return
@@ -162,116 +167,22 @@ export class ScrolledRenderer extends HTMLElement {
     }
     open(book: Book) {
         this.bookDir = book.dir
-        this.sections = book.sections
+        this.#spine.open(book)
     }
-    #createView() {
-        const view = new SectionFrame({
-            onExpand: () => {
-                if (this.#spine.entries.some(entry => entry.view === view)) {
-                    // Reflowing while a navigation is in progress can
-                    // restore #anchor before #afterScroll has updated it to the
-                    // destination page. Defer the layout so the new, landed
-                    // range becomes the anchor instead of jumping back.
-                    if (this.#navigation.deferReflow()) return
-                    // ResizeObserver can run before the throttled/idle scroll
-                    // sample. Commit the physical position first so this
-                    // reflow never restores an anchor from the previous tick.
-                    this.#scrolledViewport.flush()
-                    const activeEntry = this.#entryAtReadingEdge()
-                    const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
-                    this.#layoutEntries()
-                    if (activeEntry) {
-                        const shift = this.#entryOffset(activeEntry) - oldOffset
-                        if (shift) {
-                            this.#container[this.scrollProp] += shift
-                            if (this.#scrollBounds) this.#scrollBounds[0] += shift
-                        }
-                    }
-                }
-            },
-        })
-        this.#track.append(view.element)
-        return view
-    }
-    #destroyView(view: SectionFrame | null = this.#view) {
-        if (!view) return
-        const doc = view.document
-        if (doc) this.dispatchEvent(new CustomEvent('unload', { detail: { doc } }))
-        view.destroy()
-        view.element.remove()
-        if (this.#view === view) this.#view = null
-    }
-    #clearEntries() {
-        if (this.#cacheFrame !== undefined) cancelAnimationFrame(this.#cacheFrame)
-        this.#cacheFrame = undefined
-        this.#spine.clear()
-        this.#spineTrack.reset()
-    }
-    async #createChapter(index: number) {
-        const section = this.sections[index]
-        if (!section) throw new RangeError(`Missing spine section ${index}`)
-        const view = this.#createView()
-        const afterLoad = async (doc: Document) => {
-            if (doc.head) {
-                const $styleBefore = doc.createElement('style')
-                doc.head.prepend($styleBefore)
-                const $style = doc.createElement('style')
-                $style.dataset.readerBookStyles = ''
-                doc.head.append($style)
-                this.#styleMap.set(doc, [$styleBefore, $style])
-                this.#applyStyles(doc, this.#styles)
-            }
-            await this.beforeRenderDocument?.(doc, index)
-        }
-        try {
-            const src = await section.load?.()
-            if (!src) throw new Error(`Failed to load spine section ${index}`)
-            await view.load(src, afterLoad, this.#beforeRender.bind(this))
-        } catch (error) {
-            this.#destroyView(view)
-            section.unload?.()
-            throw error
-        }
-        // Set initial geometry while SpineBuffer still keeps the view staged.
-        // Its expand callback must not relayout the committed track.
-        view.compact = false
-        return view
-    }
-    #initializeSpineEntry({ index, view }: { index: number; view: SectionFrame }) {
-        if (!this.continuous) view.element.style.position = 'relative'
-        view.element.style.removeProperty('visibility')
-        this.dispatchEvent(new CustomEvent('load', { detail: { doc: view.document, index } }))
-        this.dispatchEvent(new CustomEvent('request-overlay', {
-            detail: {
-                doc: view.document, index,
-                attach: (overlay: any) => view.overlay = overlay,
-            },
-        }))
-    }
-    #commitSpineChange(change: any, activeEntry = this.#entryAtReadingEdge()) {
+    #onViewExpand(view: SectionFrame) {
+        if (!this.#spine.entries.some(entry => entry.view === view)) return
+        if (this.#spine.navigation.deferReflow()) return
+        this.#scrolledViewport.flush()
+        const activeEntry = this.#entryAtReadingEdge()
         const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
-        const applied = this.#spine.commit(change)
-        if (!applied.added.length && !applied.removed.length) return applied
-
-        if (this.continuous) {
-            this.#spineTrack.updateForChange(
-                applied, activeEntry?.index, this.#trackProjection())
-            this.#layoutEntries()
-            if (activeEntry) {
-                const shift = this.#entryOffset(activeEntry) - oldOffset
-                this.#shiftViewport(shift)
-            }
-        }
-        for (const entry of applied.added) this.#initializeSpineEntry(entry)
-        this.#spine.dispose(applied.removed)
-        return applied
+        this.#layoutEntries()
+        if (activeEntry) this.#shiftViewport(this.#entryOffset(activeEntry) - oldOffset)
     }
     #layoutEntries() {
         if (!this.#spine.entries.length || !this.continuous) return
         for (const { view } of this.#spine.entries)
             view.compact = false
-        const layout = this.#spineTrack.layout(
-            this.#spine.entries,
+        const layout = this.#spine.layout(
             this.#trackProjection() as Exclude<TrackProjection, { kind: 'single' }>)
         for (const { entry, physicalStart } of layout.placements) {
             const { style } = entry.view.element
@@ -281,51 +192,10 @@ export class ScrolledRenderer extends HTMLElement {
             style.width = '100%'
         }
         this.#track.style.width = '100%'
-        this.#track.style.height = `${this.#spineTrack.physicalExtent}px`
-    }
-    async #cacheAdjacentSections() {
-        if (!this.continuous) return
-        if (this.#loadingChapters) {
-            this.#scheduleAdjacentCache()
-            return
-        }
-        this.#loadingChapters = true
-        try {
-            const { start, end } = this.#contentViewportRange()
-            const change = await this.#spine.reconcile({
-                activeIndex: this.#index,
-                adjacent: (index, direction) => this.#adjacentIndexFrom(index, direction),
-                viewportEnd: end,
-                viewportSize: this.size,
-                viewportStart: start,
-            })
-            const committed = await this.#runNavigation(() => {
-                this.#commitSpineChange(change)
-                return true
-            })
-            if (!committed || change.needsMore) this.#scheduleAdjacentCache()
-        } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') this.#scheduleAdjacentCache()
-            else throw error
-        } finally {
-            this.#loadingChapters = false
-        }
+        this.#track.style.height = `${this.#spine.physicalExtent}px`
     }
     #contentViewportRange() {
-        return this.#spineTrack.viewportRange(
-            this.#spine.first, this.start, this.end, this.#trackProjection())
-    }
-    #scheduleAdjacentCache() {
-        if (!this.continuous || this.#cacheFrame) return
-        this.#cacheFrame = requestAnimationFrame(() => {
-            this.#cacheFrame = requestAnimationFrame(() => {
-                this.#cacheFrame = undefined
-                void this.#cacheAdjacentSections().catch(error => {
-                    if (error?.name !== 'AbortError')
-                        console.warn('Failed to cache adjacent reader sections.', error)
-                })
-            })
-        })
+        return this.#spine.viewportRange(this.start, this.end, this.#trackProjection())
     }
     #beforeRender({ vertical, rtl, background = '' }: SectionDirection): ScrolledSectionLayout {
         this.#vertical = vertical
@@ -346,25 +216,7 @@ export class ScrolledRenderer extends HTMLElement {
         const margin = parseFloat(style.getPropertyValue('--_margin'))
         this.#margin = margin
 
-        const g = parseFloat(style.getPropertyValue('--_gap')) / 100
-        // The gap will be a percentage of the #container, not the whole view.
-        // This means the outer padding will be bigger than the column gap. Let
-        // `a` be the gap percentage. The actual percentage for the column gap
-        // will be (1 - a) * a. Let us call this `b`.
-        //
-        // To make them the same, we start by shrinking the outer padding
-        // setting to `b`, but keep the column gap setting the same at `a`. Then
-        // the actual size for the column gap will be (1 - b) * a. Repeating the
-        // process again and again, we get the sequence
-        //     x₁ = (1 - b) * a
-        //     x₂ = (1 - x₁) * a
-        //     ...
-        // which converges to x = (1 - x) * a. Solving for x, x = a / (1 + a).
-        // So to make the spacing even, we must shrink the outer padding with
-        //     f(x) = x / (1 + x).
-        // But we want to keep the outer padding, and make the inner gap bigger.
-        // So we apply the inverse, f⁻¹ = -x / (x - 1) to the column gap.
-        const baseGap = -g / (g - 1) * size
+        const baseGap = getLayoutGap(style.getPropertyValue('--_gap'), size)
 
         // FIXME: vertical-rl only, not -lr
         this.setAttribute('dir', vertical ? 'rtl' : 'ltr')
@@ -377,9 +229,9 @@ export class ScrolledRenderer extends HTMLElement {
         // A viewport resize may race the final idle scroll sample in exactly
         // the same way as section content expansion.
         this.#scrolledViewport.flush()
-        if (!this.#navigation.beginReflow()) return
+        if (!this.#spine.navigation.beginReflow()) return
         if (!this.continuous && this.#spine.entries.length > 1)
-            this.#spine.removeWhere(entry => entry.view !== this.#view)
+            this.#spine.removeOtherThan(this.#view)
         for (const { view } of this.#spine.entries) {
             view.setCompact(false, false)
             view.render(this.#beforeRender({
@@ -401,7 +253,7 @@ export class ScrolledRenderer extends HTMLElement {
     }
     #scheduleRender() {
         if (this.#destroyed || this.#renderFrame) return
-        if (this.#navigation.deferReflow()) return
+        if (this.#spine.navigation.deferReflow()) return
         this.#renderFrame = requestAnimationFrame(() => {
             this.#renderFrame = undefined
             this.render()
@@ -437,7 +289,7 @@ export class ScrolledRenderer extends HTMLElement {
         // The scrolled track includes a physical alignment reserve so anchors
         // near the cache tail remain reachable. It is not logical book content
         // and must not affect page-turn boundaries or progress calculations.
-        if (this.continuous) return this.#spineTrack.contentExtent
+        if (this.continuous) return this.#spine.contentExtent
         return this.#view?.element.getBoundingClientRect()[this.sideProp] ?? 0
     }
     get start() {
@@ -463,7 +315,7 @@ export class ScrolledRenderer extends HTMLElement {
         return (rect: DOMRect) => view?.mapRect(rect) ?? rect
     }
     #entryForView(view: SectionFrame | null = this.#view) {
-        return this.#spine.entries.find(entry => entry.view === view)
+        return this.#spine.entryForView(view)
     }
     #entryAtReadingEdge(ignore?: any) {
         if (!this.continuous) return this.#entryForView()
@@ -481,7 +333,7 @@ export class ScrolledRenderer extends HTMLElement {
             ?? entries.at(-1)
     }
     #entryOffset(entry = this.#entryForView()) {
-        return this.#spineTrack.entryOffset(entry, this.#trackProjection())
+        return this.#spine.entryOffset(entry, this.#trackProjection())
     }
     #shiftViewport(shift: number) {
         if (!shift) return
@@ -586,10 +438,10 @@ export class ScrolledRenderer extends HTMLElement {
         this.dispatchEvent(new CustomEvent('relocate', { detail }))
         // Run iframe creation and disposal after the landed page has painted.
         // Exact jumps benefit from the same warm cache as user-driven turns.
-        if (this.continuous) this.#scheduleAdjacentCache()
+        if (this.continuous) this.#spine.scheduleCache()
     }
     #canGoToIndex(index: number) {
-        return index >= 0 && index <= this.sections.length - 1
+        return this.#spine.contains(index)
     }
     #navigationState() {
         return {
@@ -605,17 +457,7 @@ export class ScrolledRenderer extends HTMLElement {
         }
     }
     async #activateEntry(index: number) {
-        let entry = this.#spine.find(index)
-        if (!entry) {
-            const adjacentToWindow = this.continuous && this.#spine.entries.some(candidate =>
-                this.#adjacentIndexFrom(candidate.index, -1) === index
-                || this.#adjacentIndexFrom(candidate.index, 1) === index)
-            if (!adjacentToWindow) this.#clearEntries()
-            const prepared = await this.#spine.prepare(index)
-            this.#commitSpineChange(this.#spine.changeFor([prepared]))
-            entry = this.#spine.find(index)
-        }
-        if (!entry) throw new DOMException('Stale spine entry', 'AbortError')
+        const entry = await this.#spine.activate(index)
         this.#view = entry.view
         this.#index = index
 
@@ -631,12 +473,12 @@ export class ScrolledRenderer extends HTMLElement {
         if (hasFocus) this.#focusView()
     }
     async #runNavigation<T>(task: () => T | Promise<T>) {
-        return this.#navigation.run(task, () => this.#scheduleRender())
+        return this.#spine.navigation.run(task, () => this.#scheduleRender())
     }
     async goTo(target: Resolved | Promise<Resolved>) {
         const resolved = await target
         if (this.#canGoToIndex(resolved.index))
-            return this.#navigation.enqueue(
+            return this.#spine.navigation.enqueue(
                 () => this.#goTo(resolved), () => this.#scheduleRender())
     }
     get atStart() {
@@ -649,8 +491,7 @@ export class ScrolledRenderer extends HTMLElement {
         return this.#adjacentIndexFrom(this.#index, dir)
     }
     #adjacentIndexFrom(from: number, dir: -1 | 1) {
-        for (let index = from + dir; this.#canGoToIndex(index); index += dir)
-            if (this.sections[index]?.linear !== 'no') return index
+        return this.#spine.adjacent(from, dir)
     }
     #crossCacheWindow(dir: -1 | 1) {
         const boundary = this.continuous
@@ -668,7 +509,7 @@ export class ScrolledRenderer extends HTMLElement {
     async #turnPage(dir: -1 | 1, distance?: number) {
         if (!this.#view) return
         return this.#runNavigation(async () => {
-            const action = planViewportNavigation(this.#navigationState(), dir, distance)
+            const action = planViewportNavigation(this.#navigationState(), dir, { distance })
             if (action.kind === 'scroll') {
                 await this.#scrollTo(action.offset, 'scroll', true)
             } else if (action.kind === 'cross-window') {
@@ -682,38 +523,9 @@ export class ScrolledRenderer extends HTMLElement {
     next(distance?: number) {
         return this.#turnPage(1, distance)
     }
-    getContents(): Content[] {
-        return this.#spine.entries.flatMap(({ index, view }) => {
-            const doc = view.document
-            return doc ? [{ index, overlay: view.overlay, doc } satisfies Content] : []
-        })
-    }
-    #applyStyles(doc: Document, styles?: RendererStyles) {
-        const $$styles = this.#styleMap.get(doc)
-        if (!$$styles || styles == null) return false
-        const [$beforeStyle, $style] = $$styles
-        if (Array.isArray(styles)) {
-            const [beforeStyle, style] = styles
-            if ($beforeStyle.textContent !== beforeStyle) $beforeStyle.textContent = beforeStyle
-            if ($style.textContent !== style) $style.textContent = style
-        } else if ($style.textContent !== styles) $style.textContent = styles
-        return true
-    }
+    getContents() { return this.#spine.getContents() }
     setStyles(styles: RendererStyles) {
-        this.#styles = styles
-        const docs = this.#spine.entries
-            .map(({ view }) => view.document)
-            .filter(doc => doc && this.#applyStyles(doc, styles))
-        if (!docs.length) return
-
-        // NOTE: needs `requestAnimationFrame` in Chromium
-        requestAnimationFrame(() => {
-            const doc = this.#view?.document
-            if (doc) this.#background.style.background = getDocumentBackground(doc)
-        })
-
-        // needed because the resize observer doesn't work in Firefox
-        Promise.all(docs.map(doc => doc.fonts?.ready)).then(() => this.#scheduleRender())
+        this.#spine.setStyles(styles)
     }
     #focusView() {
         this.#view?.document?.defaultView?.focus()
@@ -724,8 +536,7 @@ export class ScrolledRenderer extends HTMLElement {
         if (this.#renderFrame !== undefined) cancelAnimationFrame(this.#renderFrame)
         this.#scrolledViewport.destroy()
         this.#observer.disconnect()
-        this.#clearEntries()
-        this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
+        this.#spine.destroy()
     }
 }
 

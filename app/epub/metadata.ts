@@ -1,4 +1,4 @@
-import { normalizeInlineText } from "../text";
+import { normalizeInlineText } from "../shared/inline-text";
 import type { Book } from "../renderer";
 
 export function normalizeTocHref(href?: string) {

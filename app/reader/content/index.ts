@@ -1,5 +1,5 @@
 import { loadDocumentFonts } from "../fonts";
-import { normalizeInlineText } from "../../text";
+import { normalizeInlineText } from "../../shared/inline-text";
 import { getReaderFontFamily } from "../../renderer/shared/font-family";
 import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";

@@ -2,8 +2,8 @@ import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-
 import type { LucideIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { useFloatingPosition } from "./floating-position";
-import type { HighlightContextAction } from "../context-menu-store";
-import { contextMenuStore } from "../context-menu-store";
+import type { HighlightContextAction } from "../reader/context-menu-store";
+import { contextMenuStore } from "../reader/context-menu-store";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },

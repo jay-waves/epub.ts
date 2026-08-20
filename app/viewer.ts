@@ -10,7 +10,6 @@ import {
   canChangeReaderLayoutLevel,
   changeReaderLayoutMode,
   getBookStyles,
-  getReaderFlow,
   getNextReaderThemeId,
   READER_FONT_SIZE_STEP,
   READER_LAYOUT_LEVEL_STEP,
@@ -30,7 +29,7 @@ import {
   prepareContent,
 } from "./reader/content";
 import { createSearch } from "./reader/search";
-import { createBookInfo } from "./book-info";
+import { createBookInfo } from "./reader/book-info";
 import { App } from "./App";
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
 import { createViewerInput } from "./viewer-input";
@@ -53,7 +52,7 @@ import { Reader } from "./reader/lifecycle";
 import { getReaderFontQueries, preloadReaderFonts } from "./reader/fonts";
 import { platform } from "#platform";
 import type { PlatformDocument } from "./platform/types";
-import { SerialTaskQueue } from "./async-tasks";
+import { SerialTaskQueue } from "./shared/async-tasks";
 import "./viewer.css";
 
 type ViewerRuntime = {
@@ -153,7 +152,7 @@ function ensureViewerInput() {
   runtime.input ??= createViewerInput({
     getView,
     getNavigation,
-    getFlow: () => getReaderFlow(),
+    getFlow: () => readerSettings.layoutMode,
     canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
     onChapterBoundary: showChapterBoundaryPending,
     onScrollEdge: showScrollEdgeFeedback,
@@ -274,10 +273,8 @@ function wireReaderEvents(reader: Reader) {
 
 function emitDockUpdate() {
   const layoutLabel = readerSettings.layoutMode === "paginated"
-    ? "Switch to Stepping"
-    : readerSettings.layoutMode === "stepping"
-      ? "Switch to Scrolling"
-      : "Switch to Paginated";
+    ? "Switch to Scrolling"
+    : "Switch to Paginated";
 
   emitViewerEvent(VIEWER_EVENTS.dockUpdate, {
     canSearch: Boolean(runtime.reader?.book),
@@ -376,14 +373,9 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
 }
 
 async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
-  const legacySettings = settings as (Partial<ReaderSettings> & {
-    flow?: "paginated" | "scrolled";
-    pagination?: "spread" | "column";
-  }) | undefined;
-  const layoutMode = settings?.layoutMode
-    ?? (legacySettings?.flow === "scrolled"
-      ? "scrolling"
-      : legacySettings?.pagination === "column" ? "stepping" : "paginated");
+  const layoutMode: ReaderSettings["layoutMode"] = settings?.layoutMode === "scrolled"
+    ? "scrolled"
+    : "paginated";
   const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings, layoutMode };
   const nextLayoutMode = getView()?.renderMode === "fixed" ? "paginated" : nextSettings.layoutMode;
 
@@ -592,6 +584,12 @@ function setupEventListeners(signal: AbortSignal) {
         return;
       case "page-right":
         runtime.input?.turnPage("right");
+        return;
+      case "page-up":
+        runtime.input?.turnWholePage(-1);
+        return;
+      case "page-down":
+        runtime.input?.turnWholePage(1);
         return;
       case "scroll-up":
         runtime.input?.scrollByKey(-1);

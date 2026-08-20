@@ -1,0 +1,283 @@
+import type { Book, Content } from "../reader-view.js";
+import type { RendererStyles } from "../renderer";
+import type { TrackProjection } from "./flow-geometry";
+import { getDocumentBackground, SectionFrame, type SectionDirection, type SectionLayout } from "./section-frame";
+import { SpineBuffer, type SpineBufferChange, type SpineBufferRequest, type SpineEntry } from "./spine-buffer";
+import { SpineFlow } from "./spine-flow";
+import { SpineTrack } from "./spine-track";
+import { ViewportNavigation } from "./viewport-navigation";
+
+type SpineOptions = {
+  activeEntry: () => SpineEntry<SectionFrame> | undefined;
+  backgroundElement: HTMLElement;
+  beforeRenderDocument: (doc: Document, index: number) => Promise<void> | void;
+  compact: () => boolean;
+  continuous: () => boolean;
+  currentView: () => SectionFrame | null;
+  host: HTMLElement;
+  layout: () => void;
+  layoutFor: (direction: SectionDirection) => SectionLayout;
+  layoutRevision?: () => number;
+  onClear?: () => void;
+  onDestroyCurrent: (view: SectionFrame) => void;
+  onExpand: (view: SectionFrame) => void;
+  projection: () => TrackProjection;
+  scheduleRender: () => void;
+  shiftViewport: (shift: number) => void;
+  trackElement: HTMLElement;
+  viewport: () => Pick<SpineBufferRequest,
+    "activeIndex" | "viewportEnd" | "viewportSize" | "viewportStart">;
+};
+
+/** Shared lifecycle and virtualization for reflowable spine renderers. */
+export class ReflowableSpine {
+  readonly navigation = new ViewportNavigation();
+  readonly track = new SpineTrack<SectionFrame>();
+  readonly #buffer: SpineBuffer<SectionFrame>;
+  readonly #options: SpineOptions;
+  readonly #styleMap = new WeakMap<Document, [HTMLStyleElement, HTMLStyleElement]>();
+  readonly #mediaQuery = matchMedia("(prefers-color-scheme: dark)");
+  readonly #mediaQueryListener = () => this.#updateBackground();
+  #book?: Book;
+  #cacheFrame?: number;
+  #flow?: SpineFlow;
+  #loading = false;
+  #styles?: RendererStyles;
+
+  constructor(options: SpineOptions) {
+    this.#options = options;
+    this.#mediaQuery.addEventListener("change", this.#mediaQueryListener);
+    this.#buffer = new SpineBuffer({
+      create: index => this.#create(index),
+      destroy: (index, view) => {
+        this.#destroy(view);
+        this.#book?.sections[index]?.unload?.();
+      },
+      getExtent: view => view.extent,
+    });
+  }
+
+  open(book: Book) {
+    this.#book = book;
+    this.#flow = new SpineFlow(book);
+  }
+
+  get entries() { return this.#buffer.entries; }
+  get first() { return this.#buffer.first; }
+  get last() { return this.#buffer.last; }
+  get contentExtent() { return this.track.contentExtent; }
+  get physicalExtent() { return this.track.physicalExtent; }
+
+  find(index: number) { return this.#buffer.find(index); }
+  findAt(offset: number) { return this.#buffer.findAt(offset); }
+  contains(index: number) {
+    return Number.isInteger(index) && index >= 0 && index < (this.#book?.sections.length ?? 0);
+  }
+  entryForView(view: SectionFrame | null | undefined) {
+    return this.entries.find(entry => entry.view === view);
+  }
+  adjacent(from: number, direction: -1 | 1) {
+    return this.#flow?.adjacent(from, direction);
+  }
+  breakBefore(index: number) {
+    return this.#flow?.breakBefore(index) ?? false;
+  }
+  entryOffset(entry: SpineEntry<SectionFrame> | undefined, projection = this.#options.projection()) {
+    return this.track.entryOffset(entry, projection);
+  }
+  viewportRange(start: number, end: number, projection = this.#options.projection()) {
+    return this.track.viewportRange(this.first, start, end, projection);
+  }
+
+  layout(projection: Exclude<TrackProjection, { kind: "single" }>) {
+    return this.track.layout(this.entries, projection, {
+      breakBefore: index => this.breakBefore(index),
+    });
+  }
+
+  commit(change: SpineBufferChange<SectionFrame>, activeEntry = this.#options.activeEntry()) {
+    const projection = this.#options.projection();
+    const oldOffset = activeEntry ? this.entryOffset(activeEntry, projection) : 0;
+    const applied = this.#buffer.commit(change);
+    if (!applied.added.length && !applied.removed.length) return applied;
+
+    if (this.#options.continuous()) {
+      this.track.updateForChange(applied, activeEntry?.index, projection);
+      this.#options.layout();
+      if (activeEntry) this.#options.shiftViewport(this.entryOffset(activeEntry) - oldOffset);
+    }
+    for (const entry of applied.added) this.#initialize(entry);
+    this.#buffer.dispose(applied.removed);
+    return applied;
+  }
+
+  async activate(index: number) {
+    let entry = this.find(index);
+    if (!entry) {
+      const adjacentToWindow = this.#options.continuous() && this.entries.some(candidate =>
+        this.adjacent(candidate.index, -1) === index
+        || this.adjacent(candidate.index, 1) === index);
+      if (!adjacentToWindow) this.clear();
+      const prepared = await this.#buffer.prepare(index);
+      this.commit(this.#buffer.changeFor([prepared]));
+      entry = this.find(index);
+    }
+    if (!entry) throw new DOMException("Stale spine entry", "AbortError");
+    return entry;
+  }
+
+  removeOtherThan(view: SectionFrame) {
+    return this.#buffer.removeWhere(entry => entry.view !== view);
+  }
+
+  scheduleCache() {
+    if (!this.#options.continuous() || this.#cacheFrame !== undefined) return;
+    this.#cacheFrame = requestAnimationFrame(() => {
+      this.#cacheFrame = requestAnimationFrame(() => {
+        this.#cacheFrame = undefined;
+        void this.#cacheAdjacent().catch(error => {
+          if (error?.name !== "AbortError") {
+            console.warn("Failed to cache adjacent reader sections.", error);
+          }
+        });
+      });
+    });
+  }
+
+  async #cacheAdjacent() {
+    if (!this.#options.continuous()) return;
+    if (this.#loading) {
+      this.scheduleCache();
+      return;
+    }
+    const revision = this.#options.layoutRevision;
+    const layoutRevision = revision?.();
+    this.#loading = true;
+    try {
+      const viewport = this.#options.viewport();
+      const change = await this.#buffer.reconcile({
+        ...viewport,
+        adjacent: (index, direction) => this.adjacent(index, direction),
+      });
+      if (revision && layoutRevision !== revision()) {
+        this.scheduleCache();
+        return;
+      }
+      const committed = await this.navigation.run(() => {
+        if (revision && layoutRevision !== revision()) return false;
+        this.commit(change);
+        return true;
+      }, this.#options.scheduleRender);
+      if (!committed || change.needsMore) this.scheduleCache();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") this.scheduleCache();
+      else throw error;
+    } finally {
+      this.#loading = false;
+    }
+  }
+
+  setStyles(styles: RendererStyles) {
+    this.#styles = styles;
+    const docs = this.entries
+      .map(({ view }) => view.document)
+      .filter(doc => this.#applyStyles(doc, styles));
+    if (!docs.length) return docs;
+    requestAnimationFrame(() => this.#updateBackground());
+    Promise.all(docs.map(doc => doc.fonts?.ready)).then(this.#options.scheduleRender);
+    return docs;
+  }
+
+  getContents(): Content[] {
+    return this.entries.flatMap(({ index, view }) => {
+      const doc = view.document;
+      return doc ? [{ index, overlay: view.overlay, doc } satisfies Content] : [];
+    });
+  }
+
+  clear() {
+    if (this.#cacheFrame !== undefined) cancelAnimationFrame(this.#cacheFrame);
+    this.#cacheFrame = undefined;
+    this.#buffer.clear();
+    this.track.reset();
+    this.#options.onClear?.();
+  }
+
+  destroy() {
+    this.clear();
+    this.#mediaQuery.removeEventListener("change", this.#mediaQueryListener);
+    this.#book = undefined;
+    this.#flow = undefined;
+  }
+
+  async #create(index: number) {
+    const section = this.#book?.sections[index];
+    if (!section) throw new RangeError(`Missing spine section ${index}`);
+    let view!: SectionFrame;
+    view = new SectionFrame({ onExpand: () => this.#options.onExpand(view) });
+    this.#options.trackElement.append(view.element);
+    try {
+      const source = await section.load?.();
+      if (!source) throw new Error(`Failed to load spine section ${index}`);
+      await view.load(source, async doc => {
+        if (doc.head) {
+          const beforeStyle = doc.createElement("style");
+          doc.head.prepend(beforeStyle);
+          const style = doc.createElement("style");
+          style.dataset.readerBookStyles = "";
+          doc.head.append(style);
+          this.#styleMap.set(doc, [beforeStyle, style]);
+          this.#applyStyles(doc, this.#styles);
+        }
+        await this.#options.beforeRenderDocument(doc, index);
+      }, this.#options.layoutFor);
+    } catch (error) {
+      this.#destroy(view);
+      section.unload?.();
+      throw error;
+    }
+    view.compact = this.#options.compact();
+    return view;
+  }
+
+  #initialize({ index, view }: SpineEntry<SectionFrame>) {
+    if (!this.#options.continuous()) view.element.style.position = "relative";
+    view.element.style.removeProperty("visibility");
+    this.#options.host.dispatchEvent(new CustomEvent("load", {
+      detail: { doc: view.document, index },
+    }));
+    this.#options.host.dispatchEvent(new CustomEvent("request-overlay", {
+      detail: {
+        doc: view.document,
+        index,
+        attach: (overlay: SectionFrame["overlay"]) => view.overlay = overlay,
+      },
+    }));
+  }
+
+  #destroy(view: SectionFrame) {
+    let doc: Document | undefined;
+    try { doc = view.document; } catch { /* The iframe may not have loaded. */ }
+    if (doc) this.#options.host.dispatchEvent(new CustomEvent("unload", { detail: { doc } }));
+    view.destroy();
+    view.element.remove();
+    this.#options.onDestroyCurrent(view);
+  }
+
+  #applyStyles(doc: Document, styles?: RendererStyles) {
+    const targets = this.#styleMap.get(doc);
+    if (!targets || styles == null) return false;
+    const [beforeStyle, style] = targets;
+    if (Array.isArray(styles)) {
+      const [before, main] = styles;
+      if (beforeStyle.textContent !== before) beforeStyle.textContent = before;
+      if (style.textContent !== main) style.textContent = main;
+    } else if (style.textContent !== styles) style.textContent = styles;
+    return true;
+  }
+
+  #updateBackground() {
+    const view = this.#options.currentView();
+    if (view) this.#options.backgroundElement.style.background = getDocumentBackground(view.document);
+  }
+}
