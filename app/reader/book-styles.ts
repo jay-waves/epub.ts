@@ -61,6 +61,17 @@ const READER_THAI_SANS_STACK =
 const READER_MONO_STACK =
   `"${READER_MONO_FONT_FAMILY}", "Sarasa Mono SC", "Maple Mono SC NF", "Cascadia Code", "SFMono-Regular", Consolas, monospace`;
 
+export const READER_SCRIPT_FONT_STACKS = {
+  "zh-hant": { serif: READER_HANT_SERIF_STACK, sans: READER_HANT_SANS_STACK },
+  "zh-hant-hk": { serif: READER_HK_SERIF_STACK, sans: READER_HK_SANS_STACK },
+  ja: { serif: READER_JA_SERIF_STACK, sans: READER_JA_SANS_STACK },
+  ko: { serif: READER_KO_SERIF_STACK, sans: READER_KO_SANS_STACK },
+  arabic: { serif: READER_ARABIC_SERIF_STACK, sans: READER_ARABIC_SANS_STACK },
+  hebrew: { serif: READER_HEBREW_SERIF_STACK, sans: READER_HEBREW_SANS_STACK },
+  devanagari: { serif: READER_DEVANAGARI_SERIF_STACK, sans: READER_DEVANAGARI_SANS_STACK },
+  thai: { serif: READER_THAI_SERIF_STACK, sans: READER_THAI_SANS_STACK },
+} as const;
+
 const DEFAULT_READER_IMAGE_MAX_INLINE_SIZE = 80;
 const MIN_READER_IMAGE_MAX_INLINE_SIZE = 72;
 const MAX_READER_IMAGE_MAX_INLINE_SIZE = 92;
@@ -151,6 +162,8 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
       --reader-link-color: ${theme.link};
       --reader-accent-primary: ${theme.primary};
       --reader-accent-secondary: ${theme.secondary};
+      --reader-highlight-bg: ${theme.secondary};
+      --reader-highlight-fg: ${theme.secondaryInk};
       --reader-selection-color: color-mix(in srgb, ${theme.primary} 38%, transparent);
       --reader-muted-color: color-mix(in srgb, ${theme.foreground} 72%, ${theme.background});
       --reader-border-color: color-mix(in srgb, ${theme.foreground} 18%, ${theme.background});
@@ -166,30 +179,25 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
       --reader-config-font-serif: ${READER_SERIF_STACK};
       --reader-config-font-sans: ${READER_SANS_STACK};
       --reader-config-font-mono: ${READER_MONO_STACK};
-      --reader-config-font-serif-zh-hans: ${READER_SERIF_STACK};
-      --reader-config-font-sans-zh-hans: ${READER_SANS_STACK};
-      --reader-config-font-serif-zh-hant: ${READER_HANT_SERIF_STACK};
-      --reader-config-font-sans-zh-hant: ${READER_HANT_SANS_STACK};
-      --reader-config-font-serif-zh-hant-hk: ${READER_HK_SERIF_STACK};
-      --reader-config-font-sans-zh-hant-hk: ${READER_HK_SANS_STACK};
-      --reader-config-font-serif-ja: ${READER_JA_SERIF_STACK};
-      --reader-config-font-sans-ja: ${READER_JA_SANS_STACK};
-      --reader-config-font-serif-ko: ${READER_KO_SERIF_STACK};
-      --reader-config-font-sans-ko: ${READER_KO_SANS_STACK};
-      --reader-config-font-serif-arabic: ${READER_ARABIC_SERIF_STACK};
-      --reader-config-font-sans-arabic: ${READER_ARABIC_SANS_STACK};
-      --reader-config-font-serif-hebrew: ${READER_HEBREW_SERIF_STACK};
-      --reader-config-font-sans-hebrew: ${READER_HEBREW_SANS_STACK};
-      --reader-config-font-serif-devanagari: ${READER_DEVANAGARI_SERIF_STACK};
-      --reader-config-font-sans-devanagari: ${READER_DEVANAGARI_SANS_STACK};
-      --reader-config-font-serif-thai: ${READER_THAI_SERIF_STACK};
-      --reader-config-font-sans-thai: ${READER_THAI_SANS_STACK};
       --reader-font-size-adjust: ${readerProfile.fontSizeAdjust};
       color-scheme: ${theme.mode};
     }
     ::selection {
       background-color: var(--reader-selection-color) !important;
       color: var(--reader-fg-color) !important;
+      text-shadow: none !important;
+    }
+    body span:not([class~="highlight"]):not([class~="highlighted"]):not([class~="hilite"]) {
+      background: transparent !important;
+    }
+    body :is(mark, [class~="highlight"], [class~="highlighted"], [class~="hilite"]) {
+      background: var(--reader-highlight-bg) !important;
+    }
+    body :is(mark, [class~="highlight"], [class~="highlighted"], [class~="hilite"]),
+    body :is(mark, [class~="highlight"], [class~="highlighted"], [class~="hilite"])
+      :where(*:not(svg):not(svg *)) {
+      color: var(--reader-highlight-fg) !important;
+      -webkit-text-fill-color: var(--reader-highlight-fg) !important;
       text-shadow: none !important;
     }
     ${READER_CODE_HIGHLIGHT_THEMES[theme.id]}

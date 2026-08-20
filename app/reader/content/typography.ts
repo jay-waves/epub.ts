@@ -31,42 +31,6 @@ const ARABIC_LANGUAGES = new Set(["ar", "fa", "ps", "sd", "ug", "ur"]);
 const DEVANAGARI_LANGUAGES = new Set(["hi", "mr", "ne", "sa"]);
 
 const TYPOGRAPHY_CSS = `
-  [${TYPOGRAPHY_ATTRIBUTE}="zh-hans"] {
-    --reader-font-serif: var(--reader-config-font-serif-zh-hans);
-    --reader-font-sans: var(--reader-config-font-sans-zh-hans);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="zh-hant"] {
-    --reader-font-serif: var(--reader-config-font-serif-zh-hant);
-    --reader-font-sans: var(--reader-config-font-sans-zh-hant);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="zh-hant-hk"] {
-    --reader-font-serif: var(--reader-config-font-serif-zh-hant-hk);
-    --reader-font-sans: var(--reader-config-font-sans-zh-hant-hk);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="ja"] {
-    --reader-font-serif: var(--reader-config-font-serif-ja);
-    --reader-font-sans: var(--reader-config-font-sans-ja);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="ko"] {
-    --reader-font-serif: var(--reader-config-font-serif-ko);
-    --reader-font-sans: var(--reader-config-font-sans-ko);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="arabic"] {
-    --reader-font-serif: var(--reader-config-font-serif-arabic);
-    --reader-font-sans: var(--reader-config-font-sans-arabic);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="hebrew"] {
-    --reader-font-serif: var(--reader-config-font-serif-hebrew);
-    --reader-font-sans: var(--reader-config-font-sans-hebrew);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="devanagari"] {
-    --reader-font-serif: var(--reader-config-font-serif-devanagari);
-    --reader-font-sans: var(--reader-config-font-sans-devanagari);
-  }
-  [${TYPOGRAPHY_ATTRIBUTE}="thai"] {
-    --reader-font-serif: var(--reader-config-font-serif-thai);
-    --reader-font-sans: var(--reader-config-font-sans-thai);
-  }
   [${TYPOGRAPHY_ATTRIBUTE}="latin"],
   [${TYPOGRAPHY_ATTRIBUTE}="cyrillic"],
   [${TYPOGRAPHY_ATTRIBUTE}="greek"] {
@@ -179,7 +143,7 @@ export function enhanceTypography(doc: Document) {
   ).flatMap((element) => {
     const profile = profileFromLanguage(getElementLanguage(element));
     if (!profile) return [];
-    element.setAttribute(TYPOGRAPHY_ATTRIBUTE, profile);
+    applyTypographyProfile(element, profile);
     return [element];
   });
 
@@ -188,7 +152,7 @@ export function enhanceTypography(doc: Document) {
     ?? profileFromLanguage(doc.body ? getElementLanguage(doc.body) : null);
   const inferredProfile = declaredProfile ?? inferChineseProfile(doc.body?.textContent ?? "");
 
-  if (inferredProfile) root.setAttribute(TYPOGRAPHY_ATTRIBUTE, inferredProfile);
+  if (inferredProfile) applyTypographyProfile(root, inferredProfile);
   if (!inferredProfile && explicitProfileElements.length === 0) return;
 
   if (!doc.head.querySelector(`style[${TYPOGRAPHY_STYLE_ATTRIBUTE}]`)) {
@@ -197,6 +161,14 @@ export function enhanceTypography(doc: Document) {
     style.textContent = TYPOGRAPHY_CSS;
     doc.head.append(style);
   }
+}
+
+function applyTypographyProfile(element: HTMLElement, profile: TypographyProfile) {
+  element.setAttribute(TYPOGRAPHY_ATTRIBUTE, profile);
+  const fonts = READER_SCRIPT_FONT_STACKS[profile as keyof typeof READER_SCRIPT_FONT_STACKS];
+  if (!fonts) return;
+  element.style.setProperty("--reader-font-serif", fonts.serif);
+  element.style.setProperty("--reader-font-sans", fonts.sans);
 }
 
 function getElementLanguage(element: Element | null): string | null {
@@ -247,3 +219,4 @@ function inferChineseProfile(content: string): TypographyProfile | null {
 
   return traditionalScore > simplifiedScore * 1.15 ? "zh-hant" : "zh-hans";
 }
+import { READER_SCRIPT_FONT_STACKS } from "../book-styles";

@@ -21,7 +21,7 @@ const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
-const MOUSE_DOUBLE_CLICK_DELAY_MS = 250;
+const MOUSE_DOUBLE_CLICK_DELAY_MS = 400;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
@@ -31,7 +31,7 @@ function isEditableTarget(target: EventTarget | null) {
   ));
 }
 
-function isInteractiveTarget(event: PointerEvent) {
+function isInteractiveTarget(event: { target: EventTarget | null }) {
   return resolveReaderPointerIntent(event.target) !== "content";
 }
 
@@ -310,18 +310,26 @@ export function createViewerInput(options: ViewerInputOptions) {
       if (pendingMouseTap) window.clearTimeout(pendingMouseTap.timer);
       pendingMouseTap = undefined;
     };
-    const handleEdgeTap = (direction: PageTurnDirection, pointerType: string) => {
-      if (pointerType !== "mouse") {
-        turnPage(direction);
-        return;
-      }
-      if (pendingMouseTap?.direction === direction) {
+    const paginateAtEdge = (direction: PageTurnDirection) => {
+      const isRtl = options.getView()?.book?.dir === "rtl";
+      const forward = direction === "left" ? isRtl : !isRtl;
+      turnInReadingOrder(forward ? 1 : -1, true);
+    };
+    const handleMouseClick = (event: Event) => {
+      const click = event as MouseEvent;
+      if (!eventBelongsToReader(click) || isInteractiveTarget(click)) return;
+      const direction = edgeDirection(sourceDocument, click.clientX);
+      if (!direction) return;
+
+      click.preventDefault();
+      click.stopPropagation();
+      if (click.detail > 1 && pendingMouseTap?.direction === direction) {
         clearPendingMouseTap();
-        const isRtl = options.getView()?.book?.dir === "rtl";
-        const forward = direction === "left" ? isRtl : !isRtl;
-        turnInReadingOrder(forward ? 1 : -1, true);
+        paginateAtEdge(direction);
         return;
       }
+      const selection = sourceDocument.defaultView?.getSelection();
+      if (selection && !selection.isCollapsed) return;
       if (pendingMouseTap) {
         const previousDirection = pendingMouseTap.direction;
         clearPendingMouseTap();
@@ -334,6 +342,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       }, MOUSE_DOUBLE_CLICK_DELAY_MS);
       pendingMouseTap = { direction, timer };
     };
+    target.addEventListener("click", handleMouseClick, { capture: true });
     const drag = new DragGesture<PointerEvent>(target, (state) => {
       const event = state.event;
       const starting = event.type === "pointerdown";
@@ -377,9 +386,10 @@ export function createViewerInput(options: ViewerInputOptions) {
           if (selection && !selection.isCollapsed) return;
           const direction = edgeDirection(sourceDocument, event.clientX);
           if (direction) {
+            if (event.pointerType === "mouse") return;
             event.preventDefault();
             event.stopPropagation();
-            handleEdgeTap(direction, event.pointerType);
+            turnPage(direction);
           }
         } else if (event.pointerType !== "mouse") {
           const velocityX = -state.direction[0] * state.velocity[0];
@@ -408,6 +418,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     return () => {
       clearLongPress();
       clearPendingMouseTap();
+      target.removeEventListener("click", handleMouseClick, { capture: true });
       drag.destroy();
     };
   };

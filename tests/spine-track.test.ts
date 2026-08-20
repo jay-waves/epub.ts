@@ -47,3 +47,20 @@ test("does not add space when a top-level target is already page aligned", () =>
   assert.deepEqual(placements.map(({ physicalStart }) => physicalStart),
     [1_500, 3_000, 3_500]);
 });
+
+test("preserves the local viewport position when a preceding section is removed", () => {
+  const track = new SpineTrack();
+  const previous = entry(0, 4);
+  const current = entry(1, 20);
+  const options = { breakBefore: (index: number) => index === 1 };
+  track.layout([previous, current], projection, options);
+  const oldEntryOffset = track.entryOffset(current, projection);
+  const oldViewportOffset = oldEntryOffset + 3_000;
+
+  track.updateForChange({ added: [], removed: [previous] }, current.index, projection);
+  track.layout([current], projection, options);
+  const newEntryOffset = track.entryOffset(current, projection);
+  const restoredViewportOffset = oldViewportOffset + newEntryOffset - oldEntryOffset;
+
+  assert.equal(restoredViewportOffset - newEntryOffset, 3_000);
+});

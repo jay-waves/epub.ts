@@ -22,9 +22,10 @@ type SpineOptions = {
   onDestroyCurrent: (view: SectionFrame) => void;
   onExpand: (view: SectionFrame) => void;
   projection: () => TrackProjection;
+  restoreViewport: (offset: number) => void;
   scheduleRender: () => void;
-  shiftViewport: (shift: number) => void;
   trackElement: HTMLElement;
+  viewportOffset: () => number;
   viewport: () => Pick<SpineBufferRequest,
     "activeIndex" | "viewportEnd" | "viewportSize" | "viewportStart">;
 };
@@ -98,13 +99,18 @@ export class ReflowableSpine {
   commit(change: SpineBufferChange<SectionFrame>, activeEntry = this.#options.activeEntry()) {
     const projection = this.#options.projection();
     const oldOffset = activeEntry ? this.entryOffset(activeEntry, projection) : 0;
+    const viewportOffset = activeEntry ? this.#options.viewportOffset() : 0;
     const applied = this.#buffer.commit(change);
     if (!applied.added.length && !applied.removed.length) return applied;
 
     if (this.#options.continuous()) {
       this.track.updateForChange(applied, activeEntry?.index, projection);
       this.#options.layout();
-      if (activeEntry) this.#options.shiftViewport(this.entryOffset(activeEntry) - oldOffset);
+      if (activeEntry) {
+        this.#options.restoreViewport(
+          viewportOffset + this.entryOffset(activeEntry) - oldOffset,
+        );
+      }
     }
     for (const entry of applied.added) this.#initialize(entry);
     this.#buffer.dispose(applied.removed);

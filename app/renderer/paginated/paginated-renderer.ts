@@ -194,9 +194,10 @@ export class PaginatedRenderer extends HTMLElement {
             },
             onExpand: view => this.#onViewExpand(view),
             projection: () => this.#trackProjection(),
+            restoreViewport: offset => this.#restoreViewport(offset),
             scheduleRender: () => this.#scheduleRender(),
-            shiftViewport: shift => this.#shiftViewport(shift),
             trackElement: this.#track,
+            viewportOffset: () => this.#container[this.scrollProp],
             viewport: () => {
                 const { start, end } = this.#contentViewportRange()
                 return {
@@ -509,10 +510,12 @@ export class PaginatedRenderer extends HTMLElement {
     #entryOffset(entry = this.#entryForView()) {
         return this.#spine.entryOffset(entry, this.#trackProjection())
     }
+    #restoreViewport(offset: number) {
+        this.#container[this.scrollProp] = offset
+        if (this.#scrollBounds) this.#scrollBounds[0] = offset
+    }
     #shiftViewport(shift: number) {
-        if (!shift) return
-        this.#container[this.scrollProp] += shift
-        if (this.#scrollBounds) this.#scrollBounds[0] += shift
+        if (shift) this.#restoreViewport(this.#container[this.scrollProp] + shift)
     }
     async #scrollToRect(rect: DOMRect, reason: string, entry = this.#entryForView()) {
         if (!entry) return
