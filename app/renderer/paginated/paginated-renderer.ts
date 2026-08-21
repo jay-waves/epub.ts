@@ -41,7 +41,9 @@ const debounce = <Args extends unknown[]>(
 
 const selectionIsBackward = (sel: Selection) => {
     if (!sel.anchorNode || !sel.focusNode) return false
-    const range = document.createRange()
+    const doc = sel.anchorNode.ownerDocument
+    if (!doc || sel.focusNode.ownerDocument !== doc) return false
+    const range = doc.createRange()
     range.setStart(sel.anchorNode, sel.anchorOffset)
     range.setEnd(sel.focusNode, sel.focusOffset)
     return range.collapsed
@@ -225,6 +227,10 @@ export class PaginatedRenderer extends HTMLElement {
         const checkPointerSelection = debounce((range: Range, sel: Selection) => {
             if (!sel.rangeCount) return
             const selRange = sel.getRangeAt(0)
+            // A delayed selectionchange can outlive the currently visible spine
+            // item. DOM ranges from different documents cannot be compared.
+            if (selRange.startContainer.ownerDocument
+                !== range.startContainer.ownerDocument) return
             const backward = selectionIsBackward(sel)
             if (backward && selRange.compareBoundaryPoints(Range.START_TO_START, range) < 0)
                 this.prev()
