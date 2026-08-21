@@ -1,31 +1,55 @@
 type TraceDetails = Record<string, unknown>;
-type ResourceKind = "svg" | "image" | "font" | "other";
+type TraceStage =
+  | "document-opening"
+  | "epub-download"
+  | "epub-parsing"
+  | "launcher-resource-check"
+  | "reader-font-loading";
+type TraceStatus = "started" | "completed" | "failed";
+
+const TRACE_MESSAGES: Record<TraceStage, Record<TraceStatus, string>> = {
+  "document-opening": {
+    started: "Opening the EPUB document.",
+    completed: "The EPUB document is ready.",
+    failed: "Failed to open the EPUB document.",
+  },
+  "epub-download": {
+    started: "Downloading the EPUB resource.",
+    completed: "The EPUB resource was downloaded.",
+    failed: "Failed to download the EPUB resource.",
+  },
+  "epub-parsing": {
+    started: "Parsing the EPUB publication.",
+    completed: "The EPUB publication was parsed.",
+    failed: "Failed to parse the EPUB publication.",
+  },
+  "launcher-resource-check": {
+    started: "Checking the launcher document resource.",
+    completed: "The launcher document resource responded.",
+    failed: "Failed to check the launcher document resource.",
+  },
+  "reader-font-loading": {
+    started: "Loading the reader fonts.",
+    completed: "The reader fonts were loaded.",
+    failed: "Failed to load the reader fonts.",
+  },
+};
 
 const startedAt = performance.now();
-const stages = new Map<string, number>();
-const loadedEpubResources = new Map<string, { bytes: number; kind: ResourceKind }>();
-let epubArchiveBytes = 0;
-let epubEntryCount = 0;
-let epubUncompressedBytes = 0;
+const stages = new Map<TraceStage, number>();
+const loadedEpubResources = new Map<string, number>();
+let active = true;
 
 function roundMilliseconds(value: number) {
   return Math.round(value * 10) / 10;
 }
 
-function resourceKind(name: string): ResourceKind {
-  const path = name.split(/[?#]/u, 1)[0]?.toLowerCase() ?? "";
-  if (path.endsWith(".svg")) return "svg";
-  if (/\.(?:avif|bmp|gif|jpe?g|png|webp)$/u.test(path)) return "image";
-  if (/\.(?:otf|ttc|ttf|woff2?)$/u.test(path)) return "font";
-  return "other";
-}
-
-function sumResources(kind?: ResourceKind) {
-  const resources = [...loadedEpubResources.values()].filter((resource) => !kind || resource.kind === kind);
-  return {
-    bytes: resources.reduce((total, resource) => total + resource.bytes, 0),
-    count: resources.length,
-  };
+function formatDetails(details: TraceDetails) {
+  return Object.fromEntries(Object.entries(details).flatMap(([key, value]) => {
+    if (value === undefined) return [];
+    if (!key.endsWith("Bytes") || typeof value !== "number") return [[key, value]];
+    return [[`${key.slice(0, -"Bytes".length)}KB`, Math.round(value / 102.4) / 10]];
+  }));
 }
 
 function fontResourceDetails(urls: readonly string[]): TraceDetails {
@@ -40,66 +64,59 @@ function fontResourceDetails(urls: readonly string[]): TraceDetails {
   };
 }
 
-function write(stage: string, status: "started" | "completed" | "failed", details: TraceDetails) {
+function write(stage: TraceStage, status: TraceStatus, details: TraceDetails) {
   const now = performance.now();
   const stageStartedAt = stages.get(stage);
-  console.info("[EPUB.ts trace]", {
-    stage,
-    status,
-    startupMs: roundMilliseconds(now - startedAt),
+  const startupMs = roundMilliseconds(now - startedAt);
+  const message = `[epub-ts +${startupMs.toFixed(1)}ms] ${TRACE_MESSAGES[stage][status]}`;
+  const data = {
     ...(stageStartedAt === undefined || status === "started"
       ? {}
       : { durationMs: roundMilliseconds(now - stageStartedAt) }),
-    ...details,
-  });
+    ...formatDetails(details),
+  };
+  if (Object.keys(data).length) console.info(message, data);
+  else console.info(message);
 }
 
 /** Low-frequency startup milestones and approximate application resource totals. */
 export const startupTrace = {
-  start(stage: string, details: TraceDetails = {}) {
+  start(stage: TraceStage, details: TraceDetails = {}) {
+    if (!active) return;
     stages.set(stage, performance.now());
     write(stage, "started", details);
   },
-  complete(stage: string, details: TraceDetails = {}) {
+  complete(stage: TraceStage, details: TraceDetails = {}) {
+    if (!active) return;
     write(stage, "completed", details);
     stages.delete(stage);
   },
-  fail(stage: string, error: unknown, details: TraceDetails = {}) {
+  fail(stage: TraceStage, error: unknown, details: TraceDetails = {}) {
+    if (!active) return;
     write(stage, "failed", { ...details, error });
     stages.delete(stage);
   },
-  cancel(stage: string) {
+  cancel(stage: TraceStage) {
     stages.delete(stage);
   },
-  beginEpub(archiveBytes: number, entries: readonly { uncompressedSize: number }[]) {
+  beginEpub() {
+    if (!active) return;
     loadedEpubResources.clear();
-    epubArchiveBytes = archiveBytes;
-    epubEntryCount = entries.length;
-    epubUncompressedBytes = entries.reduce((total, entry) => total + entry.uncompressedSize, 0);
   },
   recordEpubResource(name: string, bytes: number) {
-    if (!loadedEpubResources.has(name)) loadedEpubResources.set(name, { bytes, kind: resourceKind(name) });
+    if (active && !loadedEpubResources.has(name)) loadedEpubResources.set(name, bytes);
   },
   epubResources() {
-    const loaded = sumResources();
-    const svg = sumResources("svg");
-    const images = sumResources("image");
-    const fonts = sumResources("font");
     return {
-      epubArchiveBytes,
-      epubEntryCount,
-      epubUncompressedBytes,
-      epubLoadedBytes: loaded.bytes,
-      epubLoadedCount: loaded.count,
-      epubSvgBytes: svg.bytes,
-      epubSvgCount: svg.count,
-      epubImageBytes: images.bytes,
-      epubImageCount: images.count,
-      epubFontBytes: fonts.bytes,
-      epubFontCount: fonts.count,
+      epubLoadedBytes: [...loadedEpubResources.values()].reduce((total, bytes) => total + bytes, 0),
     };
   },
   fontResources(urls: readonly string[]) {
     return fontResourceDetails(urls);
+  },
+  finish() {
+    active = false;
+    stages.clear();
+    loadedEpubResources.clear();
   },
 };

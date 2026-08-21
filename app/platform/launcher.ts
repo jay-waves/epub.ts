@@ -50,7 +50,7 @@ class EpubLauncherSession implements EpubFileHandle {
   }
 
   async openDocument(): Promise<PlatformDocument> {
-    startupTrace.start("launcher-document-check", {
+    startupTrace.start("launcher-resource-check", {
       method: "HEAD",
       url: this.resourceUrl,
     });
@@ -58,11 +58,11 @@ class EpubLauncherSession implements EpubFileHandle {
     try {
       response = await fetch(this.resourceUrl, { method: "HEAD", cache: "no-store" });
     } catch (error) {
-      startupTrace.fail("launcher-document-check", error, { url: this.resourceUrl });
+      startupTrace.fail("launcher-resource-check", error, { url: this.resourceUrl });
       throw error;
     }
-    startupTrace.complete("launcher-document-check", {
-      contentLength: response.headers.get("Content-Length"),
+    startupTrace.complete("launcher-resource-check", {
+      contentLengthBytes: Number(response.headers.get("Content-Length")) || undefined,
       status: response.status,
       version: stripEtag(response.headers.get("ETag")) || undefined,
     });

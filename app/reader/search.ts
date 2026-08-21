@@ -2,12 +2,15 @@ import type { Anchor, Book, Content, OverlayDraw } from "../renderer";
 import type { ReaderView } from "./model";
 import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
 import { getSavedHighlights } from "../viewer-storage";
-import { normalizeInlineText } from "../shared/inline-text";
 import type { Navigation } from "./navigation";
 
 const MAX_QUERY_LENGTH = 120;
 const MAX_RESULTS = 200;
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+function normalizeInlineText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
 
 type Hit = {
   anchor?: Anchor;

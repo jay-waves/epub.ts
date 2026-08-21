@@ -1,5 +1,4 @@
-import { loadDocumentFonts } from "../fonts";
-import { normalizeInlineText } from "../../shared/inline-text";
+import { loadDocumentFonts } from "./fonts";
 import { getReaderFontFamily } from "../../renderer/shared/font-family";
 import { enhanceImages } from "./image-zoom";
 import { prepareMathRenderer, renderMathDocument } from "./math";
@@ -11,6 +10,10 @@ export { closeContentOverlays, disposeContent } from "./image-zoom";
 export { clearMathCache } from "./math";
 
 const footnotesLabeledDocs = new WeakSet<Document>();
+
+function normalizeInlineText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
 
 export async function prepareContent(doc: Document, options: {
   fontQueries: string[];

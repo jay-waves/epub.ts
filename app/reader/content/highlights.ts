@@ -1,24 +1,24 @@
-import { Overlay } from "../renderer";
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import { Overlay } from "../../renderer";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../../viewer-events";
 import {
   getSavedHighlights,
   setSavedHighlights,
-} from "../viewer-storage";
-import type { HighlightContextAction } from "./context-menu-store";
-import { contextMenuStore } from "./context-menu-store";
-import type { ReaderHighlight } from "../epub/annotations";
+} from "../../viewer-storage";
+import type { HighlightContextAction } from "../context-menu-store";
+import { contextMenuStore } from "../context-menu-store";
+import type { ReaderHighlight } from "../../epub/annotations";
 import {
   claimReaderPointer,
   consumeReaderEvent,
   consumeReaderPointerClaim,
-} from "./interaction-arbiter";
-import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
-import type { ReaderView } from "./model";
-import { createTranslation } from "./translation";
-import { copyReaderMedia } from "./media-clipboard";
-import type { Navigation } from "./navigation";
-import { observeRenderedDocuments } from "./documents";
-import { TaskTracker } from "../shared/async-tasks";
+} from "../interaction-arbiter";
+import type { Content, OverlayDraw, OverlayDrawOptions } from "../../renderer";
+import type { ReaderView } from "../model";
+import { createTranslation } from "../translation";
+import { copyReaderMedia } from "../media-clipboard";
+import type { Navigation } from "../navigation";
+import { observeRenderedDocuments } from "../documents";
+import { TaskTracker } from "../../shared/async-tasks";
 
 type PointerCoordinateSpace = "content" | "viewport";
 

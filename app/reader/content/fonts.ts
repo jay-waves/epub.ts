@@ -1,6 +1,6 @@
 import { platform } from "#platform";
-import { READER_LATIN_FONT_FAMILY, READER_MONO_FONT_FAMILY } from "./book-styles";
-import { startupTrace } from "../shared/startup-trace";
+import { READER_LATIN_FONT_FAMILY, READER_MONO_FONT_FAMILY } from "../book-styles";
+import { startupTrace } from "../../shared/startup-trace";
 
 const documentFontLoads = new WeakMap<Document, Promise<void>>();
 const FONT_LOAD_TIMEOUT = 2_000;
@@ -19,7 +19,7 @@ export function preloadReaderFonts() {
 
   const profile = platform.readerProfile;
   const fontUrls = [profile.latinFontUrl, profile.latinItalicFontUrl, profile.monoFontUrl];
-  startupTrace.start("reader-fonts", {
+  startupTrace.start("reader-font-loading", {
     fonts: [
       { family: READER_LATIN_FONT_FAMILY, format: profile.latinFontFormat, style: "normal", url: profile.latinFontUrl },
       { family: READER_LATIN_FONT_FAMILY, format: profile.latinItalicFontFormat, style: "italic", url: profile.latinItalicFontUrl },
@@ -47,13 +47,12 @@ export function preloadReaderFonts() {
   readerFontsReady = Promise.all(fontLoads)
     .then((fonts) => {
       fonts.forEach((font) => document.fonts.add(font));
-      startupTrace.complete("reader-fonts", {
-        fontCount: fonts.length,
+      startupTrace.complete("reader-font-loading", {
         ...startupTrace.fontResources(fontUrls),
       });
     })
     .catch((error) => {
-      startupTrace.fail("reader-fonts", error);
+      startupTrace.fail("reader-font-loading", error);
     });
   return readerFontsReady;
 }

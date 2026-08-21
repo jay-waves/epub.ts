@@ -21,7 +21,7 @@ import {
 } from "./epub/annotations";
 import { createView } from "./renderer";
 import { getBookKey } from "./epub/metadata";
-import { createHighlights } from "./reader/highlights";
+import { createHighlights } from "./reader/content/highlights";
 import {
   clearMathCache,
   closeContentOverlays,
@@ -49,7 +49,7 @@ import { createBookSession, resetBookSession } from "./viewer-session";
 import { createRenderState } from "./reader/render";
 import { Navigation } from "./reader/navigation";
 import { Reader } from "./reader/lifecycle";
-import { getReaderFontQueries, preloadReaderFonts } from "./reader/fonts";
+import { getReaderFontQueries, preloadReaderFonts } from "./reader/content/fonts";
 import { platform } from "#platform";
 import type { PlatformDocument } from "./platform/types";
 import { SerialTaskQueue } from "./shared/async-tasks";
@@ -486,7 +486,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
   let reader: Reader | null = null;
   let view: ReaderView | null = null;
-  startupTrace.start("document-open", { source: platformDocument.sourceLabel });
+  startupTrace.start("document-opening", { source: platformDocument.sourceLabel });
   try {
     await resetBookState({
       bookKey: platformDocument.key,
@@ -531,25 +531,17 @@ async function replaceBook(platformDocument: PlatformDocument) {
     const paintStartedAt = performance.now();
     await renderState.revealAfterPaint();
     reader.signal.throwIfAborted();
-    const initialDocuments = reader.view.renderer.getContents?.()
-      .map(({ doc }) => doc)
-      .filter((doc): doc is Document => Boolean(doc)) ?? [];
-    startupTrace.complete("document-open", {
+    const initialDomElementCount = (reader.view.renderer.getContents?.() ?? []).reduce(
+      (total, { doc }) => total + (doc?.querySelectorAll("*").length ?? 0),
+      0,
+    );
+    startupTrace.complete("document-opening", {
       finalPaintMs: Math.round(performance.now() - paintStartedAt),
-      initialDocumentCount: initialDocuments.length,
-      initialImageElementCount: initialDocuments.reduce(
-        (total, doc) => total + doc.querySelectorAll("img, svg image").length,
-        0,
-      ),
-      initialSvgElementCount: initialDocuments.reduce(
-        (total, doc) => total + doc.querySelectorAll("svg").length,
-        0,
-      ),
+      initialDomElementCount,
       renderMode: reader.view.renderMode,
-      sectionCount: reader.book.sections.length,
-      source: platformDocument.sourceLabel,
       ...startupTrace.epubResources(),
     });
+    startupTrace.finish();
   } catch (error) {
     renderState.end();
     runtime.search?.dispose();
@@ -571,8 +563,8 @@ async function replaceBook(platformDocument: PlatformDocument) {
       console.error(`Failed to open ${platformDocument.sourceLabel}`, {
         error,
       });
-      startupTrace.fail("document-open", error, { source: platformDocument.sourceLabel });
-    } else startupTrace.cancel("document-open");
+      startupTrace.fail("document-opening", error, { source: platformDocument.sourceLabel });
+    } else startupTrace.cancel("document-opening");
     if (session.document === platformDocument) {
       session.document = null;
       session.bookKey = "";

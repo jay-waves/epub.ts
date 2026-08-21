@@ -1,5 +1,8 @@
-import { normalizeInlineText } from "../shared/inline-text";
 import type { Book } from "../renderer";
+
+function normalizeInlineText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
 
 export function normalizeTocHref(href?: string) {
   if (!href) return "";

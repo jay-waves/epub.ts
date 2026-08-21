@@ -14,21 +14,21 @@ class NotFoundError extends Error {}
 class UnsupportedTypeError extends Error {}
 
 async function fetchFile(url: string) {
-  startupTrace.start("epub-fetch", { url });
+  startupTrace.start("epub-download", { url });
   try {
     const response = await fetch(url);
     if (!response.ok) {
       throw new ResponseError(`${response.status} ${response.statusText}`, { cause: response });
     }
     const blob = await response.blob();
-    startupTrace.complete("epub-fetch", {
+    startupTrace.complete("epub-download", {
       sizeBytes: blob.size,
       status: response.status,
       url: response.url,
     });
     return new File([blob], new URL(response.url).pathname);
   } catch (error) {
-    startupTrace.fail("epub-fetch", error, { url });
+    startupTrace.fail("epub-download", error, { url });
     throw error;
   }
 }
@@ -43,7 +43,7 @@ async function createZipSource(file: File) {
   const reader = new ZipReader(new BlobReader(file));
   const entries = (await reader.getEntries()).filter((entry): entry is FileEntry => !entry.directory);
   const files = new Map(entries.map((entry) => [entry.filename, entry]));
-  startupTrace.beginEpub(file.size, entries);
+  startupTrace.beginEpub();
 
   return {
     entries,
@@ -70,18 +70,16 @@ export async function createBook(input: File | string): Promise<Book> {
   const source = await createZipSource(file);
   let book: Book | undefined;
   try {
-    startupTrace.start("epub-parse");
+    startupTrace.start("epub-parsing");
     const { EPUB } = await import("./parser.js");
     book = await new EPUB(source).init() as Book;
     if (!book.sections.length) {
       throw new UnsupportedTypeError("EPUB has no readable sections");
     }
-    startupTrace.complete("epub-parse", {
-      sectionCount: book.sections.length,
-    });
+    startupTrace.complete("epub-parsing");
     return book;
   } catch (error) {
-    startupTrace.fail("epub-parse", error);
+    startupTrace.fail("epub-parsing", error);
     if (book) await book.destroy?.();
     else await source.destroy();
     throw error;
