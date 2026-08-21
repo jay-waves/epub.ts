@@ -1,0 +1,71 @@
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { gzipSync } from 'node:zlib';
+
+const root = resolve(import.meta.dirname, '..');
+const source = resolve(root, 'release/web');
+const embedded = resolve(root, 'launcher/viewer');
+const target = process.argv[2];
+if (!['linux-amd64', 'windows-amd64'].includes(target)) throw new Error('Expected linux-amd64 or windows-amd64.');
+if (!existsSync(resolve(source, 'index.html'))) throw new Error('Run pnpm compile first.');
+const buildMetadata = JSON.parse(readFileSync(resolve(source, 'build-metadata.json'), 'utf8'));
+if (!buildMetadata.builtAt) throw new Error('The web build is missing its build timestamp.');
+
+function copy(sourceDir, targetDir) {
+  mkdirSync(targetDir, { recursive: true });
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const from = resolve(sourceDir, entry.name);
+    const to = resolve(targetDir, entry.name);
+    if (entry.isDirectory()) copy(from, to);
+    else writeFileSync(`${to}.gz`, gzipSync(readFileSync(from), { level: 9 }));
+  }
+}
+
+function cleanEmbeddedViewer() {
+  mkdirSync(embedded, { recursive: true });
+  for (const entry of readdirSync(embedded)) {
+    if (entry !== 'placeholder.txt') rmSync(resolve(embedded, entry), { recursive: true, force: true });
+  }
+}
+
+function requireSuccess(result, command) {
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${command} exited with status ${result.status ?? 1}.`);
+}
+
+const windows = target === 'windows-amd64';
+const output = resolve(root, 'release', windows ? 'epub.ts.exe' : 'epub.ts');
+mkdirSync(resolve(root, 'release'), { recursive: true });
+const linkerFlags = `${windows ? '-s -w -H=windowsgui' : '-s -w'} -X=main.buildID=${buildMetadata.builtAt}`;
+let windowsResource = null;
+cleanEmbeddedViewer();
+try {
+  copy(source, embedded);
+  if (windows) {
+    const candidates = [process.env.EPUB_TS_WINDRES, 'llvm-windres', 'x86_64-w64-mingw32-windres', 'windres'].filter(Boolean);
+    const windres = candidates.find((candidate) => {
+      const check = spawnSync(candidate, ['--version'], { stdio: 'ignore' });
+      return !check.error && check.status === 0;
+    });
+    if (!windres) throw new Error('package:windows requires llvm-windres or windres');
+    windowsResource = resolve(root, 'launcher', 'icon_windows_amd64.syso');
+    const compiled = spawnSync(windres, [
+      '--input', resolve(root, 'launcher', 'icon.rc'),
+      '--output', windowsResource,
+      '--output-format', 'coff',
+      '--target', 'pe-x86-64',
+    ], { cwd: root, stdio: 'inherit' });
+    requireSuccess(compiled, windres);
+  }
+  const result = spawnSync(process.env.EPUB_TS_GO ?? 'go', ['build', '-trimpath', `-ldflags=${linkerFlags}`, '-o', output, './launcher'], {
+    cwd: root,
+    env: { ...process.env, GOOS: windows ? 'windows' : 'linux', GOARCH: 'amd64' },
+    stdio: 'inherit',
+  });
+  requireSuccess(result, 'go build');
+  console.log(`Packaged ${output}`);
+} finally {
+  if (windowsResource) rmSync(windowsResource, { force: true });
+  cleanEmbeddedViewer();
+}

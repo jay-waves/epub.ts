@@ -5,8 +5,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import packageJson from "./package.json";
 
-const isWeb = process.env.VIEWER_PLATFORM === "web";
-const outputDir = isWeb ? "release/web" : "release/chrome-extension";
+const outputDir = "release/web";
 const builtAt = new Date().toISOString();
 const iconFiles = ["icon.png", ...[16, 32, 48, 128].map((size) => `icon-${size}.png`)];
 const fontFiles = [
@@ -21,14 +20,11 @@ export default defineConfig({
     __EPUB_TS_BUILD_TIME__: JSON.stringify(builtAt),
     __EPUB_TS_VERSION__: JSON.stringify(packageJson.version),
   },
-  publicDir: isWeb ? false : "public",
+  publicDir: false,
   resolve: {
     alias: {
       "@mathjax/src/mjs": resolve(__dirname, "node_modules/@mathjax/src/mjs"),
-      "#platform": resolve(
-        __dirname,
-        isWeb ? "app/platform/browser.ts" : "app/platform/chrome.ts",
-      ),
+      "#platform": resolve(__dirname, "app/platform/browser.ts"),
     },
   },
   plugins: [
@@ -45,10 +41,8 @@ export default defineConfig({
         for (const filename of iconFiles) {
           cpSync(resolve(__dirname, "assets", filename), resolve(resolvedOutputDir, filename));
         }
-        if (isWeb) {
-          for (const filename of fontFiles) {
-            cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
-          }
+        for (const filename of fontFiles) {
+          cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
         }
       },
     },
@@ -59,19 +53,14 @@ export default defineConfig({
     outDir: outputDir,
     emptyOutDir: true,
     rollupOptions: {
-      input: isWeb
-        ? { index: "index.html" }
-        : { viewer: "viewer.html", background: "app/platform/chrome-background.ts" },
+      input: { index: "index.html" },
       output: {
         manualChunks(id) {
           if (id.includes("/node_modules/@zip.js/zip.js/")) return "zip";
         },
-        entryFileNames: (chunkInfo) =>
-          chunkInfo.name === "background"
-            ? "background.js"
-            : isWeb ? "assets/[name]-[hash].js" : "assets/[name].js",
-        chunkFileNames: isWeb ? "assets/[name]-[hash].js" : "assets/[name].js",
-        assetFileNames: isWeb ? "assets/[name]-[hash][extname]" : "assets/[name][extname]",
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
       },
     },
   },

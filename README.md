@@ -53,17 +53,18 @@ Auto-hiding Dock toolbar:
 ## 构建 / Build
 
 ```bash
-pnpm build:web     # static web app
-pnpm build:chrome  # Chrome extension
-pnpm build:windows # epub.ts.exe, embedded web app
-pnpm build:linux   # epub.ts, embedded web app
+pnpm compile         # compile the shared reader to release/web once
+pnpm package:chrome  # package the compiled reader as a Chrome extension
+pnpm package:windows # package epub.ts.exe with the compiled reader
+pnpm package:linux   # package epub.ts with the compiled reader
+pnpm build:all       # compile once, then package every host
 ```
 
 主要跨端差异：
 
 | 形态 | 最低运行环境 | 打开本地 EPUB | 保存 | 翻译 |
 | --- | --- | --- | --- | --- |
-| 插件 | Chrome 120+ | 拦截 `file://*.epub`；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
+| 插件 | Chrome 120+ | 重定向已打开的 `file://*.epub` 标签；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
 | Web | Chrome/Edge 120+、Firefox 121+、Safari/iOS 17.2+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 未安装内置翻译模型时转到 Google 翻译 |
 | 桌面 | 系统浏览器：Chrome/Edge 120+ 或 Firefox 121+ | 支持系统文件关联，通过 `epub.ts.localhost` 本地服务读取 | 本地服务写回批注；检测到外部修改时改存冲突副本 | 内置翻译模型可按需下载 |
 
@@ -73,7 +74,7 @@ Key differences between platforms:
 
 | Application | Minimum runtime | Opening local EPUBs | Saving | Translation |
 | --- | --- | --- | --- | --- |
-| Extension | Chrome 120+ | Intercepts `file://*.epub`; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
+| Extension | Chrome 120+ | Redirects opened `file://*.epub` tabs; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
 | Web | Chrome/Edge 120+, Firefox 121+, Safari/iOS 17.2+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Translation falls back to Google Translate when no built-in model is installed |
 | Desktop | System browser: Chrome/Edge 120+ or Firefox 121+ | Supports OS file association and reads through the local `epub.ts.localhost` service | The local service writes annotations back; external changes produce a conflict copy | Built-in translation models may be downloaded on demand |
 

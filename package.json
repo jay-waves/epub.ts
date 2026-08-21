@@ -14,10 +14,13 @@
 		]
 	},
 	"scripts": {
-		"build:chrome": "pnpm typecheck && node scripts/build-chrome.mjs",
-		"build:linux": "pnpm build:web && node scripts/build-launcher.mjs linux-amd64",
-		"build:windows": "pnpm build:web && node scripts/build-launcher.mjs windows-amd64",
-		"build:web": "pnpm typecheck && VIEWER_PLATFORM=web vite build",
+		"dev": "vite",
+		"compile": "pnpm typecheck && vite build",
+		"package:chrome": "node scripts/package-chrome.mjs",
+		"package:linux": "node scripts/package-launcher.mjs linux-amd64",
+		"package:windows": "node scripts/package-launcher.mjs windows-amd64",
+		"package:all": "pnpm package:chrome && pnpm package:linux && pnpm package:windows",
+		"build:all": "pnpm compile && pnpm package:all",
 		"deploy:web": "bash scripts/deploy-web.sh",
 		"typecheck": "tsgo --noEmit"
 	},

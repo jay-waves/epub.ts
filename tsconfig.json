@@ -12,7 +12,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
-      "#platform": ["./app/platform/chrome.ts"]
+      "#platform": ["./app/platform/browser.ts"]
     },
     "types": ["chrome"]
   },
