@@ -21,7 +21,6 @@ const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
-const MOUSE_DOUBLE_CLICK_DELAY_MS = 400;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
@@ -299,21 +298,11 @@ export function createViewerInput(options: ViewerInputOptions) {
 
   const bindDragGesture = (target: EventTarget, sourceDocument: Document) => {
     let longPressTimer: number | undefined;
-    let pendingMouseTap: { direction: PageTurnDirection; timer: number } | undefined;
     let active = false;
     let selecting = false;
     const clearLongPress = () => {
       if (longPressTimer !== undefined) window.clearTimeout(longPressTimer);
       longPressTimer = undefined;
-    };
-    const clearPendingMouseTap = () => {
-      if (pendingMouseTap) window.clearTimeout(pendingMouseTap.timer);
-      pendingMouseTap = undefined;
-    };
-    const paginateAtEdge = (direction: PageTurnDirection) => {
-      const isRtl = options.getView()?.book?.dir === "rtl";
-      const forward = direction === "left" ? isRtl : !isRtl;
-      turnInReadingOrder(forward ? 1 : -1, true);
     };
     const handleMouseClick = (event: Event) => {
       const click = event as MouseEvent;
@@ -323,24 +312,9 @@ export function createViewerInput(options: ViewerInputOptions) {
 
       click.preventDefault();
       click.stopPropagation();
-      if (click.detail > 1 && pendingMouseTap?.direction === direction) {
-        clearPendingMouseTap();
-        paginateAtEdge(direction);
-        return;
-      }
       const selection = sourceDocument.defaultView?.getSelection();
       if (selection && !selection.isCollapsed) return;
-      if (pendingMouseTap) {
-        const previousDirection = pendingMouseTap.direction;
-        clearPendingMouseTap();
-        turnPage(previousDirection);
-      }
-      const timer = window.setTimeout(() => {
-        if (pendingMouseTap?.timer !== timer) return;
-        pendingMouseTap = undefined;
-        turnPage(direction);
-      }, MOUSE_DOUBLE_CLICK_DELAY_MS);
-      pendingMouseTap = { direction, timer };
+      turnPage(direction);
     };
     target.addEventListener("click", handleMouseClick, { capture: true });
     const drag = new DragGesture<PointerEvent>(target, (state) => {
@@ -417,7 +391,6 @@ export function createViewerInput(options: ViewerInputOptions) {
     });
     return () => {
       clearLongPress();
-      clearPendingMouseTap();
       target.removeEventListener("click", handleMouseClick, { capture: true });
       drag.destroy();
     };
@@ -486,6 +459,47 @@ export function createViewerInput(options: ViewerInputOptions) {
     };
   };
 
+  const bindSideButtonNavigation = (targetDocument: Document) => {
+    let pressedButton: 3 | 4 | null = null;
+    const stopSideButtonEvent = (event: MouseEvent | PointerEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const handleMouseDown = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      stopSideButtonEvent(event);
+      pressedButton = event.button;
+    };
+    const handleMouseUp = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      stopSideButtonEvent(event);
+      const shouldNavigate = pressedButton === event.button;
+      pressedButton = null;
+      if (shouldNavigate) turnWholePage(event.button === 3 ? -1 : 1);
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!(event.buttons & 24)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const clearPress = () => { pressedButton = null; };
+    const targetWindow = targetDocument.defaultView;
+
+    targetDocument.addEventListener("mousedown", handleMouseDown, { capture: true });
+    targetDocument.addEventListener("mouseup", handleMouseUp, { capture: true });
+    targetDocument.addEventListener("pointermove", handlePointerMove, { capture: true });
+    targetDocument.addEventListener("auxclick", stopSideButtonEvent, { capture: true });
+    targetWindow?.addEventListener("blur", clearPress);
+    return () => {
+      targetDocument.removeEventListener("mousedown", handleMouseDown, { capture: true });
+      targetDocument.removeEventListener("mouseup", handleMouseUp, { capture: true });
+      targetDocument.removeEventListener("pointermove", handlePointerMove, { capture: true });
+      targetDocument.removeEventListener("auxclick", stopSideButtonEvent, { capture: true });
+      targetWindow?.removeEventListener("blur", clearPress);
+    };
+  };
+
   const bindInputTarget = (targetDocument: Document) => {
     if (inputTargets.has(targetDocument)) return;
     const touchStyle = targetDocument === document ? null : targetDocument.createElement("style");
@@ -498,9 +512,11 @@ export function createViewerInput(options: ViewerInputOptions) {
       ? () => {}
       : bindDragGesture(targetDocument, targetDocument);
     const stopWheel = bindWheelGesture(targetDocument);
+    const stopSideButtons = bindSideButtonNavigation(targetDocument);
     inputTargets.set(targetDocument, () => {
       stopDrag();
       stopWheel();
+      stopSideButtons();
       targetDocument.removeEventListener("keydown", handleKeyDown);
       touchStyle?.remove();
     });

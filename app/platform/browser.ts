@@ -6,7 +6,8 @@ import type { ViewerPlatform } from "./types";
 const isLauncherDocument = Boolean(
   new URLSearchParams(window.location.search).get("launcherDocument"),
 );
-const isChromeExtension = window.location.protocol === "chrome-extension:";
+const isChromeExtension = window.location.protocol === "chrome-extension:"
+  && typeof globalThis.chrome?.runtime?.getURL === "function";
 
 export const platform: ViewerPlatform = isChromeExtension
   ? chromePlatform

@@ -49,7 +49,28 @@ class EpubLauncherSession implements EpubFileHandle {
   }
 
   async openDocument(): Promise<PlatformDocument> {
-    const response = await fetch(this.resourceUrl, { method: "HEAD", cache: "no-store" });
+    const startedAt = performance.now();
+    console.info("[EPUB.ts] Checking launcher document resource.", {
+      method: "HEAD",
+      url: this.resourceUrl,
+    });
+    let response: Response;
+    try {
+      response = await fetch(this.resourceUrl, { method: "HEAD", cache: "no-store" });
+    } catch (error) {
+      console.info("[EPUB.ts] Launcher document resource check failed.", {
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
+        url: this.resourceUrl,
+      });
+      throw error;
+    }
+    console.info("[EPUB.ts] Launcher document resource responded.", {
+      contentLength: response.headers.get("Content-Length"),
+      durationMs: Math.round(performance.now() - startedAt),
+      status: response.status,
+      version: stripEtag(response.headers.get("ETag")) || undefined,
+    });
     if (!response.ok) {
       if (response.status === 410) {
         throw new Error("This EPUB was moved or deleted. Open it with EPUB.ts again to register its new location.");

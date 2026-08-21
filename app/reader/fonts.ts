@@ -16,7 +16,15 @@ export function getReaderFontQueries(fontSize: number) {
 export function preloadReaderFonts() {
   if (readerFontsReady) return readerFontsReady;
 
+  const startedAt = performance.now();
   const profile = platform.readerProfile;
+  console.info("[EPUB.ts] Loading reader fonts.", {
+    fonts: [
+      { family: READER_LATIN_FONT_FAMILY, format: profile.latinFontFormat, style: "normal", url: profile.latinFontUrl },
+      { family: READER_LATIN_FONT_FAMILY, format: profile.latinItalicFontFormat, style: "italic", url: profile.latinItalicFontUrl },
+      { family: READER_MONO_FONT_FAMILY, format: profile.monoFontFormat, style: "normal", url: profile.monoFontUrl },
+    ],
+  });
   const fontLoads = [
     new FontFace(
       READER_LATIN_FONT_FAMILY,
@@ -38,9 +46,16 @@ export function preloadReaderFonts() {
   readerFontsReady = Promise.all(fontLoads)
     .then((fonts) => {
       fonts.forEach((font) => document.fonts.add(font));
+      console.info("[EPUB.ts] Reader fonts loaded.", {
+        durationMs: Math.round(performance.now() - startedAt),
+        fontCount: fonts.length,
+      });
     })
     .catch((error) => {
-      console.warn("Failed to preload reader fonts.", error);
+      console.warn("[EPUB.ts] Failed to preload reader fonts.", {
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
+      });
     });
   return readerFontsReady;
 }

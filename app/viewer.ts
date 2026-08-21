@@ -448,18 +448,21 @@ function showChapterBoundaryPending(direction: number, pending: boolean) {
 async function restoreSavedPosition(navigation: Navigation, savedPosition?: ReadingPosition) {
   session.restoring = true;
   try {
-    const attempts: Array<Parameters<Navigation["init"]>[0]> = [];
-    if (savedPosition?.cfi) attempts.push({ lastLocation: savedPosition.cfi });
+    const attempts: Array<{
+      options: Parameters<Navigation["init"]>[0];
+      strategy: "cfi" | "progress" | "text-start";
+    }> = [];
+    if (savedPosition?.cfi) attempts.push({ options: { lastLocation: savedPosition.cfi }, strategy: "cfi" });
     if (typeof savedPosition?.fraction === "number") {
-      attempts.push({ progress: savedPosition.fraction });
+      attempts.push({ options: { progress: savedPosition.fraction }, strategy: "progress" });
     }
-    attempts.push({ showTextStart: true });
+    attempts.push({ options: { showTextStart: true }, strategy: "text-start" });
 
     let lastError: unknown;
     for (const attempt of attempts) {
       try {
-        await navigation.init(attempt);
-        return;
+        await navigation.init(attempt.options);
+        return attempt.strategy;
       } catch (error) {
         lastError = error;
       }
@@ -485,6 +488,8 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
   let reader: Reader | null = null;
   let view: ReaderView | null = null;
+  const startedAt = performance.now();
+  console.info("[EPUB.ts] Opening document.", { source: platformDocument.sourceLabel });
   try {
     await resetBookState({
       bookKey: platformDocument.key,
@@ -492,7 +497,12 @@ async function replaceBook(platformDocument: PlatformDocument) {
     });
     if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
 
+    const viewStartedAt = performance.now();
+    console.info("[EPUB.ts] Loading reader view engine.");
     view = await mountView();
+    console.info("[EPUB.ts] Reader view engine loaded.", {
+      durationMs: Math.round(performance.now() - viewStartedAt),
+    });
     if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
     renderState.begin();
     await preloadReaderFonts();
@@ -501,6 +511,10 @@ async function replaceBook(platformDocument: PlatformDocument) {
     runtime.reader = reader;
     wireReaderEvents(reader);
     await reader.open();
+    console.info("[EPUB.ts] Reader engine opened document.", {
+      durationMs: Math.round(performance.now() - startedAt),
+      sections: reader.book.sections.length,
+    });
     reader.signal.throwIfAborted();
     const { navigation } = reader;
     emitViewerEvent(VIEWER_EVENTS.documentOpen);
@@ -515,19 +529,42 @@ async function replaceBook(platformDocument: PlatformDocument) {
       signal: reader.signal,
       view,
     });
+    const restoreStartedAt = performance.now();
+    console.info("[EPUB.ts] Restoring reader state.", { bookKey: session.bookKey });
     const savedPosition = await getSavedPosition(bookKey);
+    console.info("[EPUB.ts] Saved reader state loaded.", {
+      durationMs: Math.round(performance.now() - restoreStartedAt),
+      hasSavedLocation: Boolean(savedPosition?.cfi || typeof savedPosition?.fraction === "number"),
+      hasSavedSettings: Boolean(savedPosition?.settings),
+    });
     reader.signal.throwIfAborted();
     await applyReaderSettings(savedPosition?.settings);
 
     emitBookInfoUpdate();
     session.tocItems = view.book?.toc ?? [];
     emitTocUpdate();
+    const highlightsStartedAt = performance.now();
     await restoreHighlights(reader, bookKey);
+    console.info("[EPUB.ts] Reader highlights restored.", {
+      durationMs: Math.round(performance.now() - highlightsStartedAt),
+    });
     reader.signal.throwIfAborted();
-    await restoreSavedPosition(navigation, savedPosition);
+    const positionStartedAt = performance.now();
+    const positionStrategy = await restoreSavedPosition(navigation, savedPosition);
+    console.info("[EPUB.ts] Initial reading position resolved.", {
+      durationMs: Math.round(performance.now() - positionStartedAt),
+      strategy: positionStrategy,
+    });
     reader.signal.throwIfAborted();
+    const paintStartedAt = performance.now();
     await renderState.revealAfterPaint();
     reader.signal.throwIfAborted();
+    console.info("[EPUB.ts] Document ready for reading.", {
+      durationMs: Math.round(performance.now() - startedAt),
+      finalPaintMs: Math.round(performance.now() - paintStartedAt),
+      renderMode: reader.view.renderMode,
+      source: platformDocument.sourceLabel,
+    });
   } catch (error) {
     renderState.end();
     runtime.search?.dispose();
@@ -546,7 +583,10 @@ async function replaceBook(platformDocument: PlatformDocument) {
       platformDocument.release?.();
     }
     if ((error as DOMException).name !== "AbortError") {
-      console.error(`Failed to open ${platformDocument.sourceLabel}`, error);
+      console.error(`Failed to open ${platformDocument.sourceLabel}`, {
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
+      });
     }
     if (session.document === platformDocument) {
       session.document = null;
@@ -720,12 +760,18 @@ async function restoreHighlights(reader: Reader, bookKey: string) {
 }
 
 async function bootstrap() {
+  const startedAt = performance.now();
+  console.info("[EPUB.ts] Initializing viewer.");
   await applyReaderSettings(undefined);
   runtime.listeners = new AbortController();
   setupEventListeners(runtime.listeners.signal);
   ensureViewerInput();
   try {
     const initialDocument = await platform.loadInitialDocument();
+    console.info("[EPUB.ts] Initial document lookup completed.", {
+      durationMs: Math.round(performance.now() - startedAt),
+      found: Boolean(initialDocument),
+    });
     if (initialDocument) {
       if (runtime.disposed) {
         initialDocument.release?.();
@@ -735,7 +781,10 @@ async function bootstrap() {
       return;
     }
   } catch (error) {
-    console.error("Failed to load the initial EPUB document.", error);
+    console.error("[EPUB.ts] Failed to load the initial EPUB document.", {
+      durationMs: Math.round(performance.now() - startedAt),
+      error,
+    });
   }
 }
 

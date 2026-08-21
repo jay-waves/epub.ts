@@ -33,8 +33,17 @@ function getFileName(sourceUrl: string) {
   }
 }
 
+function getChromeAssetUrl(filename: string) {
+  const runtime = globalThis.chrome?.runtime;
+  return runtime?.getURL
+    ? runtime.getURL(filename)
+    : new URL(filename, document.baseURI).href;
+}
+
 export const platform: ViewerPlatform = {
-  readerProfile: createBundledReaderProfile((filename) => chrome.runtime.getURL(filename)),
+  // This module is imported alongside the web and launcher platforms. Keep
+  // module initialization safe even when Chrome extension APIs are absent.
+  readerProfile: createBundledReaderProfile(getChromeAssetUrl),
   translationModelPolicy: "allow-download",
   async loadInitialDocument() {
     const rawSourceUrl = getInitialSourceUrl();

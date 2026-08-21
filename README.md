@@ -127,7 +127,7 @@ The UI has three broad layers: EPUB iframe content, SVG content decorations (hig
 | 输入 / Input | Paginated | Scrolled |
 | --- | --- | --- |
 | 屏幕左/右侧单击 | 前/后一栏 | 前/后一屏 |
-| 屏幕左/右侧双击 | 前/后一屏 | 前/后一屏 |
+| 鼠标后退/前进侧键 | 按阅读顺序前/后一屏 | 按阅读顺序前/后一屏 |
 | `←/→`、`h/l` | 前/后一栏 | 前/后一屏 |
 | `↑/↓`、`k/j` | 前/后一屏 | 向上/下滚动 |
 | `Space` | — | 向下滚动 |
