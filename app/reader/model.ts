@@ -4,7 +4,7 @@ import type { ReaderHighlight } from "../epub/annotations";
 
 type ReaderThemeMode = "light" | "dark";
 export type ReaderFlow = "paginated" | "scrolled";
-export type PageTurnDirection = "left" | "right";
+export type StepDirection = "left" | "right";
 export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark" | "gruvbox";
 
 export type ReaderSettings = {

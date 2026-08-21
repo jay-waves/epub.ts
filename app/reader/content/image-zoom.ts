@@ -1,4 +1,4 @@
-import { consumeReaderInteraction, resolveReaderPointerIntent } from "../interaction-arbiter";
+import { consumeReaderEvent, resolveReaderPointerIntent } from "../interaction-arbiter";
 
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;
@@ -125,7 +125,7 @@ function isZoomableImage(image: HTMLImageElement) {
 
 function handleReaderImageClick(event: MouseEvent) {
   if (resolveReaderPointerIntent(event.target) !== "image") return;
-  consumeReaderInteraction(event);
+  consumeReaderEvent(event, "immediate");
   const image = event.currentTarget as HTMLImageElement;
   image.ownerDocument.defaultView?.getSelection()?.removeAllRanges();
   void openReaderImageZoom(image).catch((error) => {

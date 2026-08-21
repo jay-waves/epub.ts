@@ -1,5 +1,5 @@
 export type ReaderPointerIntent = "control" | "link" | "highlight" | "image" | "content";
-const pointerOwners = new Map<number, ReaderPointerIntent>();
+const pointerOwners = new WeakMap<Document, Map<number, ReaderPointerIntent>>();
 
 function asElement(target: EventTarget | null) {
   return target && (target as Node).nodeType === Node.ELEMENT_NODE
@@ -14,8 +14,10 @@ export function resolveReaderPointerIntent(
   const element = asElement(target);
   if (!element) return "content";
   if (element.closest(
-    "button, input, select, textarea, label, summary, audio[controls], video[controls], "
-      + "[role='slider'], [contenteditable='true']",
+    "button, input, select, textarea, label, summary, audio[controls], video[controls], object, embed, "
+      + "[role='button'], [role='checkbox'], [role='menuitem'], [role='option'], [role='radio'], "
+      + "[role='slider'], [role='switch'], [role='tab'], [contenteditable='true'], [onclick], "
+      + "[tabindex]:not([tabindex='-1'])",
   )) return "control";
   if (element.closest("a[href]")) return "link";
   if (element.closest("[data-reader-interaction='highlight'], [data-reader-annotation-badge]")) return "highlight";
@@ -23,17 +25,36 @@ export function resolveReaderPointerIntent(
   return "content";
 }
 
-export function consumeReaderInteraction(event: Event) {
+export type ReaderEventPropagation = "none" | "stop" | "immediate";
+
+/** Applies the routing decision in one place after an input owner accepts an event. */
+export function consumeReaderEvent(event: Event, propagation: ReaderEventPropagation = "none") {
   if (event.cancelable) event.preventDefault();
-  event.stopImmediatePropagation();
+  if (propagation === "immediate") event.stopImmediatePropagation();
+  else if (propagation === "stop") event.stopPropagation();
 }
 
-export function claimReaderPointer(pointerId: number, owner: ReaderPointerIntent) {
-  pointerOwners.set(pointerId, owner);
+function pointerDocument(event: PointerEvent) {
+  const target = asElement(event.target);
+  return target?.ownerDocument ?? document;
 }
 
-export function consumeReaderPointerClaim(pointerId: number) {
-  const owner = pointerOwners.get(pointerId);
-  pointerOwners.delete(pointerId);
+export function claimReaderPointer(event: PointerEvent, owner = resolveReaderPointerIntent(event.target)) {
+  const doc = pointerDocument(event);
+  let owners = pointerOwners.get(doc);
+  if (!owners) {
+    owners = new Map();
+    pointerOwners.set(doc, owners);
+  }
+  owners.set(event.pointerId, owner);
+  return owner;
+}
+
+export function consumeReaderPointerClaim(event: PointerEvent) {
+  const doc = pointerDocument(event);
+  const owners = pointerOwners.get(doc);
+  const owner = owners?.get(event.pointerId);
+  owners?.delete(event.pointerId);
+  if (owners && !owners.size) pointerOwners.delete(doc);
   return owner;
 }

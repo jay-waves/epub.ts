@@ -1,5 +1,6 @@
 import { platform } from "#platform";
 import { READER_LATIN_FONT_FAMILY, READER_MONO_FONT_FAMILY } from "./book-styles";
+import { startupTrace } from "../shared/startup-trace";
 
 const documentFontLoads = new WeakMap<Document, Promise<void>>();
 const FONT_LOAD_TIMEOUT = 2_000;
@@ -16,9 +17,9 @@ export function getReaderFontQueries(fontSize: number) {
 export function preloadReaderFonts() {
   if (readerFontsReady) return readerFontsReady;
 
-  const startedAt = performance.now();
   const profile = platform.readerProfile;
-  console.info("[EPUB.ts] Loading reader fonts.", {
+  const fontUrls = [profile.latinFontUrl, profile.latinItalicFontUrl, profile.monoFontUrl];
+  startupTrace.start("reader-fonts", {
     fonts: [
       { family: READER_LATIN_FONT_FAMILY, format: profile.latinFontFormat, style: "normal", url: profile.latinFontUrl },
       { family: READER_LATIN_FONT_FAMILY, format: profile.latinItalicFontFormat, style: "italic", url: profile.latinItalicFontUrl },
@@ -46,16 +47,13 @@ export function preloadReaderFonts() {
   readerFontsReady = Promise.all(fontLoads)
     .then((fonts) => {
       fonts.forEach((font) => document.fonts.add(font));
-      console.info("[EPUB.ts] Reader fonts loaded.", {
-        durationMs: Math.round(performance.now() - startedAt),
+      startupTrace.complete("reader-fonts", {
         fontCount: fonts.length,
+        ...startupTrace.fontResources(fontUrls),
       });
     })
     .catch((error) => {
-      console.warn("[EPUB.ts] Failed to preload reader fonts.", {
-        durationMs: Math.round(performance.now() - startedAt),
-        error,
-      });
+      startupTrace.fail("reader-fonts", error);
     });
   return readerFontsReady;
 }

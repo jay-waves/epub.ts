@@ -43,7 +43,7 @@ import {
 import type { ReaderSettings, ReaderView, ReadingPosition } from "./reader/model";
 import type { ReaderHighlight } from "./epub/annotations";
 import type { Location } from "./reader/navigation";
-import type { DockAction } from "./viewer-events";
+import type { DockAction, ReaderCommand } from "./viewer-events";
 import { DEFAULT_READER_SETTINGS, readerSettings } from "./reader/model";
 import { createBookSession, resetBookSession } from "./viewer-session";
 import { createRenderState } from "./reader/render";
@@ -53,6 +53,7 @@ import { getReaderFontQueries, preloadReaderFonts } from "./reader/fonts";
 import { platform } from "#platform";
 import type { PlatformDocument } from "./platform/types";
 import { SerialTaskQueue } from "./shared/async-tasks";
+import { startupTrace } from "./shared/startup-trace";
 import "./viewer.css";
 
 type ViewerRuntime = {
@@ -448,21 +449,18 @@ function showChapterBoundaryPending(direction: number, pending: boolean) {
 async function restoreSavedPosition(navigation: Navigation, savedPosition?: ReadingPosition) {
   session.restoring = true;
   try {
-    const attempts: Array<{
-      options: Parameters<Navigation["init"]>[0];
-      strategy: "cfi" | "progress" | "text-start";
-    }> = [];
-    if (savedPosition?.cfi) attempts.push({ options: { lastLocation: savedPosition.cfi }, strategy: "cfi" });
+    const attempts: Array<Parameters<Navigation["init"]>[0]> = [];
+    if (savedPosition?.cfi) attempts.push({ lastLocation: savedPosition.cfi });
     if (typeof savedPosition?.fraction === "number") {
-      attempts.push({ options: { progress: savedPosition.fraction }, strategy: "progress" });
+      attempts.push({ progress: savedPosition.fraction });
     }
-    attempts.push({ options: { showTextStart: true }, strategy: "text-start" });
+    attempts.push({ showTextStart: true });
 
     let lastError: unknown;
     for (const attempt of attempts) {
       try {
-        await navigation.init(attempt.options);
-        return attempt.strategy;
+        await navigation.init(attempt);
+        return;
       } catch (error) {
         lastError = error;
       }
@@ -488,8 +486,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
   let reader: Reader | null = null;
   let view: ReaderView | null = null;
-  const startedAt = performance.now();
-  console.info("[EPUB.ts] Opening document.", { source: platformDocument.sourceLabel });
+  startupTrace.start("document-open", { source: platformDocument.sourceLabel });
   try {
     await resetBookState({
       bookKey: platformDocument.key,
@@ -497,12 +494,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     });
     if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
 
-    const viewStartedAt = performance.now();
-    console.info("[EPUB.ts] Loading reader view engine.");
     view = await mountView();
-    console.info("[EPUB.ts] Reader view engine loaded.", {
-      durationMs: Math.round(performance.now() - viewStartedAt),
-    });
     if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
     renderState.begin();
     await preloadReaderFonts();
@@ -511,10 +503,6 @@ async function replaceBook(platformDocument: PlatformDocument) {
     runtime.reader = reader;
     wireReaderEvents(reader);
     await reader.open();
-    console.info("[EPUB.ts] Reader engine opened document.", {
-      durationMs: Math.round(performance.now() - startedAt),
-      sections: reader.book.sections.length,
-    });
     reader.signal.throwIfAborted();
     const { navigation } = reader;
     emitViewerEvent(VIEWER_EVENTS.documentOpen);
@@ -529,41 +517,38 @@ async function replaceBook(platformDocument: PlatformDocument) {
       signal: reader.signal,
       view,
     });
-    const restoreStartedAt = performance.now();
-    console.info("[EPUB.ts] Restoring reader state.", { bookKey: session.bookKey });
     const savedPosition = await getSavedPosition(bookKey);
-    console.info("[EPUB.ts] Saved reader state loaded.", {
-      durationMs: Math.round(performance.now() - restoreStartedAt),
-      hasSavedLocation: Boolean(savedPosition?.cfi || typeof savedPosition?.fraction === "number"),
-      hasSavedSettings: Boolean(savedPosition?.settings),
-    });
     reader.signal.throwIfAborted();
     await applyReaderSettings(savedPosition?.settings);
 
     emitBookInfoUpdate();
     session.tocItems = view.book?.toc ?? [];
     emitTocUpdate();
-    const highlightsStartedAt = performance.now();
     await restoreHighlights(reader, bookKey);
-    console.info("[EPUB.ts] Reader highlights restored.", {
-      durationMs: Math.round(performance.now() - highlightsStartedAt),
-    });
     reader.signal.throwIfAborted();
-    const positionStartedAt = performance.now();
-    const positionStrategy = await restoreSavedPosition(navigation, savedPosition);
-    console.info("[EPUB.ts] Initial reading position resolved.", {
-      durationMs: Math.round(performance.now() - positionStartedAt),
-      strategy: positionStrategy,
-    });
+    await restoreSavedPosition(navigation, savedPosition);
     reader.signal.throwIfAborted();
     const paintStartedAt = performance.now();
     await renderState.revealAfterPaint();
     reader.signal.throwIfAborted();
-    console.info("[EPUB.ts] Document ready for reading.", {
-      durationMs: Math.round(performance.now() - startedAt),
+    const initialDocuments = reader.view.renderer.getContents?.()
+      .map(({ doc }) => doc)
+      .filter((doc): doc is Document => Boolean(doc)) ?? [];
+    startupTrace.complete("document-open", {
       finalPaintMs: Math.round(performance.now() - paintStartedAt),
+      initialDocumentCount: initialDocuments.length,
+      initialImageElementCount: initialDocuments.reduce(
+        (total, doc) => total + doc.querySelectorAll("img, svg image").length,
+        0,
+      ),
+      initialSvgElementCount: initialDocuments.reduce(
+        (total, doc) => total + doc.querySelectorAll("svg").length,
+        0,
+      ),
       renderMode: reader.view.renderMode,
+      sectionCount: reader.book.sections.length,
       source: platformDocument.sourceLabel,
+      ...startupTrace.epubResources(),
     });
   } catch (error) {
     renderState.end();
@@ -584,10 +569,10 @@ async function replaceBook(platformDocument: PlatformDocument) {
     }
     if ((error as DOMException).name !== "AbortError") {
       console.error(`Failed to open ${platformDocument.sourceLabel}`, {
-        durationMs: Math.round(performance.now() - startedAt),
         error,
       });
-    }
+      startupTrace.fail("document-open", error, { source: platformDocument.sourceLabel });
+    } else startupTrace.cancel("document-open");
     if (session.document === platformDocument) {
       session.document = null;
       session.bookKey = "";
@@ -617,46 +602,33 @@ function setupEventListeners(signal: AbortSignal) {
     });
   }, { signal });
   listenViewerEvent(VIEWER_EVENTS.progressSeek, goToProgress, { signal });
-  listenViewerEvent(VIEWER_EVENTS.readerCommand, (command) => {
-    switch (command) {
-      case "page-left":
-        runtime.input?.turnPage("left");
-        return;
-      case "page-right":
-        runtime.input?.turnPage("right");
-        return;
-      case "page-up":
-        runtime.input?.turnWholePage(-1);
-        return;
-      case "page-down":
-        runtime.input?.turnWholePage(1);
-        return;
-      case "scroll-up":
-        runtime.input?.scrollByKey(-1);
-        return;
-      case "scroll-down":
-        runtime.input?.scrollByKey(1);
-        return;
-      case "open-search":
-        openSearch();
-        return;
-      case "escape":
-        clearSearchState();
-        emitViewerEvent(VIEWER_EVENTS.tocClose);
-        return;
-      case "save-book":
-        void saveAnnotatedBook();
-        return;
-      case "zoom-in":
-      case "zoom-out":
-        void handleDockAction(command === "zoom-in" ? "increase-width" : "decrease-width")
-          .catch((error) => console.warn(`Failed to run reader command ${command}.`, error));
-        return;
-      case "open-toc":
-        emitTocUpdate();
-        emitViewerEvent(VIEWER_EVENTS.tocOpen);
-    }
-  }, { signal });
+  const runDockCommand = (command: "zoom-in" | "zoom-out", action: DockAction) => {
+    void handleDockAction(action)
+      .catch((error) => console.warn(`Failed to run reader command ${command}.`, error));
+  };
+  const readerCommandHandlers = {
+    "step-left": () => runtime.input?.executeStep("left"),
+    "step-right": () => runtime.input?.executeStep("right"),
+    "paginate-previous": () => runtime.input?.executePaginate(-1),
+    "paginate-next": () => runtime.input?.executePaginate(1),
+    "scroll-previous": () => runtime.input?.scrollByKey(-1),
+    "scroll-next": () => runtime.input?.scrollByKey(1),
+    "open-search": openSearch,
+    escape: () => {
+      clearSearchState();
+      emitViewerEvent(VIEWER_EVENTS.tocClose);
+    },
+    "save-book": () => {
+      void saveAnnotatedBook();
+    },
+    "zoom-in": () => runDockCommand("zoom-in", "increase-width"),
+    "zoom-out": () => runDockCommand("zoom-out", "decrease-width"),
+    "open-toc": () => {
+      emitTocUpdate();
+      emitViewerEvent(VIEWER_EVENTS.tocOpen);
+    },
+  } satisfies Record<ReaderCommand, () => void>;
+  listenViewerEvent(VIEWER_EVENTS.readerCommand, (command) => readerCommandHandlers[command](), { signal });
   listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
     void runtime.search?.collect(query, highlightedOnly);
   }, { signal });
@@ -761,17 +733,12 @@ async function restoreHighlights(reader: Reader, bookKey: string) {
 
 async function bootstrap() {
   const startedAt = performance.now();
-  console.info("[EPUB.ts] Initializing viewer.");
   await applyReaderSettings(undefined);
   runtime.listeners = new AbortController();
   setupEventListeners(runtime.listeners.signal);
   ensureViewerInput();
   try {
     const initialDocument = await platform.loadInitialDocument();
-    console.info("[EPUB.ts] Initial document lookup completed.", {
-      durationMs: Math.round(performance.now() - startedAt),
-      found: Boolean(initialDocument),
-    });
     if (initialDocument) {
       if (runtime.disposed) {
         initialDocument.release?.();

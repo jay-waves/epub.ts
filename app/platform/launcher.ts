@@ -7,6 +7,7 @@ import type {
   PlatformDocument,
   ViewerPlatform,
 } from "./types";
+import { startupTrace } from "../shared/startup-trace";
 
 type WriteResponse = {
   version: string;
@@ -49,8 +50,7 @@ class EpubLauncherSession implements EpubFileHandle {
   }
 
   async openDocument(): Promise<PlatformDocument> {
-    const startedAt = performance.now();
-    console.info("[EPUB.ts] Checking launcher document resource.", {
+    startupTrace.start("launcher-document-check", {
       method: "HEAD",
       url: this.resourceUrl,
     });
@@ -58,16 +58,11 @@ class EpubLauncherSession implements EpubFileHandle {
     try {
       response = await fetch(this.resourceUrl, { method: "HEAD", cache: "no-store" });
     } catch (error) {
-      console.info("[EPUB.ts] Launcher document resource check failed.", {
-        durationMs: Math.round(performance.now() - startedAt),
-        error,
-        url: this.resourceUrl,
-      });
+      startupTrace.fail("launcher-document-check", error, { url: this.resourceUrl });
       throw error;
     }
-    console.info("[EPUB.ts] Launcher document resource responded.", {
+    startupTrace.complete("launcher-document-check", {
       contentLength: response.headers.get("Content-Length"),
-      durationMs: Math.round(performance.now() - startedAt),
       status: response.status,
       version: stripEtag(response.headers.get("ETag")) || undefined,
     });

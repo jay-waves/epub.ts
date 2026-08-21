@@ -26,7 +26,6 @@ export class Reader {
     if (this.#disposed) throw new DOMException("Reader disposed", "AbortError");
     if (this.#opened) throw new Error("Reader already opened");
     this.#opened = true;
-    const startedAt = performance.now();
     try {
       const book = await createBook(this.source.input);
       if (this.#disposed) {
@@ -34,30 +33,11 @@ export class Reader {
         throw new DOMException("Reader disposed", "AbortError");
       }
       this.book = book;
-      const navigationStartedAt = performance.now();
-      console.info("[EPUB.ts] Building publication navigation indexes.", {
-        sections: book.sections.length,
-        tocItems: book.toc?.length ?? 0,
-      });
       this.navigation = await Navigation.create(book);
-      console.info("[EPUB.ts] Publication navigation indexes built.", {
-        durationMs: Math.round(performance.now() - navigationStartedAt),
-      });
       this.#throwIfDisposed();
-      const rendererStartedAt = performance.now();
-      console.info("[EPUB.ts] Initializing document renderer.", {
-        layout: book.rendition?.layout ?? "reflowable",
-      });
       await this.view.open(book, this.navigation);
-      console.info("[EPUB.ts] Document renderer initialized.", {
-        durationMs: Math.round(performance.now() - rendererStartedAt),
-        renderMode: this.view.renderMode,
-      });
       this.#throwIfDisposed();
       this.navigation.attach(this.view.renderer);
-      console.info("[EPUB.ts] Reader core initialization completed.", {
-        durationMs: Math.round(performance.now() - startedAt),
-      });
     } catch (error) {
       await this.dispose();
       throw error;

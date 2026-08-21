@@ -9,7 +9,7 @@ import { contextMenuStore } from "./context-menu-store";
 import type { ReaderHighlight } from "../epub/annotations";
 import {
   claimReaderPointer,
-  consumeReaderInteraction,
+  consumeReaderEvent,
   consumeReaderPointerClaim,
 } from "./interaction-arbiter";
 import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
@@ -88,16 +88,16 @@ function drawHighlightWithAnnotationBadge(
       hitTarget.append(hitRect);
     }
     hitTarget.addEventListener("pointerdown", (event) => {
-      claimReaderPointer(event.pointerId, "highlight");
+      claimReaderPointer(event, "highlight");
     });
     hitTarget.addEventListener("pointercancel", (event) => {
-      consumeReaderPointerClaim(event.pointerId);
+      consumeReaderPointerClaim(event);
     });
     hitTarget.addEventListener("pointerup", (event) => {
-      queueMicrotask(() => consumeReaderPointerClaim(event.pointerId));
+      queueMicrotask(() => consumeReaderPointerClaim(event));
     });
     const activate = (event: MouseEvent) => {
-      consumeReaderInteraction(event);
+      consumeReaderEvent(event, "immediate");
       options.onActivate?.(event);
     };
     hitTarget.addEventListener("click", activate);
@@ -119,13 +119,11 @@ function drawHighlightWithAnnotationBadge(
   badge.style.cursor = "pointer";
   badge.style.pointerEvents = "auto";
   badge.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+    consumeReaderEvent(event, "stop");
     options.onBadgeClick?.(event);
   });
   badge.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+    consumeReaderEvent(event, "stop");
   });
 
   const box = createSvgElement("rect");
@@ -399,8 +397,7 @@ export function createHighlights(options: HighlightOptions) {
           const media = ElementClass && event.target instanceof ElementClass
             ? event.target.closest("img, svg")
             : null;
-          event.preventDefault();
-          event.stopPropagation();
+          consumeReaderEvent(event, "stop");
           if (media && media !== currentContent?.overlay?.element) {
             if (!currentContent) return;
             const pagePoint = getPagePoint(event, currentContent, "content");
@@ -415,8 +412,7 @@ export function createHighlights(options: HighlightOptions) {
       if (frameElement) {
         const openContextMenu = (event: Event) => {
           if (!(event instanceof MouseEvent)) return;
-          event.preventDefault();
-          event.stopPropagation();
+          consumeReaderEvent(event, "stop");
           const currentContent = findContentByFrame(frameElement);
           if (currentContent) openFromPointer(event, currentContent, "viewport");
         };

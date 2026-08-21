@@ -1,11 +1,13 @@
 import { DragGesture } from "@use-gesture/vanilla";
 import { WheelGestures } from "wheel-gestures";
-import type { PageTurnDirection, ReaderView } from "./reader/model";
+import type { ReaderView, StepDirection } from "./reader/model";
 import type { Navigation } from "./reader/navigation";
 import { observeRenderedDocuments } from "./reader/documents";
 import { KineticScroller } from "./reader/kinetic-scroller";
 import type { ReaderCommand } from "./viewer-events";
 import {
+  claimReaderPointer,
+  consumeReaderEvent,
   consumeReaderPointerClaim,
   resolveReaderPointerIntent,
 } from "./reader/interaction-arbiter";
@@ -21,6 +23,11 @@ const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
+
+const STEP_COMMANDS = {
+  left: "step-left",
+  right: "step-right",
+} as const satisfies Record<StepDirection, ReaderCommand>;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!target || (target as Node).nodeType !== Node.ELEMENT_NODE) return false;
@@ -64,6 +71,7 @@ export function createViewerInput(options: ViewerInputOptions) {
   let wheelBoundaryInFlight = false;
   let progressPrefix = "";
   const activeWheelTargets = new Set<Document>();
+  const dispatchStep = (direction: StepDirection) => options.dispatchCommand(STEP_COMMANDS[direction]);
 
   const clearWheelBoundary = () => {
     if (wheelBoundaryDirection) options.onChapterBoundary(wheelBoundaryDirection, false);
@@ -168,13 +176,13 @@ export function createViewerInput(options: ViewerInputOptions) {
     void movement?.catch((error) => console.warn("Failed to move reader viewport.", error));
   };
 
-  const turnPage = (direction: PageTurnDirection) => {
+  const executeStep = (direction: StepDirection) => {
     const isRtl = options.getView()?.book?.dir === "rtl";
     const forward = direction === "left" ? isRtl : !isRtl;
     turnInReadingOrder(forward ? 1 : -1);
   };
 
-  const turnWholePage = (direction: -1 | 1) => turnInReadingOrder(direction, true);
+  const executePaginate = (direction: -1 | 1) => turnInReadingOrder(direction, true);
 
   const scrollByKey = (direction: number) => {
     scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
@@ -184,7 +192,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     inertia.stop();
     if (event.ctrlKey && event.key.toLowerCase() === "o") {
       progressPrefix = "";
-      event.preventDefault();
+      consumeReaderEvent(event);
       if (event.repeat) return;
       options.dispatchProgressReturn();
       return;
@@ -192,7 +200,7 @@ export function createViewerInput(options: ViewerInputOptions) {
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
       progressPrefix = "";
-      event.preventDefault();
+      consumeReaderEvent(event);
       if (event.repeat) return;
       options.dispatchCommand("save-book");
       return;
@@ -200,7 +208,7 @@ export function createViewerInput(options: ViewerInputOptions) {
 
     if (event.key === "Escape") {
       progressPrefix = "";
-      event.preventDefault();
+      consumeReaderEvent(event);
       options.dispatchCommand("escape");
       return;
     }
@@ -209,7 +217,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       progressPrefix = "";
       return;
     }
-    if (event.repeat) return event.preventDefault();
+    if (event.repeat) return consumeReaderEvent(event);
 
     if (event.ctrlKey || event.metaKey) {
       progressPrefix = "";
@@ -225,7 +233,7 @@ export function createViewerInput(options: ViewerInputOptions) {
           break;
       }
       if (!command) return;
-      event.preventDefault();
+      consumeReaderEvent(event);
       options.dispatchCommand(command);
       return;
     }
@@ -235,7 +243,7 @@ export function createViewerInput(options: ViewerInputOptions) {
 
     const hasCommandModifiers = event.altKey || event.ctrlKey || event.metaKey;
     if (!hasCommandModifiers && /^\d$/.test(event.key)) {
-      event.preventDefault();
+      consumeReaderEvent(event);
       progressPrefix += event.key;
       return;
     }
@@ -243,7 +251,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (!hasCommandModifiers && event.key === "G" && progressPrefix) {
       const percentage = Number(progressPrefix);
       progressPrefix = "";
-      event.preventDefault();
+      consumeReaderEvent(event);
       if (percentage <= 100) options.dispatchProgressSeek(percentage / 100);
       return;
     }
@@ -254,22 +262,22 @@ export function createViewerInput(options: ViewerInputOptions) {
     switch (event.key) {
       case "ArrowLeft":
       case "h":
-        command = "page-left";
+        command = "step-left";
         break;
       case "ArrowRight":
       case "l":
-        command = "page-right";
+        command = "step-right";
         break;
       case "ArrowUp":
       case "k":
-        command = options.getFlow() === "scrolled" ? "scroll-up" : "page-up";
+        command = options.getFlow() === "scrolled" ? "scroll-previous" : "paginate-previous";
         break;
       case "ArrowDown":
       case "j":
-        command = options.getFlow() === "scrolled" ? "scroll-down" : "page-down";
+        command = options.getFlow() === "scrolled" ? "scroll-next" : "paginate-next";
         break;
       case " ":
-        if (options.getFlow() === "scrolled") command = "scroll-down";
+        if (options.getFlow() === "scrolled") command = "scroll-next";
         break;
       case "/":
         command = "open-search";
@@ -279,11 +287,11 @@ export function createViewerInput(options: ViewerInputOptions) {
         break;
     }
     if (!command) return;
-    event.preventDefault();
+    consumeReaderEvent(event);
     options.dispatchCommand(command);
   };
 
-  const edgeDirection = (sourceDocument: Document, clientX: number): PageTurnDirection | null => {
+  const edgeDirection = (sourceDocument: Document, clientX: number): StepDirection | null => {
     const frame = sourceDocument.defaultView?.frameElement;
     const frameLeft = frame?.nodeType === Node.ELEMENT_NODE
       ? (frame as Element).getBoundingClientRect().left
@@ -310,11 +318,10 @@ export function createViewerInput(options: ViewerInputOptions) {
       const direction = edgeDirection(sourceDocument, click.clientX);
       if (!direction) return;
 
-      click.preventDefault();
-      click.stopPropagation();
       const selection = sourceDocument.defaultView?.getSelection();
       if (selection && !selection.isCollapsed) return;
-      turnPage(direction);
+      consumeReaderEvent(click, "stop");
+      dispatchStep(direction);
     };
     target.addEventListener("click", handleMouseClick, { capture: true });
     const drag = new DragGesture<PointerEvent>(target, (state) => {
@@ -329,9 +336,10 @@ export function createViewerInput(options: ViewerInputOptions) {
           state.cancel();
           return;
         }
+        const intent = claimReaderPointer(event);
         // A higher-priority owner still needs the browser's original pointer
         // sequence so it can receive its synthesized click.
-        if (isInteractiveTarget(event)) return;
+        if (intent !== "content") return;
         active = true;
         inertia.stop();
         if (event.pointerType === "touch") {
@@ -341,19 +349,24 @@ export function createViewerInput(options: ViewerInputOptions) {
         }
       }
 
-      if (!active) return;
+      if (!active) {
+        if (ending) consumeReaderPointerClaim(event);
+        return;
+      }
       if (state.intentional) clearLongPress();
       if (selecting) {
         if (ending) {
           active = false;
           clearLongPress();
+          consumeReaderPointerClaim(event);
         }
         return;
       }
       if (ending) {
         active = false;
         clearLongPress();
-        if (consumeReaderPointerClaim(event.pointerId)) return;
+        const intent = consumeReaderPointerClaim(event);
+        if (intent && intent !== "content") return;
         if (state.canceled || event.type === "pointercancel") return;
         if (state.tap) {
           const selection = sourceDocument.defaultView?.getSelection();
@@ -361,9 +374,8 @@ export function createViewerInput(options: ViewerInputOptions) {
           const direction = edgeDirection(sourceDocument, event.clientX);
           if (direction) {
             if (event.pointerType === "mouse") return;
-            event.preventDefault();
-            event.stopPropagation();
-            turnPage(direction);
+            consumeReaderEvent(event, "stop");
+            dispatchStep(direction);
           }
         } else if (event.pointerType !== "mouse") {
           const velocityX = -state.direction[0] * state.velocity[0];
@@ -375,8 +387,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       }
       if (!state.intentional || event.pointerType === "mouse") return;
 
-      event.preventDefault();
-      event.stopPropagation();
+      consumeReaderEvent(event, "stop");
       const dx = -state.delta[0];
       const dy = -state.delta[1];
       if (options.getFlow() === "scrolled") options.getNavigation()?.scrollBy(dy);
@@ -422,7 +433,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       const deltaX = -axisX;
       const deltaY = -axisY;
       const isHorizontal = Math.abs(deltaX) >= Math.abs(deltaY) * WHEEL_SWIPE_AXIS_RATIO;
-      if (isHorizontal) event.preventDefault();
+      if (isHorizontal) consumeReaderEvent(event);
 
       if (!state.isMomentum && !swipeConsumed && event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
         const [movementX, movementY] = state.axisMovement;
@@ -433,7 +444,7 @@ export function createViewerInput(options: ViewerInputOptions) {
         if (isHorizontalSwipe) {
           swipeConsumed = true;
           suppressWheelScroll();
-          turnPage(movementX < 0 ? "left" : "right");
+          dispatchStep(movementX < 0 ? "left" : "right");
           return;
         }
       }
@@ -443,7 +454,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       const delta = rawDelta * WHEEL_SCROLL_GAIN;
       const direction = Math.sign(delta);
       if (!direction) return;
-      event.preventDefault();
+      consumeReaderEvent(event);
       if (state.isMomentum) inertia.stop();
       const coarse = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
         || Math.abs(delta) >= COARSE_WHEEL_DELTA_PX;
@@ -461,42 +472,54 @@ export function createViewerInput(options: ViewerInputOptions) {
 
   const bindSideButtonNavigation = (targetDocument: Document) => {
     let pressedButton: 3 | 4 | null = null;
-    const stopSideButtonEvent = (event: MouseEvent | PointerEvent) => {
+    let trackingMove = false;
+
+    function stopSideButtonEvent(event: MouseEvent | PointerEvent) {
       if (event.button !== 3 && event.button !== 4) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    };
-    const handleMouseDown = (event: MouseEvent) => {
+      consumeReaderEvent(event, "immediate");
+    }
+    function handlePointerMove(event: PointerEvent) {
+      if (event.buttons & 24) consumeReaderEvent(event, "immediate");
+      else stopTracking();
+    }
+    function startTracking() {
+      if (trackingMove) return;
+      trackingMove = true;
+      targetDocument.addEventListener("pointermove", handlePointerMove, { capture: true });
+    }
+    function stopTracking() {
+      pressedButton = null;
+      if (!trackingMove) return;
+      trackingMove = false;
+      targetDocument.removeEventListener("pointermove", handlePointerMove, { capture: true });
+    }
+    function handleMouseDown(event: MouseEvent) {
       if (event.button !== 3 && event.button !== 4) return;
       stopSideButtonEvent(event);
       pressedButton = event.button;
-    };
-    const handleMouseUp = (event: MouseEvent) => {
+      startTracking();
+    }
+    function handleMouseUp(event: MouseEvent) {
       if (event.button !== 3 && event.button !== 4) return;
       stopSideButtonEvent(event);
       const shouldNavigate = pressedButton === event.button;
-      pressedButton = null;
-      if (shouldNavigate) turnWholePage(event.button === 3 ? -1 : 1);
-    };
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!(event.buttons & 24)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    };
-    const clearPress = () => { pressedButton = null; };
+      stopTracking();
+      if (shouldNavigate) {
+        options.dispatchCommand(event.button === 3 ? "paginate-previous" : "paginate-next");
+      }
+    }
     const targetWindow = targetDocument.defaultView;
 
     targetDocument.addEventListener("mousedown", handleMouseDown, { capture: true });
     targetDocument.addEventListener("mouseup", handleMouseUp, { capture: true });
-    targetDocument.addEventListener("pointermove", handlePointerMove, { capture: true });
     targetDocument.addEventListener("auxclick", stopSideButtonEvent, { capture: true });
-    targetWindow?.addEventListener("blur", clearPress);
+    targetWindow?.addEventListener("blur", stopTracking);
     return () => {
+      stopTracking();
       targetDocument.removeEventListener("mousedown", handleMouseDown, { capture: true });
       targetDocument.removeEventListener("mouseup", handleMouseUp, { capture: true });
-      targetDocument.removeEventListener("pointermove", handlePointerMove, { capture: true });
       targetDocument.removeEventListener("auxclick", stopSideButtonEvent, { capture: true });
-      targetWindow?.removeEventListener("blur", clearPress);
+      targetWindow?.removeEventListener("blur", stopTracking);
     };
   };
 
@@ -561,8 +584,8 @@ export function createViewerInput(options: ViewerInputOptions) {
       inputTargets.clear();
     },
     scrollByKey,
-    turnPage,
-    turnWholePage,
+    executeStep,
+    executePaginate,
     unbindReaderView,
   };
 }
