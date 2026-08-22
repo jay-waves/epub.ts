@@ -1,9 +1,9 @@
 import { Overlay } from "../../renderer";
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../../viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
 import {
   getSavedHighlights,
   setSavedHighlights,
-} from "../../viewer-storage";
+} from "../storage";
 import type { HighlightContextAction } from "../context-menu-store";
 import { contextMenuStore } from "../context-menu-store";
 import type { ReaderHighlight } from "../../epub/annotations";

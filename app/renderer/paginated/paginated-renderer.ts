@@ -602,7 +602,7 @@ export class PaginatedRenderer extends HTMLElement {
         const node = 'startContainer' in anchor ? anchor.startContainer : anchor
         const element = node?.nodeType === Node.ELEMENT_NODE
             ? node as Element : node?.parentElement
-        element?.animate?.([
+        element?.animate([
             { backgroundColor: 'color-mix(in srgb, currentColor 18%, transparent)' },
             { backgroundColor: 'transparent' },
         ], { duration: 900, easing: 'ease-out' })

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Check, Copy, Languages, X } from "lucide-react";
-import { useFloatingPosition } from "./floating-position";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type { TranslationDetail } from "../viewer-events";
+import { usePointPopover } from "./use-point-popover";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import type { TranslationDetail } from "../../events";
 import { useViewerEvent } from "./use-viewer-event";
 
 type TranslationState = TranslationDetail & {
@@ -33,27 +33,28 @@ export function TranslationPopover() {
     setState((current) => ({ ...current, open: false }));
   });
 
-  const { floatingProps, floatingStyles, refs } = useFloatingPosition({
+  const popover = usePointPopover({
     onDismiss: () => emitViewerEvent(VIEWER_EVENTS.translationClose),
     open: state.open,
-    point: { x: state.x, y: state.y },
+    x: state.x,
+    y: state.y,
   });
-
-  if (!state.open) return null;
 
   const translatedText = state.translatedText?.trim() ?? "";
   const canCopy = state.status === "success" && Boolean(translatedText);
 
   return (
-    <section
-      {...floatingProps}
-      aria-label="Translation"
-      aria-live="polite"
-      className="reader-text-popover"
-      ref={refs.setFloating}
-      role="dialog"
-      style={floatingStyles}
-    >
+    <>
+      <span aria-hidden="true" className="reader-popover-anchor" style={popover.anchorStyle} />
+      <section
+        aria-label="Translation"
+        aria-live="polite"
+        className="reader-text-popover"
+        popover="auto"
+        ref={popover.setPopover}
+        role="dialog"
+        style={popover.popoverStyle}
+      >
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">
           <Languages size={16} aria-hidden="true" />
@@ -94,6 +95,7 @@ export function TranslationPopover() {
           </p>
         )}
       </div>
-    </section>
+      </section>
+    </>
   );
 }

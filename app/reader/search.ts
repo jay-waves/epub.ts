@@ -1,7 +1,7 @@
 import type { Anchor, Book, Content, OverlayDraw } from "../renderer";
 import type { ReaderView } from "./model";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import { getSavedHighlights } from "../viewer-storage";
+import { emitViewerEvent, VIEWER_EVENTS } from "./events";
+import { getSavedHighlights } from "./storage";
 import type { Navigation } from "./navigation";
 
 const MAX_QUERY_LENGTH = 120;

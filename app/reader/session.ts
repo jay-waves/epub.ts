@@ -1,5 +1,5 @@
-import type { TocItem } from "./renderer";
-import type { PlatformDocument } from "./platform/types";
+import type { TocItem } from "../renderer";
+import type { PlatformDocument } from "../platform/types";
 
 type BookSession = ReturnType<typeof createBookSession>;
 

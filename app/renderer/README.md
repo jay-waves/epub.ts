@@ -1,5 +1,9 @@
 # Renderer
 
+Renderer owns low-level document mounting, layout, pagination, scrolling,
+geometry, and positioning. It does not own book typography, reader features,
+application state, or UI.
+
 渲染层包含三种实现：
 
 - `paginated/`：连续 spine 的多栏投影、步进和整屏翻页

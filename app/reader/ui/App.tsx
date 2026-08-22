@@ -7,7 +7,7 @@ import { SearchBar } from "./components/search-bar";
 import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
-import { listenViewerEvent, VIEWER_EVENTS } from "./viewer-events";
+import { listenViewerEvent, VIEWER_EVENTS } from "../events";
 
 export function App({
   onOpenLocalFile,

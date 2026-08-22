@@ -1,20 +1,5 @@
 import { Overlay } from './shared/overlay.ts'
 import { createRenderer, rendererModeForBook } from './renderer-factory.ts'
-import { installBookCssNormalization } from './shared/book-css.ts'
-
-const languageInfo = lang => {
-    if (!lang) return {}
-    try {
-        const canonical = Intl.getCanonicalLocales(lang)[0]
-        const locale = new Intl.Locale(canonical)
-        const isCJK = ['zh', 'ja', 'ko'].includes(locale.language)
-        const direction = (locale.getTextInfo?.() ?? locale.textInfo)?.direction
-        return { canonical, locale, isCJK, direction }
-    } catch (e) {
-        console.warn(e)
-        return {}
-    }
-}
 
 export class ReaderView extends HTMLElement {
     #root = this.attachShadow({ mode: 'closed' })
@@ -36,9 +21,7 @@ export class ReaderView extends HTMLElement {
         this.#events = new AbortController()
         const { signal } = this.#events
         this.book = book
-        installBookCssNormalization(book)
         this.navigation = navigation
-        this.language = languageInfo(book.metadata?.language)
 
         this.renderer = await createRenderer(rendererModeForBook(book))
         if (this.#destroyed) throw new DOMException('View destroyed', 'AbortError')
@@ -162,11 +145,6 @@ export class ReaderView extends HTMLElement {
         return this.dispatchEvent(new CustomEvent(name, { detail, cancelable }))
     }
     #onLoad({ doc, index }) {
-        // set language and dir if not already set
-        doc.documentElement.lang ||= this.language.canonical ?? ''
-        if (!this.language.isCJK)
-            doc.documentElement.dir ||= this.language.direction ?? ''
-
         this.#emit('load', { doc, index })
     }
     #onUnload(detail) {

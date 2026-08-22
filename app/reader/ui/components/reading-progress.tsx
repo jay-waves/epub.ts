@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 

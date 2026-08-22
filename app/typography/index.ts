@@ -1,13 +1,12 @@
 import { loadDocumentFonts } from "./fonts";
-import { getReaderFontFamily } from "../../renderer/shared/font-family";
-import { enhanceImages } from "./image-zoom";
-import { prepareMathRenderer, renderMathDocument } from "./math";
-import { preservePublisherFontScale } from "./font-scaling";
-import { getEpubType, markReaderSemantics } from "./semantics";
-import { enhanceTypography } from "./typography";
+import { getReaderFontFamily } from "./font-family";
+import { prepareMathRenderer, renderMathDocument } from "./processors/math";
+import { preservePublisherFontScale } from "./processors/font-scaling";
+import { getEpubType, markReaderSemantics } from "./processors/semantics";
+import { enhanceTypography } from "./processors/typography";
 
-export { closeContentOverlays, disposeContent } from "./image-zoom";
-export { clearMathCache } from "./math";
+export { clearMathCache } from "./processors/math";
+export { installTypographyNormalization } from "./normalization";
 
 const footnotesLabeledDocs = new WeakSet<Document>();
 
@@ -15,12 +14,15 @@ function normalizeInlineText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-export async function prepareContent(doc: Document, options: {
+export async function prepareTypography(doc: Document, options: {
   fontQueries: string[];
+  language?: unknown;
   reflowable: boolean;
   signal: AbortSignal;
 }) {
   if (options.signal.aborted) return;
+
+  applyDocumentLanguage(doc, options.language);
 
   if (!options.reflowable) return;
 
@@ -29,15 +31,13 @@ export async function prepareContent(doc: Document, options: {
   markReaderSemantics(doc);
   enhanceTypography(doc);
   labelFootnotes(doc);
-  enhanceImages(doc, options.signal);
-
   const codeBlocks = prepareReaderCodeBlocks(doc);
   const fontsReady = loadDocumentFonts(doc, options.fontQueries);
   const mathReady = doc.querySelector('math[display="block"]')
     ? prepareMathRenderer()
     : null;
   const highlighterReady = codeBlocks.length
-    ? import("./highlighter")
+    ? import("./processors/highlighter")
     : null;
 
   await fontsReady;
@@ -53,6 +53,30 @@ export async function prepareContent(doc: Document, options: {
       console.warn("Failed to load syntax highlighting; keeping the original code blocks.", error);
     }),
   ]);
+}
+
+function applyDocumentLanguage(doc: Document, language: unknown) {
+  const requested = typeof language === "string"
+    ? [language]
+    : Array.isArray(language)
+      ? language.filter((value): value is string => typeof value === "string")
+      : [];
+  if (!requested.length) return;
+
+  try {
+    const canonical = Intl.getCanonicalLocales(requested)[0];
+    if (!canonical) return;
+    const locale = new Intl.Locale(canonical);
+    doc.documentElement.lang ||= canonical;
+    if (!["zh", "ja", "ko"].includes(locale.language)) {
+      const { direction } = (locale as Intl.Locale & {
+        getTextInfo(): { direction: "ltr" | "rtl" };
+      }).getTextInfo();
+      doc.documentElement.dir ||= direction;
+    }
+  } catch (error) {
+    console.warn("Could not apply the publication language.", error);
+  }
 }
 
 function mapInlinePublisherFontFamilies(doc: Document) {

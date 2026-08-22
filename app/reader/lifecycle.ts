@@ -3,6 +3,7 @@ import type { ReaderView } from "./model";
 import { createBook } from "../epub/book";
 import type { PlatformDocument } from "../platform/types";
 import { Navigation } from "./navigation";
+import { installTypographyNormalization } from "../typography";
 
 /** All resources that belong to one document, in their ownership order. */
 export class Reader {
@@ -33,6 +34,7 @@ export class Reader {
         throw new DOMException("Reader disposed", "AbortError");
       }
       this.book = book;
+      installTypographyNormalization(book);
       this.navigation = await Navigation.create(book);
       this.#throwIfDisposed();
       await this.view.open(book, this.navigation);

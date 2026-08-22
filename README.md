@@ -60,25 +60,39 @@ pnpm package:linux   # package epub.ts with the compiled reader
 pnpm build:all       # compile once, then package every host
 ```
 
+### 运行环境 / Runtime support
+
+支持 Chrome/Edge 129+、Firefox 147+、Safari/iOS Safari 26+。项目直接使用现代 Web API，不为更早版本提供 polyfill 或降级实现；构建目标以 `package.json` 的 Browserslist 为准。
+
+Supports Chrome/Edge 129+, Firefox 147+, and Safari/iOS Safari 26+. Modern Web APIs are used directly, without polyfills or fallbacks for older releases. See the Browserslist in `package.json` for canonical build targets.
+
+剪贴板和本地文件功能需要安全上下文及用户授权。内置翻译不可用时不影响阅读，Web 版可转到外部翻译服务。
+
+Clipboard and local-file features require a secure context and user permission. Built-in translation is optional; the web build can use an external service instead.
+
+### 应用形态 / Application variants
+
 主要跨端差异：
 
-| 形态 | 最低运行环境 | 打开本地 EPUB | 保存 | 翻译 |
+| 形态 | 运行环境 | 打开本地 EPUB | 保存 | 翻译 |
 | --- | --- | --- | --- | --- |
-| 插件 | Chrome 120+ | 重定向已打开的 `file://*.epub` 标签；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
-| Web | Chrome/Edge 120+、Firefox 121+、Safari/iOS 17.2+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 未安装内置翻译模型时转到 Google 翻译 |
-| 桌面 | 系统浏览器：Chrome/Edge 120+ 或 Firefox 121+ | 支持系统文件关联，通过 `epub.ts.localhost` 本地服务读取 | 本地服务写回批注；检测到外部修改时改存冲突副本 | 内置翻译模型可按需下载 |
-
-各形态共享 ES2022、现代 HTML 与 CSS API 的基线；最低浏览器版本由构建配置统一约束。
+| 插件 | Chrome 129+ | 重定向已打开的 `file://*.epub` 标签；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
+| Web | Chrome/Edge 129+、Firefox 147+、Safari/iOS 26+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 未安装内置翻译模型时转到 Google 翻译 |
+| 桌面 | Chrome/Edge 129+、Firefox 147+ 或 Safari 26+ | 支持系统文件关联，通过 `epub.ts.localhost` 本地服务读取 | 本地服务写回批注；检测到外部修改时改存冲突副本 | 内置翻译模型可按需下载 |
 
 Key differences between platforms:
 
-| Application | Minimum runtime | Opening local EPUBs | Saving | Translation |
+| Application | Runtime | Opening local EPUBs | Saving | Translation |
 | --- | --- | --- | --- | --- |
-| Extension | Chrome 120+ | Redirects opened `file://*.epub` tabs; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
-| Web | Chrome/Edge 120+, Firefox 121+, Safari/iOS 17.2+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Translation falls back to Google Translate when no built-in model is installed |
-| Desktop | System browser: Chrome/Edge 120+ or Firefox 121+ | Supports OS file association and reads through the local `epub.ts.localhost` service | The local service writes annotations back; external changes produce a conflict copy | Built-in translation models may be downloaded on demand |
+| Extension | Chrome 129+ | Redirects opened `file://*.epub` tabs; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
+| Web | Chrome/Edge 129+, Firefox 147+, Safari/iOS 26+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Translation falls back to Google Translate when no built-in model is installed |
+| Desktop | Chrome/Edge 129+, Firefox 147+, or Safari 26+ | Supports OS file association and reads through the local `epub.ts.localhost` service | The local service writes annotations back; external changes produce a conflict copy | Built-in translation models may be downloaded on demand |
 
-All variants share an ES2022 baseline and modern HTML and CSS APIs. Minimum browser versions are enforced by the build configuration.
+### EPUB 内容兼容 / EPUB content compatibility
+
+放弃旧浏览器兼容不等于放弃旧书兼容。解析与排版层仍保留常见 EPUB 2/3 内容修复，包括旧命名空间与 `xlink:href`、`-epub-*` CSS 归一化、非规范元数据，以及既有批注数据迁移。这里兼容的是书籍内容，而不是过时的浏览器运行时。
+
+Dropping old-browser support does not drop old-book support. The parser and typography layers retain common EPUB 2/3 repairs, including legacy namespaces and `xlink:href`, `-epub-*` CSS normalization, irregular metadata, and migration of existing annotation data. These paths preserve publication compatibility, not obsolete browser runtimes.
 
 <img src="assets/screenshot1.png" width="800">
 

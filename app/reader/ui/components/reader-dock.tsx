@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type { DockAction, DockUpdateDetail } from "../viewer-events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import type { DockAction, DockUpdateDetail } from "../../events";
 import { Button, Tooltip } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 
@@ -28,16 +28,18 @@ const dockItems = [
 ] as const;
 
 export function ReaderDock() {
+  const [touchOpen, setTouchOpen] = useState(false);
   const [dockState, setDockState] = useState<DockUpdateDetail>({
     canSearch: false, layoutLabel: "Switch to Scrolling", hasUnsavedChanges: false, searchActive: false,
   });
 
   useViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);
+  useViewerEvent(VIEWER_EVENTS.dockToggle, () => setTouchOpen((open) => !open));
 
   if (dockState.searchActive) return null;
 
   return (
-    <aside className="reader-dock-shell">
+    <aside className={`reader-dock-shell${touchOpen ? " is-touch-open" : ""}`}>
       <div className="reader-dock">
         {dockItems.map((item) => {
           const label = getDockItemLabel(item.action, item.label, dockState);
@@ -50,7 +52,10 @@ export function ReaderDock() {
               <Button
                 aria-label={label}
                 disabled={disabled}
-                onClick={() => emitViewerEvent(VIEWER_EVENTS.dockAction, item.action)}
+                onClick={() => {
+                  setTouchOpen(false);
+                  emitViewerEvent(VIEWER_EVENTS.dockAction, item.action);
+                }}
               >
                 <span className="dock-button-content">
                   <Icon size={20} aria-hidden="true" />

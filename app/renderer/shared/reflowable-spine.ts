@@ -190,7 +190,7 @@ export class ReflowableSpine {
       .filter(doc => this.#applyStyles(doc, styles));
     if (!docs.length) return docs;
     requestAnimationFrame(() => this.#updateBackground());
-    Promise.all(docs.map(doc => doc.fonts?.ready)).then(this.#options.scheduleRender);
+    Promise.all(docs.map(doc => doc.fonts.ready)).then(this.#options.scheduleRender);
     return docs;
   }
 

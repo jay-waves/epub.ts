@@ -11,11 +11,7 @@ export function* findText(doc: Document, query: string, locale = "en"): Iterable
   const nodes = getTextNodes(doc);
   if (!nodes.length || !query) return;
 
-  if (typeof Intl.Segmenter === "function") {
-    yield* findWithSegmenter(doc, nodes, query, locale);
-  } else {
-    yield* findSimple(doc, nodes, query, locale);
-  }
+  yield* findWithSegmenter(doc, nodes, query, locale);
 }
 
 function getTextNodes(doc: Document) {
@@ -60,10 +56,13 @@ function* findWithSegmenter(doc: Document, nodes: Text[], query: string, locale:
   }
 
   for (let index = 0; index <= haystack.length - needle.length; index += 1) {
-    const parts = haystack.slice(index, index + needle.length);
-    if (collator.compare(needleText, parts.map((part) => part.segment).join("")) !== 0) continue;
-    const first = parts[0];
-    const last = parts.at(-1);
+    let candidate = "";
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      candidate += haystack[index + offset]?.segment ?? "";
+    }
+    if (collator.compare(needleText, candidate) !== 0) continue;
+    const first = haystack[index];
+    const last = haystack[index + needle.length - 1];
     if (!first || !last) continue;
     const range = doc.createRange();
     range.setStart(first.node, first.index);
@@ -85,43 +84,4 @@ function normalizeSegments(segments: Intl.Segments) {
 function normalizeSegment(segment: string) {
   if (!/[^\p{Format}]/u.test(segment)) return "";
   return /\s/u.test(segment) ? " " : segment;
-}
-
-function* findSimple(doc: Document, nodes: Text[], query: string, locale: string) {
-  const text = nodes.map((node) => node.data).join("");
-  const haystack = lower(text, locale);
-  const needle = lower(query, locale);
-  let start = haystack.indexOf(needle);
-  while (start >= 0) {
-    const end = start + needle.length;
-    const startPoint = locate(nodes, start, false);
-    const endPoint = locate(nodes, end, true);
-    if (startPoint && endPoint) {
-      const range = doc.createRange();
-      range.setStart(startPoint.node, startPoint.offset);
-      range.setEnd(endPoint.node, endPoint.offset);
-      yield range;
-    }
-    start = haystack.indexOf(needle, start + 1);
-  }
-}
-
-function locate(nodes: Text[], position: number, end: boolean) {
-  let offset = 0;
-  for (const [index, node] of nodes.entries()) {
-    const next = offset + node.length;
-    if (position < next || end && position === next || index === nodes.length - 1) {
-      return { node, offset: Math.max(0, Math.min(node.length, position - offset)) };
-    }
-    offset = next;
-  }
-  return undefined;
-}
-
-function lower(value: string, locale: string) {
-  try {
-    return value.toLocaleLowerCase(locale);
-  } catch {
-    return value.toLocaleLowerCase();
-  }
 }

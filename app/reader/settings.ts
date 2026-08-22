@@ -1,4 +1,4 @@
-import { createBookStyles } from "./book-styles";
+import { createBookStyles } from "../typography/styles/book-styles";
 import { readerSettings } from "./model";
 import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
 import type { ReaderView } from "./model";

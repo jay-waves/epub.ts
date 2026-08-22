@@ -1,9 +1,9 @@
 import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useStore } from "zustand";
-import { useFloatingPosition } from "./floating-position";
-import type { HighlightContextAction } from "../reader/context-menu-store";
-import { contextMenuStore } from "../reader/context-menu-store";
+import { usePointPopover } from "./use-point-popover";
+import type { HighlightContextAction } from "../../context-menu-store";
+import { contextMenuStore } from "../../context-menu-store";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
@@ -15,33 +15,35 @@ const menuItems = [
 
 export function HighlightContextMenu() {
   const state = useStore(contextMenuStore);
-  const { floatingProps, floatingStyles, refs } = useFloatingPosition({
-    gap: 4,
+  const popover = usePointPopover({
     onDismiss: state.close,
     open: state.open,
-    point: { x: state.x, y: state.y },
+    x: state.x,
+    y: state.y,
   });
 
-  if (!state.open) return null;
   const visibleItems = state.kind === "media" ? menuItems.slice(0, 1) : menuItems;
 
   return (
-    <div
-      {...floatingProps}
-      className="reader-context-menu"
-      ref={refs.setFloating}
-      style={floatingStyles}
-      role="menu"
-    >
-      {visibleItems.map((item) => (
-        <ContextMenuItem
-          {...item}
-          disabled={!state[item.enabledBy]}
-          key={item.action}
-          onSelect={state.select}
-        />
-      ))}
-    </div>
+    <>
+      <span aria-hidden="true" className="reader-popover-anchor" style={popover.anchorStyle} />
+      <div
+        className="reader-context-menu"
+        popover="auto"
+        ref={popover.setPopover}
+        style={popover.popoverStyle}
+        role="menu"
+      >
+        {visibleItems.map((item) => (
+          <ContextMenuItem
+            {...item}
+            disabled={!state[item.enabledBy]}
+            key={item.action}
+            onSelect={state.select}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 

@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { TocItem } from "../renderer";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type { TocUpdateDetail } from "../viewer-events";
-import { normalizeTocHref } from "../epub/metadata";
+import type { TocItem } from "../../../renderer";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import type { TocUpdateDetail } from "../../events";
+import { normalizeTocHref } from "../../../epub/metadata";
 import { Dialog } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 

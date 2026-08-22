@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type { SearchUpdateDetail } from "../viewer-events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import type { SearchUpdateDetail } from "../../events";
 import { Button, Tooltip } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
 import { ChevronLeft, ChevronRight, Highlighter, X } from "lucide-react";

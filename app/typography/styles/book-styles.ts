@@ -5,7 +5,7 @@ import gruvboxDarkHighlightTheme from "highlight.js/styles/base16/gruvbox-dark-m
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
 import { platform } from "#platform";
 import bookStyles from "./book.css?raw";
-import type { ReaderTheme, ReaderThemeId } from "./model";
+import type { TypographyTheme, TypographyThemeId } from "../model";
 
 const readerProfile = platform.readerProfile;
 
@@ -88,7 +88,7 @@ type ReaderBookStyleOptions = {
   fontSize: number;
   layout: ReaderBookLayout;
   layoutLevel: number;
-  theme: ReaderTheme;
+  theme: TypographyTheme;
 };
 
 let cachedBookStyles: { key: string; value: [string, string] } | null = null;
@@ -104,7 +104,7 @@ function normalizeHighlightThemeCss(themeCss: string) {
     );
 }
 
-const READER_CODE_HIGHLIGHT_THEMES: Record<ReaderThemeId, string> = {
+const READER_CODE_HIGHLIGHT_THEMES: Record<TypographyThemeId, string> = {
   light: normalizeHighlightThemeCss(githubLightHighlightTheme),
   grey: normalizeHighlightThemeCss(atomOneLightHighlightTheme),
   dark: normalizeHighlightThemeCss(nordHighlightTheme),

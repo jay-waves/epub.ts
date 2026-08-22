@@ -1,11 +1,11 @@
 import { platform } from "#platform";
 import type { View } from "../renderer";
 import type { ReaderHighlight } from "../epub/annotations";
+import type { TypographyTheme, TypographyThemeId } from "../typography/model";
 
-type ReaderThemeMode = "light" | "dark";
 export type ReaderFlow = "paginated" | "scrolled";
 export type StepDirection = "left" | "right";
-export type ReaderThemeId = "light" | "grey" | "dark" | "one-dark" | "gruvbox";
+export type ReaderThemeId = TypographyThemeId;
 
 export type ReaderSettings = {
   fontSize: number;
@@ -14,17 +14,7 @@ export type ReaderSettings = {
   theme: ReaderThemeId;
 };
 
-export type ReaderTheme = {
-  id: ReaderThemeId;
-  bodyTheme: string;
-  mode: ReaderThemeMode;
-  background: string;
-  foreground: string;
-  link: string;
-  primary: string;
-  secondary: string;
-  secondaryInk: string;
-};
+export type ReaderTheme = TypographyTheme;
 
 export type ReadingPosition = {
   cfi?: string;

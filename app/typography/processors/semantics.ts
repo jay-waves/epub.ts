@@ -79,10 +79,7 @@ function isSuppressedClassRole(roles: Set<string>, role: string) {
 }
 
 function hasEpubRole(types: Set<string>, role: keyof typeof EPUB_ROLE_TYPES) {
-  for (const type of EPUB_ROLE_TYPES[role] as ReadonlySet<string>) {
-    if (types.has(type)) return true;
-  }
-  return false;
+  return !types.isDisjointFrom(EPUB_ROLE_TYPES[role]);
 }
 
 function getClassSegments(element: Element) {

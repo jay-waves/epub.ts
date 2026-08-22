@@ -1,16 +1,16 @@
 import { DragGesture } from "@use-gesture/vanilla";
 import { WheelGestures } from "wheel-gestures";
-import type { ReaderView, StepDirection } from "./reader/model";
-import type { Navigation } from "./reader/navigation";
-import { observeRenderedDocuments } from "./reader/documents";
-import { KineticScroller } from "./reader/kinetic-scroller";
-import type { ReaderCommand } from "./viewer-events";
+import type { ReaderView, StepDirection } from "./model";
+import type { Navigation } from "./navigation";
+import { observeRenderedDocuments } from "./documents";
+import { KineticScroller } from "./kinetic-scroller";
+import type { ReaderCommand } from "./events";
 import {
   claimReaderPointer,
   consumeReaderEvent,
   consumeReaderPointerClaim,
   resolveReaderPointerIntent,
-} from "./reader/interaction-arbiter";
+} from "./interaction-arbiter";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const SECTION_EDGE_EPSILON = 2;
@@ -23,6 +23,8 @@ const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
+const TOUCH_AXIS_RATIO = 1.2;
+const TOUCH_CENTER_INSET_RATIO = 0.25;
 
 const STEP_COMMANDS = {
   left: "step-left",
@@ -304,10 +306,27 @@ export function createViewerInput(options: ViewerInputOptions) {
     return null;
   };
 
+  const isCenterTap = (sourceDocument: Document, clientX: number, clientY: number) => {
+    const frame = sourceDocument.defaultView?.frameElement;
+    const frameRect = frame?.nodeType === Node.ELEMENT_NODE
+      ? (frame as Element).getBoundingClientRect()
+      : null;
+    const viewRect = options.getView()?.getBoundingClientRect();
+    if (!viewRect?.width || !viewRect.height) return false;
+    const x = (frameRect?.left ?? 0) + clientX - viewRect.left;
+    const y = (frameRect?.top ?? 0) + clientY - viewRect.top;
+    return x >= viewRect.width * TOUCH_CENTER_INSET_RATIO
+      && x <= viewRect.width * (1 - TOUCH_CENTER_INSET_RATIO)
+      && y >= viewRect.height * TOUCH_CENTER_INSET_RATIO
+      && y <= viewRect.height * (1 - TOUCH_CENTER_INSET_RATIO);
+  };
+
   const bindDragGesture = (target: EventTarget, sourceDocument: Document) => {
     let longPressTimer: number | undefined;
     let active = false;
     let selecting = false;
+    let gestureAxis: "horizontal" | "vertical" | null = null;
+    let suppressSyntheticClickUntil = 0;
     const clearLongPress = () => {
       if (longPressTimer !== undefined) window.clearTimeout(longPressTimer);
       longPressTimer = undefined;
@@ -315,6 +334,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     const handleMouseClick = (event: Event) => {
       const click = event as MouseEvent;
       if (!eventBelongsToReader(click) || isInteractiveTarget(click)) return;
+      if (performance.now() < suppressSyntheticClickUntil) return;
       const direction = edgeDirection(sourceDocument, click.clientX);
       if (!direction) return;
 
@@ -326,12 +346,13 @@ export function createViewerInput(options: ViewerInputOptions) {
     target.addEventListener("click", handleMouseClick, { capture: true });
     const drag = new DragGesture<PointerEvent>(target, (state) => {
       const event = state.event;
-      const starting = event.type === "pointerdown";
-      const ending = event.type === "pointerup" || event.type === "pointercancel";
+      const starting = state.first;
+      const ending = state.last;
       if (starting) {
         if (state.canceled) return;
         active = false;
         selecting = false;
+        gestureAxis = null;
         if (!eventBelongsToReader(event) || !event.isPrimary || event.button !== 0) {
           state.cancel();
           return;
@@ -365,19 +386,19 @@ export function createViewerInput(options: ViewerInputOptions) {
       if (ending) {
         active = false;
         clearLongPress();
+        if (event.pointerType === "touch") suppressSyntheticClickUntil = performance.now() + 500;
         const intent = consumeReaderPointerClaim(event);
         if (intent && intent !== "content") return;
         if (state.canceled || event.type === "pointercancel") return;
         if (state.tap) {
           const selection = sourceDocument.defaultView?.getSelection();
           if (selection && !selection.isCollapsed) return;
-          const direction = edgeDirection(sourceDocument, event.clientX);
-          if (direction) {
-            if (event.pointerType === "mouse") return;
+          if (event.pointerType !== "mouse" && isCenterTap(sourceDocument, event.clientX, event.clientY)) {
             consumeReaderEvent(event, "stop");
-            dispatchStep(direction);
+            options.dispatchCommand("toggle-dock");
           }
-        } else if (event.pointerType !== "mouse") {
+        } else if (event.pointerType !== "mouse"
+          && (options.getFlow() === "paginated" ? gestureAxis === "horizontal" : gestureAxis === "vertical")) {
           const velocityX = -state.direction[0] * state.velocity[0];
           const velocityY = -state.direction[1] * state.velocity[1];
           if (options.getFlow() === "paginated") options.getView()?.renderer?.settle?.(velocityX, velocityY);
@@ -386,6 +407,16 @@ export function createViewerInput(options: ViewerInputOptions) {
         return;
       }
       if (!state.intentional || event.pointerType === "mouse") return;
+
+      if (!gestureAxis) {
+        const [movementX, movementY] = state.movement;
+        if (Math.abs(movementX) >= Math.abs(movementY) * TOUCH_AXIS_RATIO) gestureAxis = "horizontal";
+        else if (Math.abs(movementY) >= Math.abs(movementX) * TOUCH_AXIS_RATIO) gestureAxis = "vertical";
+        else return;
+      }
+
+      const expectedAxis = options.getFlow() === "paginated" ? "horizontal" : "vertical";
+      if (gestureAxis !== expectedAxis) return;
 
       consumeReaderEvent(event, "stop");
       const dx = -state.delta[0];

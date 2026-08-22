@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, MessageSquareText, Trash2 } from "lucide-react";
-import { useFloatingPosition } from "./floating-position";
-import { emitViewerEvent, VIEWER_EVENTS } from "../viewer-events";
-import type { AnnotationDetail } from "../viewer-events";
+import { usePointPopover } from "./use-point-popover";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import type { AnnotationDetail } from "../../events";
 import { useViewerEvent } from "./use-viewer-event";
 
 type AnnotationState = AnnotationDetail & {
@@ -58,26 +58,27 @@ export function AnnotationPopover() {
     return () => cancelAnimationFrame(frame);
   }, [state.open, state.value]);
 
-  const { floatingProps, floatingStyles, refs } = useFloatingPosition({
+  const popover = usePointPopover({
     onDismiss: () => emitViewerEvent(VIEWER_EVENTS.annotationClose),
     open: state.open,
-    point: { x: state.x, y: state.y },
+    x: state.x,
+    y: state.y,
   });
-
-  if (!state.open) return null;
 
   const copyText = [state.sourceText, state.note.trim()].filter(Boolean).join("\n\n");
 
   return (
-    <section
-      {...floatingProps}
-      aria-label="Annotation"
-      aria-live="polite"
-      className="reader-text-popover"
-      ref={refs.setFloating}
-      role="dialog"
-      style={floatingStyles}
-    >
+    <>
+      <span aria-hidden="true" className="reader-popover-anchor" style={popover.anchorStyle} />
+      <section
+        aria-label="Annotation"
+        aria-live="polite"
+        className="reader-text-popover"
+        popover="auto"
+        ref={popover.setPopover}
+        role="dialog"
+        style={popover.popoverStyle}
+      >
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">
           <MessageSquareText size={16} aria-hidden="true" />
@@ -125,6 +126,7 @@ export function AnnotationPopover() {
           value={state.note}
         />
       </div>
-    </section>
+      </section>
+    </>
   );
 }

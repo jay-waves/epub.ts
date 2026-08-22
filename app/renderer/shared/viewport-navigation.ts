@@ -26,7 +26,9 @@ export class ViewportNavigation {
   async run<T>(task: NavigationTask<T>, reflow: () => void): Promise<T | undefined> {
     if (this.#active) return undefined;
     this.#active = true;
-    this.#idle = new Promise((resolve) => { this.#resolveIdle = resolve; });
+    const idle = Promise.withResolvers<void>();
+    this.#idle = idle.promise;
+    this.#resolveIdle = idle.resolve;
     try {
       return await task();
     } finally {

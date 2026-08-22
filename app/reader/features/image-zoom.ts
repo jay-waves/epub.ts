@@ -140,28 +140,34 @@ async function openReaderImageZoom(image: HTMLImageElement) {
   const proxy = createReaderImageZoomProxy(image);
   if (!proxy) return;
 
-  if (activeZoomProxy) {
-    try {
-      readerImageZoom?.detach(activeZoomProxy);
-    } catch {
-      // The previous proxy may already be detached.
-    }
-    activeZoomProxy.remove();
-  }
+  if (activeZoomProxy) removeZoomProxy(zoom, activeZoomProxy);
 
   activeZoomProxy = proxy;
   document.body.appendChild(proxy);
   zoom.attach(proxy);
-  await ensureImageReady(proxy);
-  if (runId !== imageZoomRunId) {
-    zoom.detach(proxy);
-    proxy.remove();
-    if (activeZoomProxy === proxy) activeZoomProxy = null;
-    return;
+  try {
+    await ensureImageReady(proxy);
+    if (runId !== imageZoomRunId) {
+      removeZoomProxy(zoom, proxy);
+      return;
+    }
+    await zoom.open({ target: proxy });
+    if (runId !== imageZoomRunId || activeZoomProxy !== proxy) return;
+    enlargeSmallZoomedImage(zoom.getZoomedImage());
+  } catch (error) {
+    removeZoomProxy(zoom, proxy);
+    throw error;
   }
-  await zoom.open({ target: proxy });
-  if (runId !== imageZoomRunId || activeZoomProxy !== proxy) return;
-  enlargeSmallZoomedImage(zoom.getZoomedImage());
+}
+
+function removeZoomProxy(zoom: MediumZoomInstance, proxy: HTMLImageElement) {
+  try {
+    zoom.detach(proxy);
+  } catch {
+    // A concurrent close may already have detached the proxy.
+  }
+  proxy.remove();
+  if (activeZoomProxy === proxy) activeZoomProxy = null;
 }
 
 function enlargeSmallZoomedImage(image: HTMLElement | null) {
@@ -215,24 +221,5 @@ function createReaderImageZoomProxy(image: HTMLImageElement) {
 
 async function ensureImageReady(image: HTMLImageElement) {
   if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) return;
-
-  try {
-    await image.decode();
-    return;
-  } catch {
-    // Fall through for browsers or image types decode() cannot resolve.
-  }
-
-  await new Promise<void>((resolve) => {
-    const cleanup = () => {
-      image.removeEventListener("load", handleDone);
-      image.removeEventListener("error", handleDone);
-    };
-    const handleDone = () => {
-      cleanup();
-      resolve();
-    };
-    image.addEventListener("load", handleDone, { once: true });
-    image.addEventListener("error", handleDone, { once: true });
-  });
+  await image.decode();
 }

@@ -125,8 +125,6 @@ const replaceAsync = async (str, regex, f) => {
     return str.replace(regex, () => results[index++])
 }
 
-const regexEscape = str => str.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
-
 const tidy = obj => {
     for (const [key, val] of Object.entries(obj))
         if (val == null) delete obj[key]
@@ -700,7 +698,7 @@ class Loader {
             return Array.from(set)
         }).flat().filter(x => x)
         if (!urls.length) return str
-        const regex = new RegExp(urls.map(regexEscape).join('|'), 'g')
+        const regex = new RegExp(urls.map(RegExp.escape).join('|'), 'g')
         return replaceAsync(str, regex, async match =>
             this.loadItem(assetMap.get(match.replace(/^\//, '')),
                 parents.concat(href)))

@@ -32,13 +32,6 @@
     ) {
       font-family: var(--reader-font-serif) !important;
     }
-    html::-webkit-scrollbar,
-    body::-webkit-scrollbar,
-    *::-webkit-scrollbar {
-      width: 0 !important;
-      height: 0 !important;
-      display: none !important;
-    }
     body,
     body :where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *)) {
       color: var(--reader-fg-color) !important;
@@ -168,9 +161,14 @@
       font-size: var(--reader-font-size) !important;
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
-      text-align: justify;
-      hyphens: auto !important;
+      text-align: var(--reader-text-align, start);
+      text-justify: var(--reader-text-justify, auto);
+      hyphens: var(--reader-hyphens, auto) !important;
       hyphenate-limit-chars: 8 3 3 !important;
+      line-break: var(--reader-line-break, auto);
+      overflow-wrap: break-word;
+      text-autospace: var(--reader-text-autospace, normal);
+      word-break: var(--reader-word-break, normal);
       word-spacing: var(--reader-word-spacing) !important;
     }
     :is(p, [data-reader-role~="paragraph"]) {
@@ -492,7 +490,6 @@
       background: var(--reader-panel-bg) !important;
       padding: 0.08em 0.28em !important;
       box-decoration-break: clone !important;
-      -webkit-box-decoration-break: clone !important;
     }
     pre,
     .hljs {
@@ -515,7 +512,6 @@
       break-inside: auto !important;
 
       box-decoration-break: clone !important;
-      -webkit-box-decoration-break: clone !important;
     }
     pre code,
     pre .hljs,

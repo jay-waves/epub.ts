@@ -216,7 +216,6 @@ export class SectionFrame {
 
     const doc = this.document;
     setStylesImportant(doc.documentElement, {
-      "-webkit-line-box-contain": "block glyphs replaced",
       "border": "0",
       "box-sizing": "border-box",
       "column-fill": "auto",

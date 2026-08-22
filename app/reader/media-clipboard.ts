@@ -28,7 +28,7 @@ async function copySvg(element: Element) {
   const blob = new Blob([new XMLSerializer().serializeToString(source)], { type: SVG_MIME_TYPE });
   const png = renderSvgBlob(blob, geometry.width, geometry.height);
 
-  if (ClipboardItem.supports?.(SVG_MIME_TYPE)) {
+  if (ClipboardItem.supports(SVG_MIME_TYPE)) {
     try {
       await navigator.clipboard.write([new ClipboardItem({
         [PNG_MIME_TYPE]: png,
@@ -124,17 +124,10 @@ async function renderSvgBlob(blob: Blob, width: number, height: number) {
 }
 
 function renderToPng(source: CanvasImageSource, width: number, height: number) {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas rendering is not available.");
   context.drawImage(source, 0, 0, width, height);
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Failed to encode the copied image."));
-    }, PNG_MIME_TYPE);
-  });
+  return canvas.convertToBlob({ type: PNG_MIME_TYPE });
 }

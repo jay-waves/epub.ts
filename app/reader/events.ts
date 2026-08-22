@@ -1,5 +1,5 @@
-import type { TocItem } from "./renderer";
-import type { BookInfo } from "./reader/book-info";
+import type { TocItem } from "../renderer";
+import type { BookInfo } from "./book-info";
 import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
@@ -12,6 +12,7 @@ export const VIEWER_EVENTS = {
   translationOpen: "reader:translation-open",
   translationUpdate: "reader:translation-update",
   dockAction: "reader:dock-action",
+  dockToggle: "reader:dock-toggle",
   dockUpdate: "reader:dock-update",
   documentOpen: "reader:document-open",
   progressReturn: "reader:progress-return",
@@ -81,6 +82,7 @@ export type ReaderCommand =
   | "paginate-previous"
   | "paginate-next"
   | "save-book"
+  | "toggle-dock"
   | "scroll-previous"
   | "scroll-next"
   | "zoom-in"
@@ -125,6 +127,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.translationOpen]: TranslationDetail;
   [VIEWER_EVENTS.translationUpdate]: TranslationDetail;
   [VIEWER_EVENTS.dockAction]: DockAction;
+  [VIEWER_EVENTS.dockToggle]: void;
   [VIEWER_EVENTS.dockUpdate]: DockUpdateDetail;
   [VIEWER_EVENTS.documentOpen]: void;
   [VIEWER_EVENTS.progressReturn]: void;
@@ -146,22 +149,16 @@ export type ViewerEventDetailMap = {
 
 const viewerEvents = new EventTarget();
 const STATE_EVENTS = new Set<string>([
-  VIEWER_EVENTS.annotationClose,
-  VIEWER_EVENTS.annotationOpen,
-  VIEWER_EVENTS.translationClose,
-  VIEWER_EVENTS.translationOpen,
-  VIEWER_EVENTS.translationUpdate,
   VIEWER_EVENTS.dockUpdate,
-  VIEWER_EVENTS.documentOpen,
-  VIEWER_EVENTS.progressReturn,
   VIEWER_EVENTS.progressUpdate,
   VIEWER_EVENTS.searchUpdate,
-  VIEWER_EVENTS.bookInfoOpen,
   VIEWER_EVENTS.bookInfoUpdate,
-  VIEWER_EVENTS.tocOpen,
-  VIEWER_EVENTS.tocClose,
   VIEWER_EVENTS.tocUpdate,
 ]);
+
+export function isViewerStateEvent(eventName: keyof ViewerEventDetailMap) {
+  return STATE_EVENTS.has(eventName);
+}
 
 type ViewerStateUpdate = { detail: unknown; revision: number };
 type ViewerState = { updates: Record<string, ViewerStateUpdate | undefined> };

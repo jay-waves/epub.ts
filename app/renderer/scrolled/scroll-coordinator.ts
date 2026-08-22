@@ -5,9 +5,6 @@ type ProjectedRect = {
   top: number;
 };
 
-const UPDATE_INTERVAL = 80;
-const IDLE_DELAY = 140;
-
 function getFrame(doc: Document) {
   return doc.defaultView?.frameElement as HTMLElement | null;
 }
@@ -46,20 +43,12 @@ function getAnchorTarget(
 }
 
 function collapsedRangeAt(doc: Document, x: number, y: number) {
-  const position = doc.caretPositionFromPoint?.(x, y);
+  const position = doc.caretPositionFromPoint(x, y);
   if (position) {
     const range = doc.createRange();
     range.setStart(position.offsetNode, position.offset);
     range.collapse(true);
     return range;
-  }
-
-  const legacy = (doc as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  }).caretRangeFromPoint?.(x, y);
-  if (legacy) {
-    legacy.collapse(true);
-    return legacy;
   }
 
   const element = doc.elementFromPoint(x, y);
@@ -114,13 +103,12 @@ function getReadingRange(
 export class ScrollCoordinator {
   readonly #container: HTMLElement;
   readonly #update: () => void;
-  #updateTimer: number | undefined;
-  #idleTimer: number | undefined;
-  #lastUpdate = 0;
+  #updateFrame = 0;
 
   constructor(container: HTMLElement, update: () => void) {
     this.#container = container;
     this.#update = update;
+    container.addEventListener("scrollend", this.#handleScrollEnd);
   }
 
   anchorTarget(doc: Document, rect: DOMRect, inset: number) {
@@ -132,44 +120,38 @@ export class ScrollCoordinator {
   }
 
   schedule() {
-    const update = () => {
-      this.#updateTimer = undefined;
-      this.#lastUpdate = performance.now();
-      this.#update();
-    };
-    if (this.#updateTimer === undefined) {
-      const elapsed = performance.now() - this.#lastUpdate;
-      this.#updateTimer = window.setTimeout(
-        update,
-        Math.max(0, UPDATE_INTERVAL - elapsed),
-      );
+    if (!this.#updateFrame) {
+      this.#updateFrame = requestAnimationFrame(() => {
+        this.#updateFrame = 0;
+        this.#update();
+      });
     }
-    window.clearTimeout(this.#idleTimer);
-    this.#idleTimer = window.setTimeout(() => {
-      this.flush();
-    }, IDLE_DELAY);
   }
+
+  readonly #handleScrollEnd = () => {
+    if (this.#updateFrame) {
+      cancelAnimationFrame(this.#updateFrame);
+      this.#updateFrame = 0;
+    }
+    this.#update();
+  };
 
   /** Commits the latest physical scroll before a reflow can restore its anchor. */
   flush() {
-    if (this.#updateTimer === undefined && this.#idleTimer === undefined) return false;
-    window.clearTimeout(this.#updateTimer);
-    window.clearTimeout(this.#idleTimer);
-    this.#updateTimer = undefined;
-    this.#idleTimer = undefined;
-    this.#lastUpdate = performance.now();
+    if (!this.#updateFrame) return false;
+    cancelAnimationFrame(this.#updateFrame);
+    this.#updateFrame = 0;
     this.#update();
     return true;
   }
 
   cancel() {
-    window.clearTimeout(this.#updateTimer);
-    window.clearTimeout(this.#idleTimer);
-    this.#updateTimer = undefined;
-    this.#idleTimer = undefined;
+    cancelAnimationFrame(this.#updateFrame);
+    this.#updateFrame = 0;
   }
 
   destroy() {
     this.cancel();
+    this.#container.removeEventListener("scrollend", this.#handleScrollEnd);
   }
 }

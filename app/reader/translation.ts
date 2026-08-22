@@ -1,4 +1,4 @@
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../viewer-events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./events";
 
 type TranslationResource = {
   destroy?: () => void;
