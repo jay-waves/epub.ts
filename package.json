@@ -2,7 +2,7 @@
 	"name": "epub.ts",
 	"license": "MIT",
 	"private": true,
-	"version": "0.5.8",
+	"version": "0.6.4",
 	"type": "module",
 	"browserslist": {
 		"production": [
