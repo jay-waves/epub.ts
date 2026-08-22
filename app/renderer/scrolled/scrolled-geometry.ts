@@ -5,7 +5,6 @@ import {
 
 export const scrolledGeometry: ScrolledGeometry = Object.freeze({
   mode: "scrolled",
-  sectionLayout: "scrolled",
   continuous: supportsContinuousSpine,
   scrollAxis: ({ vertical }) => vertical ? "scrollLeft" : "scrollTop",
   inactiveScrollAxis: ({ vertical }) => vertical ? "scrollTop" : "scrollLeft",

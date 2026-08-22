@@ -26,39 +26,16 @@ test("keeps ordinary spine sections in one continuous column stream", () => {
     [1_500, 2_000, 2_500]);
 });
 
-test("starts a top-level navigation target on a new page", () => {
-  const track = new SpineTrack();
-  const entries = [entry(0), entry(1), entry(2)];
-  const placements = track.layout(entries, projection, {
-    breakBefore: index => index === 2,
-  }).placements;
-
-  assert.deepEqual(placements.map(({ physicalStart }) => physicalStart),
-    [1_500, 2_000, 3_000]);
-});
-
-test("does not add space when a top-level target is already page aligned", () => {
-  const track = new SpineTrack();
-  const entries = [entry(0, 3), entry(1), entry(2)];
-  const placements = track.layout(entries, projection, {
-    breakBefore: index => index === 1,
-  }).placements;
-
-  assert.deepEqual(placements.map(({ physicalStart }) => physicalStart),
-    [1_500, 3_000, 3_500]);
-});
-
 test("preserves the local viewport position when a preceding section is removed", () => {
   const track = new SpineTrack();
   const previous = entry(0, 4);
   const current = entry(1, 20);
-  const options = { breakBefore: (index: number) => index === 1 };
-  track.layout([previous, current], projection, options);
+  track.layout([previous, current], projection);
   const oldEntryOffset = track.entryOffset(current, projection);
   const oldViewportOffset = oldEntryOffset + 3_000;
 
   track.updateForChange({ added: [], removed: [previous] }, current.index, projection);
-  track.layout([current], projection, options);
+  track.layout([current], projection);
   const newEntryOffset = track.entryOffset(current, projection);
   const restoredViewportOffset = oldViewportOffset + newEntryOffset - oldEntryOffset;
 

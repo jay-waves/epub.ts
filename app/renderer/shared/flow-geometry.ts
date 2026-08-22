@@ -32,10 +32,8 @@ export type TrackProjection =
 
 export type ReflowableGeometry<
   Mode extends "paginated" | "scrolled",
-  SectionLayout extends "columns" | "scrolled",
 > = {
   mode: Mode;
-  sectionLayout: SectionLayout;
   continuous: (context: WritingContext) => boolean;
   extentSide: (context: WritingContext) => ExtentSide;
   inactiveScrollAxis: (context: WritingContext) => ScrollAxis;
@@ -43,11 +41,11 @@ export type ReflowableGeometry<
   trackProjection: (context: WritingContext, viewportSize: number) => TrackProjection;
 };
 
-export type PaginatedGeometry = ReflowableGeometry<"paginated", "columns"> & {
+export type PaginatedGeometry = ReflowableGeometry<"paginated"> & {
   columnCount: (viewportWidth: number) => 1 | 2 | 3;
 };
 
-export type ScrolledGeometry = ReflowableGeometry<"scrolled", "scrolled">;
+export type ScrolledGeometry = ReflowableGeometry<"scrolled">;
 
 export const supportsContinuousSpine = ({ bookDir, rtl, vertical }: WritingContext) =>
   !vertical && !rtl && bookDir !== "rtl";

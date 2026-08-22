@@ -5,7 +5,6 @@ import {
 
 export const paginatedGeometry: PaginatedGeometry = Object.freeze({
   mode: "paginated",
-  sectionLayout: "columns",
   continuous: supportsContinuousSpine,
   columnCount: (viewportWidth) => viewportWidth >= 2000
     ? 3

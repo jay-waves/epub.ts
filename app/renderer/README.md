@@ -16,8 +16,8 @@ application state, or UI.
 只处理自身的布局、滚动、吸附与定位投影。
 
 Paginated 始终以栏为最小单位：`prev()` / `next()` 移动一栏，
-`prevPage()` / `nextPage()` 按当前可见栏数移动。`SpineFlow` 以一级目录项
-建立分页边界，未命名的开头内容和嵌套目录内容保持连续。
+`prevPage()` / `nextPage()` 按当前可见栏数移动。相邻 section 在同一条
+栏轨道上连续排列；iframe 仍是不可拆分的最小排版单元。
 
 初始 renderer 与 EPUB parser 源自
 [`foliate-js`](https://github.com/johnfactotum/foliate-js)，许可证见

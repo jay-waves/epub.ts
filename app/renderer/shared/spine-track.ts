@@ -22,10 +22,6 @@ type SpineTrackLayout<View> = {
   placements: readonly TrackPlacement<View>[];
 };
 
-type PaginatedLayoutOptions = {
-  breakBefore?: (index: number) => boolean;
-};
-
 /** Owns logical spine positions and their projection onto the scroll track. */
 export class SpineTrack<View extends SpineTrackView> {
   #leadingRemainder = 0;
@@ -66,7 +62,6 @@ export class SpineTrack<View extends SpineTrackView> {
   layout(
     entries: readonly SpineEntry<View>[],
     projection: Exclude<TrackProjection, { kind: "single" }>,
-    options: PaginatedLayoutOptions = {},
   ): SpineTrackLayout<View> {
     const { viewportSize } = projection;
     if (!entries.length) {
@@ -93,11 +88,6 @@ export class SpineTrack<View extends SpineTrackView> {
     const leading = pageSize + this.#leadingRemainder;
     let columnStart = 0;
     const placements = entries.map((entry) => {
-      if (options.breakBefore?.(entry.index) && pageSize > 0) {
-        const physicalStart = leading + columnStart * columnStep;
-        const remainder = pageRemainder(physicalStart, pageSize);
-        if (remainder) columnStart += (pageSize - remainder) / columnStep;
-      }
       entry.start = columnStart * columnStep;
       entry.extent = Math.max(1, entry.view.extent);
       columnStart += entry.view.contentColumns;

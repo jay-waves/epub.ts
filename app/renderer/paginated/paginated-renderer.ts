@@ -183,7 +183,7 @@ export class PaginatedRenderer extends HTMLElement {
             activeEntry: () => this.#entryAtReadingEdge(),
             backgroundElement: this.#background,
             beforeRenderDocument: (doc, index) => this.beforeRenderDocument?.(doc, index),
-            compact: () => this.continuous && this.#geometry.sectionLayout === 'columns',
+            compact: () => this.continuous,
             continuous: () => this.continuous,
             currentView: () => this.#view,
             host: this,
@@ -295,7 +295,7 @@ export class PaginatedRenderer extends HTMLElement {
     #layoutEntries() {
         if (!this.#spine.entries.length || !this.continuous) return
         for (const { view } of this.#spine.entries)
-            view.compact = this.#geometry.sectionLayout === 'columns'
+            view.compact = true
         const layout = this.#spine.layout(
             this.#trackProjection() as Exclude<TrackProjection, { kind: 'single' }>)
         for (const { entry, physicalStart } of layout.placements) {
@@ -354,7 +354,7 @@ export class PaginatedRenderer extends HTMLElement {
         this.#edgeTurns = Math.max(1, Math.round(pageSize / this.#turnSize))
         this.setAttribute('dir', rtl ? 'rtl' : 'ltr')
 
-        return { kind: this.#geometry.sectionLayout,
+        return { kind: 'columns' as const,
             height: vertical ? pageSize : height,
             width: vertical ? width : pageSize,
             margin, gap,
@@ -371,7 +371,7 @@ export class PaginatedRenderer extends HTMLElement {
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeOtherThan(this.#view)
         for (const { view } of this.#spine.entries) {
-            view.setCompact(this.continuous && this.#geometry.sectionLayout === 'columns', false)
+            view.setCompact(this.continuous, false)
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,

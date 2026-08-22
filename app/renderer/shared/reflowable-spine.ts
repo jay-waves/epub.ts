@@ -3,7 +3,6 @@ import type { RendererStyles } from "../renderer";
 import type { TrackProjection } from "./flow-geometry";
 import { getDocumentBackground, SectionFrame, type SectionDirection, type SectionLayout } from "./section-frame";
 import { SpineBuffer, type SpineBufferChange, type SpineBufferRequest, type SpineEntry } from "./spine-buffer";
-import { SpineFlow } from "./spine-flow";
 import { SpineTrack } from "./spine-track";
 import { ViewportNavigation } from "./viewport-navigation";
 
@@ -41,8 +40,8 @@ export class ReflowableSpine {
   readonly #mediaQueryListener = () => this.#updateBackground();
   #book?: Book;
   #cacheFrame?: number;
-  #flow?: SpineFlow;
   #loading = false;
+  #openingEnd = 0;
   #styles?: RendererStyles;
 
   constructor(options: SpineOptions) {
@@ -60,7 +59,17 @@ export class ReflowableSpine {
 
   open(book: Book) {
     this.#book = book;
-    this.#flow = new SpineFlow(book);
+    const tocTargets = (book.toc ?? []).flatMap(({ href }) => {
+      if (!href) return [];
+      try {
+        const index = book.resolveHref?.(href)?.index;
+        return Number.isInteger(index) && index! > 0 && index! < book.sections.length
+          ? [index!] : [];
+      } catch {
+        return [];
+      }
+    });
+    this.#openingEnd = Math.min(...tocTargets, book.sections.length);
   }
 
   get entries() { return this.#buffer.entries; }
@@ -78,10 +87,13 @@ export class ReflowableSpine {
     return this.entries.find(entry => entry.view === view);
   }
   adjacent(from: number, direction: -1 | 1) {
-    return this.#flow?.adjacent(from, direction);
-  }
-  breakBefore(index: number) {
-    return this.#flow?.breakBefore(index) ?? false;
+    const sections = this.#book?.sections;
+    if (!sections) return;
+    for (let index = from + direction;
+      index >= 0 && index < sections.length;
+      index += direction) {
+      if (index < this.#openingEnd || sections[index]?.linear !== "no") return index;
+    }
   }
   entryOffset(entry: SpineEntry<SectionFrame> | undefined, projection = this.#options.projection()) {
     return this.track.entryOffset(entry, projection);
@@ -91,9 +103,7 @@ export class ReflowableSpine {
   }
 
   layout(projection: Exclude<TrackProjection, { kind: "single" }>) {
-    return this.track.layout(this.entries, projection, {
-      breakBefore: index => this.breakBefore(index),
-    });
+    return this.track.layout(this.entries, projection);
   }
 
   commit(change: SpineBufferChange<SectionFrame>, activeEntry = this.#options.activeEntry()) {
@@ -213,7 +223,7 @@ export class ReflowableSpine {
     this.clear();
     this.#mediaQuery.removeEventListener("change", this.#mediaQueryListener);
     this.#book = undefined;
-    this.#flow = undefined;
+    this.#openingEnd = 0;
   }
 
   async #create(index: number) {
