@@ -1,5 +1,5 @@
 import * as SliderPrimitive from "@radix-ui/react-slider";
-import { forwardRef } from "react";
+import { forwardRef, useRef } from "react";
 import type {
   ButtonHTMLAttributes,
   DialogHTMLAttributes,
@@ -26,20 +26,46 @@ export function Button({
 export const Dialog = forwardRef<
   HTMLDialogElement,
   DialogHTMLAttributes<HTMLDialogElement>
->(function Dialog({ children, className, onClick, ...props }, ref) {
+>(function Dialog({
+  children,
+  className,
+  onClick,
+  onPointerCancel,
+  onPointerDown,
+  onPointerUp,
+  ...props
+}, ref) {
+  const backdropPointer = useRef<number | null>(null);
+  const isBackdropPoint = (dialog: HTMLDialogElement, x: number, y: number) => {
+    const rect = dialog.getBoundingClientRect();
+    return x < rect.left || x > rect.right || y < rect.top || y > rect.bottom;
+  };
   return (
     <dialog
       className={cn("reader-modal", className)}
       ref={ref}
       onClick={(event) => {
         onClick?.(event);
-        const rect = event.currentTarget.getBoundingClientRect();
+      }}
+      onPointerDown={(event) => {
+        onPointerDown?.(event);
+        backdropPointer.current = event.button === 0
+          && isBackdropPoint(event.currentTarget, event.clientX, event.clientY)
+          ? event.pointerId
+          : null;
+      }}
+      onPointerUp={(event) => {
+        onPointerUp?.(event);
+        const activeBackdropPointer = backdropPointer.current;
+        backdropPointer.current = null;
         if (
-          event.clientX < rect.left
-          || event.clientX > rect.right
-          || event.clientY < rect.top
-          || event.clientY > rect.bottom
+          activeBackdropPointer === event.pointerId
+          && isBackdropPoint(event.currentTarget, event.clientX, event.clientY)
         ) event.currentTarget.close();
+      }}
+      onPointerCancel={(event) => {
+        onPointerCancel?.(event);
+        backdropPointer.current = null;
       }}
       {...props}
     >

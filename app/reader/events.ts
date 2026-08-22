@@ -1,6 +1,5 @@
 import type { TocItem } from "../renderer";
 import type { BookInfo } from "./book-info";
-import type { ReaderFontFamily, ReaderFonts } from "./model";
 import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
@@ -26,8 +25,6 @@ export const VIEWER_EVENTS = {
   searchPrevious: "reader:search-previous",
   searchUpdate: "reader:search-update",
   bookInfoOpen: "reader:book-info-open",
-  bookInfoFontChange: "reader:book-info-font-change",
-  bookInfoFontsChange: "reader:book-info-fonts-change",
   bookInfoUpdate: "reader:book-info-update",
   tocOpen: "reader:toc-open",
   tocClose: "reader:toc-close",
@@ -143,8 +140,6 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.searchPrevious]: void;
   [VIEWER_EVENTS.searchUpdate]: SearchUpdateDetail;
   [VIEWER_EVENTS.bookInfoOpen]: void;
-  [VIEWER_EVENTS.bookInfoFontChange]: ReaderFontFamily;
-  [VIEWER_EVENTS.bookInfoFontsChange]: ReaderFonts;
   [VIEWER_EVENTS.bookInfoUpdate]: BookInfo;
   [VIEWER_EVENTS.tocOpen]: void;
   [VIEWER_EVENTS.tocClose]: void;

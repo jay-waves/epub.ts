@@ -1,9 +1,5 @@
 import type { Book, BookSection } from "../renderer";
-import type { ReaderFontFamily, ReaderFonts } from "./model";
-
 export type BookInfo = {
-  fontFamily: ReaderFontFamily;
-  fonts: ReaderFonts;
   metadataRows: BookInfoRow[];
   statsRows: BookInfoRow[];
   subtitle?: string;
@@ -13,6 +9,7 @@ export type BookInfo = {
 type BookInfoRow = {
   label: string;
   value: string;
+  wide?: boolean;
 };
 
 const WORDS_PER_MINUTE = 250;
@@ -20,12 +17,10 @@ const CHARS_PER_WORD = 6;
 
 type BookInfoSource = {
   book?: Book;
-  fontFamily: ReaderFontFamily;
-  fonts: ReaderFonts;
 };
 
-export function createBookInfo({ book, fontFamily, fonts }: BookInfoSource): BookInfo {
-  if (!book) return { fontFamily, fonts, metadataRows: [], statsRows: [], title: "Book information" };
+export function createBookInfo({ book }: BookInfoSource): BookInfo {
+  if (!book) return { metadataRows: [], statsRows: [], title: "Book information" };
 
   const metadata = book.metadata;
   const title = formatMetadataValue(metadata?.title) || "Untitled Book";
@@ -37,8 +32,6 @@ export function createBookInfo({ book, fontFamily, fonts }: BookInfoSource): Boo
     : null;
 
   return {
-    fontFamily,
-    fonts,
     title,
     subtitle: author || undefined,
     statsRows: compactRows([
@@ -49,16 +42,29 @@ export function createBookInfo({ book, fontFamily, fonts }: BookInfoSource): Boo
     metadataRows: compactRows([
       ["Publisher", formatMetadataValue(metadata?.publisher)],
       ["Language", formatMetadataValue(metadata?.language)],
-      ["Published", formatMetadataValue(metadata?.published)],
+      ["Published", formatPublishedDate(metadata?.published)],
       ["Modified", formatMetadataValue(metadata?.modified)],
-      ["Identifier", formatMetadataValue(metadata?.identifier)],
-      ["Subject", formatMetadataValue(metadata?.subject)],
+      ["Identifier", formatMetadataValue(metadata?.identifier), true],
+      ["Subject", formatMetadataValue(metadata?.subject), true],
     ]),
   };
 }
 
-function compactRows(rows: Array<readonly [label: string, value: string] | null>) {
-  return rows.flatMap((row) => row?.[1] ? [{ label: row[0], value: row[1] }] : []);
+function compactRows(rows: Array<readonly [label: string, value: string, wide?: boolean] | null>) {
+  return rows.flatMap((row) => row?.[1]
+    ? [{ label: row[0], value: row[1], wide: row[2] || row[1].length > 36 }]
+    : []);
+}
+
+function formatPublishedDate(value: unknown) {
+  const text = formatMetadataValue(value);
+  if (!text) return "";
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})/u.exec(text)?.[1];
+  if (dateOnly) return dateOnly;
+  const date = new Date(text);
+  return Number.isNaN(date.getTime())
+    ? text
+    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
 function estimateWords(sections: BookSection[]) {

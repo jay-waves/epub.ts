@@ -1,6 +1,7 @@
 import { createBookStyles } from "../typography/styles/book-styles";
 import { readerSettings } from "./model";
-import type { ReaderFlow, ReaderFontFamily, ReaderFonts, ReaderTheme, ReaderThemeId } from "./model";
+import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
+import type { TypographyFonts, TypographyTextAlignment } from "../typography/model";
 import type { ReaderView } from "./model";
 import type { Renderer } from "../renderer";
 
@@ -180,12 +181,12 @@ function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
 
 export function getBookStyles(themeId = readerSettings.theme): [string, string] {
   return createBookStyles({
-    fontFamily: readerSettings.fontFamily,
     fonts: readerSettings.fonts,
     fontSize: readerSettings.fontSize,
     layout: getLayoutPreset(),
     layoutLevel: readerSettings.layoutLevel,
     theme: getReaderTheme(themeId),
+    textAlignment: readerSettings.textAlignment,
   });
 }
 
@@ -230,13 +231,13 @@ export function applyReaderFontSize(fontSize: number, view?: ReaderView | null) 
   view?.setStyles(getBookStyles());
 }
 
-export function applyReaderFontFamily(fontFamily: ReaderFontFamily, view?: ReaderView | null) {
-  readerSettings.fontFamily = fontFamily;
+export function applyReaderFonts(fonts: TypographyFonts, view?: ReaderView | null) {
+  readerSettings.fonts = fonts;
   view?.setStyles(getBookStyles());
 }
 
-export function applyReaderFonts(fonts: ReaderFonts, view?: ReaderView | null) {
-  readerSettings.fonts = fonts;
+export function applyReaderTextAlignment(alignment: TypographyTextAlignment, view?: ReaderView | null) {
+  readerSettings.textAlignment = alignment;
   view?.setStyles(getBookStyles());
 }
 

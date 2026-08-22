@@ -70,6 +70,23 @@ Supports Chrome/Edge 129+, Firefox 147+, and Safari/iOS Safari 26+. Modern Web A
 
 Clipboard and local-file features require a secure context and user permission. Built-in translation is optional; the web build can use an external service instead.
 
+### 高级排版配置 / Advanced typography settings
+
+低频配置通过开发者工具 Console 中的 `epub.settings` 调整，并保存在浏览器 `localStorage`：
+
+```js
+epub.settings.fonts
+epub.settings.textAlignment
+
+await epub.settings.setSerifFont("Noto Serif, serif")
+await epub.settings.setSansFont("Noto Sans, system-ui, sans-serif")
+await epub.settings.setMonoFont("Fira Code, ui-monospace, monospace")
+await epub.settings.setTextAlignment("justify") // "auto" | "start" | "justify"
+await epub.settings.reset()
+```
+
+字体名称仅引用浏览器可用的本地字体，不会下载或安装字体。`auto` 按文档语言选择对齐方式；`reset()` 清除全部高级覆盖并恢复默认值。应用每次启动时会在 Console 输出当前配置和命令提示。
+
 ### 应用形态 / Application variants
 
 主要跨端差异：

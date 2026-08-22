@@ -5,8 +5,12 @@ import gruvboxDarkHighlightTheme from "highlight.js/styles/base16/gruvbox-dark-m
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
 import { platform } from "#platform";
 import bookStyles from "./book.css?raw";
-import type { TypographyTheme, TypographyThemeId } from "../model";
-import type { ReaderFonts } from "../../reader/model";
+import type {
+  TypographyFonts,
+  TypographyTextAlignment,
+  TypographyTheme,
+  TypographyThemeId,
+} from "../model";
 
 const readerProfile = platform.readerProfile;
 
@@ -23,10 +27,6 @@ const READER_MONO_FONT_WEIGHT = readerProfile.monoFontWeight;
 // while CJK and other fallback fonts use the smaller reader base size.
 const READER_LATIN_FONT_SIZE_ADJUST = "114%";
 
-const READER_SERIF_STACK =
-  `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif`;
-const READER_SANS_STACK =
-  `"Noto Sans", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`;
 const READER_HANT_SERIF_STACK =
   `"${READER_LATIN_FONT_FAMILY}", "Noto Serif", "Noto Serif TC", "Noto Serif CJK TC", "Source Han Serif TC", "Songti TC", "PMingLiU", "MingLiU", Georgia, "Times New Roman", serif`;
 const READER_HANT_SANS_STACK =
@@ -59,8 +59,6 @@ const READER_THAI_SERIF_STACK =
   `"${READER_LATIN_FONT_FAMILY}", "Noto Serif Thai", "Th Sarabun New", Tahoma, serif`;
 const READER_THAI_SANS_STACK =
   `"Noto Sans Thai", Tahoma, sans-serif`;
-const READER_MONO_STACK =
-  `"${READER_MONO_FONT_FAMILY}", "Sarasa Mono SC", "Maple Mono SC NF", "Cascadia Code", "SFMono-Regular", Consolas, monospace`;
 
 export const READER_SCRIPT_FONT_STACKS = {
   "zh-hant": { serif: READER_HANT_SERIF_STACK, sans: READER_HANT_SANS_STACK },
@@ -86,12 +84,12 @@ type ReaderBookLayout = {
 };
 
 type ReaderBookStyleOptions = {
-  fontFamily: "serif" | "sans" | "mono";
-  fonts: ReaderFonts;
+  fonts: TypographyFonts;
   fontSize: number;
   layout: ReaderBookLayout;
   layoutLevel: number;
   theme: TypographyTheme;
+  textAlignment: TypographyTextAlignment;
 };
 
 let cachedBookStyles: { key: string; value: [string, string] } | null = null;
@@ -144,8 +142,8 @@ const READER_BOOK_FOUNDATION_STYLES = `
 `;
 
 export function createBookStyles(options: ReaderBookStyleOptions): [string, string] {
-  const { fontFamily, fonts, fontSize, layout, layoutLevel, theme } = options;
-  const cacheKey = `${theme.id}|${fontFamily}|${fonts.serif}|${fonts.sans}|${fonts.mono}|${fontSize}|${layoutLevel}`;
+  const { fonts, fontSize, layout, layoutLevel, textAlignment, theme } = options;
+  const cacheKey = `${theme.id}|${fonts.serif}|${fonts.sans}|${fonts.mono}|${fontSize}|${layoutLevel}|${textAlignment}`;
   if (cachedBookStyles?.key === cacheKey) return cachedBookStyles.value;
 
   const imageMaxInlineSize = clamp(
@@ -179,14 +177,11 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
       --reader-media-filter: ${mediaFilter};
       --reader-image-max-inline-size: ${imageMaxInlineSize}%;
       --reader-color-scheme: ${theme.mode};
-      --reader-preferred-font-serif: ${getPreferredFont("serif", fonts.serif)};
-      --reader-preferred-font-sans: ${getPreferredFont("sans", fonts.sans)};
-      --reader-preferred-font-mono: ${getPreferredFont("mono", fonts.mono)};
-      --reader-config-font-serif: ${READER_SERIF_STACK};
-      --reader-config-font-sans: ${READER_SANS_STACK};
-      --reader-config-font-mono: ${READER_MONO_STACK};
-      --reader-font-body: var(--reader-font-${fontFamily});
-      --reader-font-size-adjust: ${fontFamily === "serif" ? readerProfile.fontSizeAdjust : "none"};
+      --reader-config-font-serif: ${serializeFontFamily(fonts.serif, READER_LATIN_FONT_FAMILY)};
+      --reader-config-font-sans: ${serializeFontFamily(fonts.sans, "system-ui")};
+      --reader-config-font-mono: ${serializeFontFamily(fonts.mono, READER_MONO_FONT_FAMILY)};
+      --reader-font-size-adjust: ${readerProfile.fontSizeAdjust};
+      ${textAlignment === "auto" ? "" : `--reader-text-align-override: ${textAlignment};`}
       color-scheme: ${theme.mode};
     }
     ::selection {
@@ -228,25 +223,19 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
   return value;
 }
 
-function getPreferredFont(role: keyof ReaderFonts, font: ReaderFonts[keyof ReaderFonts]) {
-  const families = {
-    serif: {
-      "eb-garamond": `"${READER_LATIN_FONT_FAMILY}"`,
-      "noto-serif": `"Noto Serif"`,
-      "system-serif": "serif",
-    },
-    sans: {
-      "noto-sans": `"Noto Sans"`,
-      "system-sans": "system-ui",
-    },
-    mono: {
-      "monaspace-argon": `"${READER_MONO_FONT_FAMILY}"`,
-      "fira-code": `"Fira Code"`,
-      "system-mono": "monospace",
-    },
-  } as const;
-  return (families[role] as Record<string, string>)[font] ?? families[role][Object.keys(families[role])[0] as never];
+function serializeFontFamily(value: string, fallback: string) {
+  const families = value
+    .split(",")
+    .map((family) => family.trim().replace(/^(["'])(.*)\1$/u, "$2"))
+    .filter(Boolean);
+  return (families.length ? families : [fallback])
+    .map((family) => CSS_GENERIC_FONT_FAMILIES.has(family.toLowerCase()) ? family : JSON.stringify(family))
+    .join(", ");
 }
+
+const CSS_GENERIC_FONT_FAMILIES = new Set([
+  "serif", "sans-serif", "monospace", "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace",
+]);
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

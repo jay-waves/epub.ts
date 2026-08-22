@@ -123,8 +123,8 @@ function applyTypographyProfile(element: HTMLElement, profile: TypographyProfile
   element.style.setProperty("--reader-text-autospace", justify ? "normal" : "no-autospace");
   const fonts = READER_SCRIPT_FONT_STACKS[profile as keyof typeof READER_SCRIPT_FONT_STACKS];
   if (!fonts) return;
-  element.style.setProperty("--reader-font-serif", `var(--reader-preferred-font-serif), ${fonts.serif}`);
-  element.style.setProperty("--reader-font-sans", `var(--reader-preferred-font-sans), ${fonts.sans}`);
+  element.style.setProperty("--reader-font-serif", `var(--reader-config-font-serif), ${fonts.serif}`);
+  element.style.setProperty("--reader-font-sans", `var(--reader-config-font-sans), ${fonts.sans}`);
 }
 
 function getElementLanguage(element: Element | null): string | null {

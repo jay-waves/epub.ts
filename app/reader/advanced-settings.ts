@@ -1,0 +1,158 @@
+import { DEFAULT_TYPOGRAPHY_FONTS } from "../typography/model";
+import type { TypographyFonts, TypographyTextAlignment } from "../typography/model";
+
+export type AdvancedReaderSettings = {
+  fonts: TypographyFonts;
+  textAlignment: TypographyTextAlignment;
+};
+
+type EpubSettingsApi = {
+  readonly fonts: TypographyFonts;
+  readonly textAlignment: TypographyTextAlignment;
+  reset(): Promise<void>;
+  setMonoFont(fontFamily: string): Promise<void>;
+  setSansFont(fontFamily: string): Promise<void>;
+  setSerifFont(fontFamily: string): Promise<void>;
+  setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
+};
+
+const STORAGE_KEY = "epub.ts:advanced-settings";
+
+export function createAdvancedSettingsController(
+  onChange: (settings: AdvancedReaderSettings) => Promise<void> | void,
+) {
+  let value = loadSettings();
+
+  const commit = async (nextValue: AdvancedReaderSettings) => {
+    value = nextValue;
+    persistSettings(value);
+    await onChange(value);
+  };
+  const setFont = async (role: keyof TypographyFonts, fontFamily: string) => {
+    const nextFont = normalizeFontFamily(fontFamily, DEFAULT_TYPOGRAPHY_FONTS[role]);
+    if (nextFont === value.fonts[role]) return;
+    await commit({ ...value, fonts: { ...value.fonts, [role]: nextFont } });
+    console.log(
+      `[epub.ts] ${role} font changed to "${nextFont}". Default: "${DEFAULT_TYPOGRAPHY_FONTS[role]}".`,
+    );
+  };
+  const api: EpubSettingsApi = {
+    get fonts() {
+      return { ...value.fonts };
+    },
+    get textAlignment() {
+      return value.textAlignment;
+    },
+    setSerifFont: (fontFamily) => setFont("serif", fontFamily),
+    setSansFont: (fontFamily) => setFont("sans", fontFamily),
+    setMonoFont: (fontFamily) => setFont("mono", fontFamily),
+    async setTextAlignment(textAlignment) {
+      if (!isTextAlignment(textAlignment)) {
+        throw new TypeError("textAlignment must be 'auto', 'start', or 'justify'.");
+      }
+      if (textAlignment === value.textAlignment) return;
+      await commit({ ...value, textAlignment });
+      console.log(`[epub.ts] Text alignment changed to "${textAlignment}". Default: "auto".`);
+    },
+    async reset() {
+      if (!Object.keys(getSettingsOverrides(value)).length) return;
+      value = getDefaults();
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        console.warn("[epub.ts] Could not clear advanced settings.", error);
+      }
+      await onChange(value);
+      console.log("[epub.ts] Advanced settings reset to defaults.");
+    },
+  };
+
+  const consoleGlobal = globalThis as typeof globalThis & {
+    epub?: Record<string, unknown> & { settings?: EpubSettingsApi };
+  };
+  consoleGlobal.epub = { ...consoleGlobal.epub, settings: api };
+
+  return {
+    get value() {
+      return value;
+    },
+    logStatus() {
+      const overrides = getSettingsOverrides(value);
+      if (!Object.keys(overrides).length) return false;
+      console.log("[epub.ts] Active advanced setting overrides.", overrides);
+      return true;
+    },
+  };
+}
+
+function getSettingsOverrides(settings: AdvancedReaderSettings) {
+  const overrides: Record<string, { current: string; default: string }> = {};
+  if (settings.fonts.serif !== DEFAULT_TYPOGRAPHY_FONTS.serif) {
+    overrides.serifFont = { current: settings.fonts.serif, default: DEFAULT_TYPOGRAPHY_FONTS.serif };
+  }
+  if (settings.fonts.sans !== DEFAULT_TYPOGRAPHY_FONTS.sans) {
+    overrides.sansFont = { current: settings.fonts.sans, default: DEFAULT_TYPOGRAPHY_FONTS.sans };
+  }
+  if (settings.fonts.mono !== DEFAULT_TYPOGRAPHY_FONTS.mono) {
+    overrides.monoFont = { current: settings.fonts.mono, default: DEFAULT_TYPOGRAPHY_FONTS.mono };
+  }
+  if (settings.textAlignment !== "auto") {
+    overrides.textAlignment = { current: settings.textAlignment, default: "auto" };
+  }
+  return overrides;
+}
+
+function getDefaults(): AdvancedReaderSettings {
+  return { fonts: { ...DEFAULT_TYPOGRAPHY_FONTS }, textAlignment: "auto" };
+}
+
+function loadSettings(): AdvancedReaderSettings {
+  const defaults = getDefaults();
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as {
+      fonts?: Partial<TypographyFonts>;
+      textAlignment?: unknown;
+    } | null;
+    if (!saved) return defaults;
+    return {
+      fonts: {
+        serif: normalizeFontFamily(saved.fonts?.serif, defaults.fonts.serif),
+        sans: normalizeFontFamily(saved.fonts?.sans, defaults.fonts.sans),
+        mono: normalizeFontFamily(saved.fonts?.mono, defaults.fonts.mono),
+      },
+      textAlignment: isTextAlignment(saved.textAlignment) ? saved.textAlignment : "auto",
+    };
+  } catch (error) {
+    console.warn("[epub.ts] Could not read advanced settings; defaults are active.", error);
+    return defaults;
+  }
+}
+
+function persistSettings(settings: AdvancedReaderSettings) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch (error) {
+    console.warn("[epub.ts] Could not persist advanced settings.", error);
+  }
+}
+
+function isTextAlignment(value: unknown): value is TypographyTextAlignment {
+  return value === "auto" || value === "start" || value === "justify";
+}
+
+function normalizeFontFamily(value: unknown, fallback: string) {
+  const font = typeof value === "string"
+    ? value.trim().replaceAll(/[\u0000-\u001f\u007f]/gu, "").slice(0, 1000)
+    : "";
+  const legacyNames: Record<string, string> = {
+    "eb-garamond": fallback,
+    "monaspace-argon": fallback,
+    "noto-sans": "Noto Sans",
+    "noto-serif": "Noto Serif",
+    "system-mono": "ui-monospace",
+    "system-sans": "system-ui",
+    "system-serif": "ui-serif",
+  };
+  if (font && legacyNames[font]) return legacyNames[font];
+  return font || fallback;
+}
