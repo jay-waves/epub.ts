@@ -414,7 +414,13 @@ async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined
 async function mountView() {
   const view = await createView<ReaderHighlight>();
   view.enhanceRenderedDocument = (doc, _index, signal) =>
-    enhanceContent(doc, view.renderMode !== "fixed", signal, view.book?.metadata?.language);
+    enhanceContent(
+      doc,
+      view.renderMode !== "fixed",
+      view.renderMode === "paginated",
+      signal,
+      view.book?.metadata?.language,
+    );
   readerRoot.replaceChildren(view);
   runtime.interactions?.bindView(view);
   runtime.input?.bindReaderView(view);
@@ -424,6 +430,7 @@ async function mountView() {
 async function enhanceContent(
   doc: Document,
   reflowable: boolean,
+  paginated: boolean,
   signal: AbortSignal,
   language: unknown,
 ) {
@@ -431,6 +438,7 @@ async function enhanceContent(
     await prepareTypography(doc, {
       fontQueries: getReaderFontQueries(readerSettings.fontSize),
       language,
+      paginated,
       reflowable,
       signal,
     });

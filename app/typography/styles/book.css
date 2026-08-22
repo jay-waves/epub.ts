@@ -402,15 +402,11 @@
       table-layout: auto !important;
       border: 1px solid var(--reader-border-color) !important;
       background: color-mix(in srgb, var(--reader-panel-bg) 64%, transparent) !important;
-
       font-size: var(--reader-small-font-size) !important;
       line-height: var(--reader-small-line-height) !important;
-
       overflow-wrap: break-word !important;
       word-break: normal !important;
-
       break-inside: auto !important;
-
     }
     :is(table, [data-reader-role~="table"]):not(#reader-table-theme) :is(thead, tbody, tfoot, tr, th, td) {
       border-color: var(--reader-border-color) !important;
@@ -438,8 +434,11 @@
     :is(table, [data-reader-role~="table"]) thead {
       break-after: avoid !important;
     }
-    :is(table, [data-reader-role~="table"]) tr {
+    :is(table, [data-reader-role~="table"]) tr:not([data-reader-oversized-row]) {
       break-inside: avoid !important;
+    }
+    :is(table, [data-reader-role~="table"]) tr[data-reader-oversized-row] {
+      break-inside: auto !important;
     }
     :is(table, [data-reader-role~="table"]):not(#reader-table-theme) tbody tr:nth-child(even) {
       background: color-mix(in srgb, var(--reader-fg-color) 4%, transparent) !important;

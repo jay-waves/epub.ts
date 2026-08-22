@@ -1,11 +1,12 @@
 import { loadDocumentFonts } from "./fonts";
 import { getReaderFontFamily } from "./font-family";
-import { prepareMathRenderer, renderMathDocument } from "./processors/math";
-import { preservePublisherFontScale } from "./processors/font-scaling";
-import { getEpubType, markReaderSemantics } from "./processors/semantics";
-import { enhanceTypography } from "./processors/typography";
+import { prepareMathRenderer, renderMathDocument } from "./enhancers/math";
+import { preservePublisherFontScale } from "./enhancers/font-scaling";
+import { getEpubType, markReaderSemantics } from "./enhancers/semantics";
+import { enhanceTypography } from "./enhancers/typography";
+import { enhanceTables } from "./enhancers/tables";
 
-export { clearMathCache } from "./processors/math";
+export { clearMathCache } from "./enhancers/math";
 export { installTypographyNormalization } from "./normalization";
 
 const footnotesLabeledDocs = new WeakSet<Document>();
@@ -17,6 +18,7 @@ function normalizeInlineText(value: string) {
 export async function prepareTypography(doc: Document, options: {
   fontQueries: string[];
   language?: unknown;
+  paginated: boolean;
   reflowable: boolean;
   signal: AbortSignal;
 }) {
@@ -30,6 +32,7 @@ export async function prepareTypography(doc: Document, options: {
   mapInlinePublisherFontFamilies(doc);
   markReaderSemantics(doc);
   enhanceTypography(doc);
+  enhanceTables(doc, options.paginated, options.signal);
   labelFootnotes(doc);
   const codeBlocks = prepareReaderCodeBlocks(doc);
   const fontsReady = loadDocumentFonts(doc, options.fontQueries);
@@ -37,7 +40,7 @@ export async function prepareTypography(doc: Document, options: {
     ? prepareMathRenderer()
     : null;
   const highlighterReady = codeBlocks.length
-    ? import("./processors/highlighter")
+    ? import("./enhancers/highlighter")
     : null;
 
   await fontsReady;
