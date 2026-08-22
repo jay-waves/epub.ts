@@ -43,10 +43,9 @@ export function TranslationPopover() {
   const translatedText = state.translatedText?.trim() ?? "";
   const canCopy = state.status === "success" && Boolean(translatedText);
 
+  if (!state.open) return null;
   return (
-    <>
-      <span aria-hidden="true" className="reader-popover-anchor" style={popover.anchorStyle} />
-      <section
+    <section
         aria-label="Translation"
         aria-live="polite"
         className="reader-text-popover"
@@ -95,7 +94,6 @@ export function TranslationPopover() {
           </p>
         )}
       </div>
-      </section>
-    </>
+    </section>
   );
 }

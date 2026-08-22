@@ -67,10 +67,9 @@ export function AnnotationPopover() {
 
   const copyText = [state.sourceText, state.note.trim()].filter(Boolean).join("\n\n");
 
+  if (!state.open) return null;
   return (
-    <>
-      <span aria-hidden="true" className="reader-popover-anchor" style={popover.anchorStyle} />
-      <section
+    <section
         aria-label="Annotation"
         aria-live="polite"
         className="reader-text-popover"
@@ -126,7 +125,6 @@ export function AnnotationPopover() {
           value={state.note}
         />
       </div>
-      </section>
-    </>
+    </section>
   );
 }

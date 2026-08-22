@@ -1,24 +1,21 @@
-import { useId, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 
-type PopoverStyle = CSSProperties & {
-  anchorName?: string;
-  positionAnchor?: string;
-};
+const VIEWPORT_GUTTER = 8;
 
 export function usePointPopover({
+  gap = 8,
   onDismiss,
   open,
   x,
   y,
 }: {
+  gap?: number;
   onDismiss: () => void;
   open: boolean;
   x: number;
   y: number;
 }) {
-  const id = useId().replace(/[^a-z0-9]/giu, "");
-  const anchorName = `--reader-point-${id}`;
   const popoverRef = useRef<HTMLElement | null>(null);
   const openRef = useRef(open);
   const onDismissRef = useRef(onDismiss);
@@ -35,24 +32,29 @@ export function usePointPopover({
     };
     popover.addEventListener("toggle", handleToggle);
     return () => popover.removeEventListener("toggle", handleToggle);
-  }, []);
+  });
 
   useLayoutEffect(() => {
     const popover = popoverRef.current;
     if (!popover) return;
-    if (open && !popover.matches(":popover-open")) popover.showPopover();
-    if (!open && popover.matches(":popover-open")) popover.hidePopover();
-  }, [open]);
+    if (!open) {
+      if (popover.matches(":popover-open")) popover.hidePopover();
+      return;
+    }
+
+    if (!popover.matches(":popover-open")) popover.showPopover();
+    const { height, width } = popover.getBoundingClientRect();
+    const maxLeft = Math.max(VIEWPORT_GUTTER, window.innerWidth - width - VIEWPORT_GUTTER);
+    const below = y + gap;
+    const top = below + height <= window.innerHeight - VIEWPORT_GUTTER
+      ? below
+      : Math.max(VIEWPORT_GUTTER, y - gap - height);
+    popover.style.left = `${Math.min(Math.max(VIEWPORT_GUTTER, x), maxLeft)}px`;
+    popover.style.top = `${top}px`;
+  });
 
   return {
-    anchorStyle: {
-      anchorName,
-      left: x,
-      top: y,
-    } satisfies PopoverStyle,
-    popoverStyle: {
-      positionAnchor: anchorName,
-    } satisfies PopoverStyle,
+    popoverStyle: { left: x, top: y } satisfies CSSProperties,
     setPopover: (element: HTMLElement | null) => {
       popoverRef.current = element;
     },

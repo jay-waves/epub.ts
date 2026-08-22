@@ -409,19 +409,10 @@
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
   }
 
-  .reader-popover-anchor {
-    position: fixed;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-  }
-
   .reader-context-menu {
     @apply fixed grid min-w-32 gap-0.5 rounded-md border p-1;
     inset: auto;
-    margin: 4px 0 0;
-    position-area: bottom span-right;
-    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    margin: 0;
     color: var(--reader-chrome-fg, #1f2933);
   }
 
@@ -462,9 +453,7 @@
   .reader-text-popover {
     @apply fixed w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border p-1.5;
     inset: auto;
-    margin: 8px 0 0;
-    position-area: bottom span-right;
-    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    margin: 0;
     color: var(--reader-chrome-fg, #1f2933);
   }
 

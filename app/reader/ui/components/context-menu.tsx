@@ -16,18 +16,18 @@ const menuItems = [
 export function HighlightContextMenu() {
   const state = useStore(contextMenuStore);
   const popover = usePointPopover({
+    gap: 4,
     onDismiss: state.close,
     open: state.open,
     x: state.x,
     y: state.y,
   });
 
+  if (!state.open) return null;
   const visibleItems = state.kind === "media" ? menuItems.slice(0, 1) : menuItems;
 
   return (
-    <>
-      <span aria-hidden="true" className="reader-popover-anchor" style={popover.anchorStyle} />
-      <div
+    <div
         className="reader-context-menu"
         popover="auto"
         ref={popover.setPopover}
@@ -42,8 +42,7 @@ export function HighlightContextMenu() {
             onSelect={state.select}
           />
         ))}
-      </div>
-    </>
+    </div>
   );
 }
 
