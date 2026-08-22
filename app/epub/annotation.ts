@@ -10,7 +10,8 @@ import {
 import type { Book } from "../renderer";
 import type { Entry, FileEntry } from "@zip.js/zip.js";
 
-export type ReaderHighlight = {
+export type ReaderAnnotation = {
+  id: string;
   value: string;
   color: string;
   text?: string;
@@ -18,6 +19,7 @@ export type ReaderHighlight = {
   index?: number;
   fraction?: number;
   createdAt: number;
+  updatedAt: number;
 };
 
 const EPUB_MIME_TYPE = "application/epub+zip";
@@ -27,14 +29,15 @@ const OVERLAY_ENTRY = "META-INF/epub-viewer-annotations.json";
 type OverlayFile = {
   createdAt?: string;
   generator: "epub-viewer-extension";
-  highlights: ReaderHighlight[];
+  // Keep the established wire name for compatibility with existing EPUBs.
+  highlights: ReaderAnnotation[];
   updatedAt: string;
   version: 1;
 };
 
 configure({ useWebWorkers: false });
 
-function createOverlayFile(highlights: ReaderHighlight[]): OverlayFile {
+function createOverlayFile(highlights: ReaderAnnotation[]): OverlayFile {
   const now = new Date().toISOString();
   return {
     createdAt: now,
@@ -45,18 +48,28 @@ function createOverlayFile(highlights: ReaderHighlight[]): OverlayFile {
   };
 }
 
-function parseOverlayFile(value: string): ReaderHighlight[] {
+function parseOverlayFile(value: string): ReaderAnnotation[] {
   const parsed = JSON.parse(value) as Partial<OverlayFile>;
   if (!Array.isArray(parsed.highlights)) return [];
-  return parsed.highlights.filter(isReaderHighlight);
+  return parsed.highlights.flatMap((value) => {
+    const annotation = normalizeAnnotation(value);
+    return annotation ? [annotation] : [];
+  });
 }
 
-function isReaderHighlight(value: unknown): value is ReaderHighlight {
-  if (!value || typeof value !== "object") return false;
-  const highlight = value as Partial<ReaderHighlight>;
-  return typeof highlight.value === "string"
-    && typeof highlight.color === "string"
-    && typeof highlight.createdAt === "number";
+export function normalizeAnnotation(value: unknown): ReaderAnnotation | null {
+  if (!value || typeof value !== "object") return null;
+  const annotation = value as Partial<ReaderAnnotation>;
+  if (typeof annotation.value !== "string"
+    || typeof annotation.color !== "string"
+    || typeof annotation.createdAt !== "number") return null;
+  return {
+    ...annotation,
+    id: typeof annotation.id === "string" && annotation.id
+      ? annotation.id : `legacy:${annotation.createdAt}:${annotation.value}`,
+    updatedAt: typeof annotation.updatedAt === "number"
+      ? annotation.updatedAt : annotation.createdAt,
+  } as ReaderAnnotation;
 }
 
 function isFileEntry(entry: Entry): entry is FileEntry {
@@ -69,12 +82,12 @@ export async function getEpubBlob(sourceUrl: string) {
   return response.blob();
 }
 
-export async function readEmbeddedHighlights(book: Book) {
+export async function readEmbeddedAnnotations(book: Book) {
   const text = await book.loadText?.(OVERLAY_ENTRY);
   return text == null ? null : parseOverlayFile(text);
 }
 
-export async function createAnnotatedEpub(sourceBlob: Blob, highlights: ReaderHighlight[]) {
+export async function createAnnotatedEpub(sourceBlob: Blob, highlights: ReaderAnnotation[]) {
   const reader = new ZipReader(new BlobReader(sourceBlob));
   const writer = new ZipWriter(new BlobWriter(EPUB_MIME_TYPE));
 

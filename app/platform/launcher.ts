@@ -1,7 +1,7 @@
 import { get, set } from "idb-keyval";
 import { openExternal } from "./external";
 import { createBundledReaderProfile } from "./reader-profile";
-import type { ReaderHighlight } from "../epub/annotations";
+import type { ReaderAnnotation } from "../epub/annotation";
 import type {
   EpubFileHandle,
   PlatformDocument,
@@ -90,11 +90,11 @@ class EpubLauncherSession implements EpubFileHandle {
   async prepareWrite() {
     if (!this.version) await this.openDocument();
     return {
-      saveAnnotations: (highlights: readonly ReaderHighlight[]) => this.saveAnnotations(highlights),
+      saveAnnotations: (highlights: readonly ReaderAnnotation[]) => this.saveAnnotations(highlights),
     };
   }
 
-  private async saveAnnotations(highlights: readonly ReaderHighlight[]) {
+  private async saveAnnotations(highlights: readonly ReaderAnnotation[]) {
     const body = JSON.stringify({ highlights });
     const response = await fetch(`${this.resourceUrl}/annotations`, {
       method: "PUT",

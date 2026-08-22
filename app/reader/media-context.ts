@@ -13,6 +13,22 @@ export async function copyReaderMedia(element: Element) {
   }
 }
 
+export function openMediaClipboardMenu(element: Element, x: number, y: number) {
+  contextMenuStore.getState().openMenu({
+    canCopy: true,
+    canDelete: false,
+    canHighlight: false,
+    kind: "media",
+    x,
+    y,
+  }, (action) => {
+    if (action !== "copy") return;
+    void copyReaderMedia(element).catch((error) => {
+      console.warn("Failed to copy reader media.", error);
+    });
+  }, () => {});
+}
+
 async function copySvg(element: Element) {
   const bounds = element.getBoundingClientRect();
   const source = element.cloneNode(true) as SVGSVGElement;
@@ -131,3 +147,4 @@ function renderToPng(source: CanvasImageSource, width: number, height: number) {
 
   return canvas.convertToBlob({ type: PNG_MIME_TYPE });
 }
+import { contextMenuStore } from "./context-menu-store";

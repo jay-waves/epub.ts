@@ -1,7 +1,7 @@
 import type { Anchor, Book, Content, OverlayDraw } from "../renderer";
 import type { ReaderView } from "./model";
 import { emitViewerEvent, VIEWER_EVENTS } from "./events";
-import { getSavedHighlights } from "./storage";
+import { annotationRepository } from "./annotation-repository";
 import type { Navigation } from "./navigation";
 
 const MAX_QUERY_LENGTH = 120;
@@ -150,7 +150,7 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
     const normalized = normalizeInlineText(query).toLocaleLowerCase();
     const id = reset(true);
     try {
-      const highlights = await getSavedHighlights(bookKey);
+      const highlights = await annotationRepository.load(bookKey);
       if (id !== runId || signal.aborted) return;
 
       hits = highlights.flatMap((highlight, highlightIndex) => {

@@ -19,11 +19,11 @@ import {
 import {
   createAnnotatedEpub,
   getEpubBlob,
-  readEmbeddedHighlights,
-} from "../epub/annotations";
+  readEmbeddedAnnotations,
+} from "../epub/annotation";
 import { createView } from "../renderer";
 import { getBookKey } from "../epub/metadata";
-import { createHighlights } from "./features/highlights";
+import { createAnnotations } from "./annotation";
 import {
   clearMathCache,
   prepareTypography,
@@ -32,7 +32,7 @@ import {
   closeContentOverlays,
   disposeContent,
   enhanceImages,
-} from "./features/image-zoom";
+} from "./image-zoom";
 import { createSearch } from "./search";
 import { createBookInfo } from "./book-info";
 import { App } from "./ui/App";
@@ -43,10 +43,10 @@ import {
   getSavedPosition,
   saveReaderSettings,
   saveReadingPosition,
-  setSavedHighlights,
 } from "./storage";
 import type { ReaderSettings, ReaderView, ReadingPosition } from "./model";
-import type { ReaderHighlight } from "../epub/annotations";
+import type { ReaderAnnotation } from "../epub/annotation";
+import { annotationRepository } from "./annotation-repository";
 import type { Location } from "./navigation";
 import type { DockAction, ReaderCommand } from "./events";
 import { DEFAULT_READER_SETTINGS, readerSettings } from "./model";
@@ -132,10 +132,13 @@ const readerLayoutTarget = {
 };
 const renderState = createRenderState(readerRoot);
 runtime.interactions = createInteractions({
+  closeContentMenu: () => annotationState.dismiss(),
   navigate: async (href) => {
     const navigation = getNavigation();
     return navigation ? renderState.run(() => navigation.go(href)) : undefined;
   },
+  openContentMenu: (event, content, coordinateSpace) =>
+    annotationState.openContextMenu(event, content, coordinateSpace),
   openExternal: platform.openExternal,
 });
 
@@ -157,7 +160,7 @@ function renderDocumentTitle() {
 
 const SCROLL_EDGE_FEEDBACK_COOLDOWN_MS = 900;
 
-const highlightState = createHighlights({
+const annotationState = createAnnotations({
   getBookKey: () => session.bookKey,
   getNavigation,
   getProgress: () => session.progress,
@@ -238,7 +241,6 @@ function wireReaderEvents(reader: Reader) {
   view.addEventListener("load", () => {
     if (!signal.aborted) {
       void renderState.revealAfterPaint();
-      highlightState.bindContextTargets();
     }
   }, listenerOptions);
   view.addEventListener("relocate", (event) => {
@@ -275,15 +277,15 @@ function wireReaderEvents(reader: Reader) {
 
   view.addEventListener("create-overlay", (event) => {
     const { index } = event.detail;
-    highlightState.addCurrentHighlightsToOverlay(view, index);
+    annotationState.addCurrentAnnotationsToOverlay(view, index);
   }, listenerOptions);
 
   view.addEventListener("draw-annotation", (event) => {
-    highlightState.drawAnnotation(event.detail);
+    annotationState.drawAnnotation(event.detail);
   }, listenerOptions);
 
   view.addEventListener("show-annotation", (event) => {
-    highlightState.openFromAnnotation(event.detail);
+    annotationState.openFromAnnotation(event.detail);
   }, listenerOptions);
 }
 
@@ -306,14 +308,14 @@ async function saveAnnotatedBook() {
 
   try {
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
-    await highlightState.flushPendingWrites();
+    await annotationState.flushPendingWrites();
 
     // Browser file pickers need the live Ctrl+S/click activation, so acquire
     // the platform writer before reading annotations or serializing an EPUB.
     const target = await document.fileHandle.prepareWrite();
     if (!target) return;
 
-    const highlights = highlightState.getAll();
+    const highlights = annotationState.getAll();
     if ("saveAnnotations" in target) {
       if (await target.saveAnnotations(highlights)) setHasUnsavedChanges(false);
       return;
@@ -365,7 +367,7 @@ function toggleSearch() {
 async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
   await flushPositionSave();
   emitViewerEvent(VIEWER_EVENTS.annotationClose);
-  await highlightState.flushPendingWrites();
+  await annotationState.flushPendingWrites();
 
   const reader = runtime.reader;
   runtime.reader = null;
@@ -376,7 +378,7 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
     runtime.input?.unbindReaderView(reader.view);
     runtime.interactions?.unbindView(reader.view);
   }
-  highlightState.reset();
+  annotationState.reset();
   await closeContentOverlays();
   await reader?.dispose();
   await clearMathCache();
@@ -412,7 +414,7 @@ async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined
 }
 
 async function mountView() {
-  const view = await createView<ReaderHighlight>();
+  const view = await createView<ReaderAnnotation>();
   view.enhanceRenderedDocument = (doc, _index, signal) =>
     enhanceContent(
       doc,
@@ -558,7 +560,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     emitBookInfoUpdate();
     session.tocItems = view.book?.toc ?? [];
     emitTocUpdate();
-    await restoreHighlights(reader, bookKey);
+    await restoreAnnotations(reader, bookKey);
     reader.signal.throwIfAborted();
     await restoreSavedPosition(navigation, savedPosition);
     reader.signal.throwIfAborted();
@@ -610,7 +612,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
 function setupEventListeners(signal: AbortSignal) {
   window.addEventListener("resize", () => {
-    highlightState.close();
+    annotationState.close();
   }, { signal });
 
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, ({ href, item }) => {
@@ -749,20 +751,20 @@ async function handleDockAction(action: DockAction) {
   }
 }
 
-async function restoreHighlights(reader: Reader, bookKey: string) {
+async function restoreAnnotations(reader: Reader, bookKey: string) {
   const { book, signal, view } = reader;
   if (signal.aborted) return;
 
   try {
-    const highlights = await readEmbeddedHighlights(book);
+    const highlights = await readEmbeddedAnnotations(book);
     if (signal.aborted) return;
-    if (highlights) await setSavedHighlights(bookKey, highlights);
+    if (highlights) await annotationRepository.replace(bookKey, highlights);
   } catch (error) {
     console.warn("Failed to read embedded EPUB highlights.", error);
   }
   if (signal.aborted) return;
   try {
-    await highlightState.restore(view, bookKey);
+    await annotationState.restore(view, bookKey);
   } catch (error) {
     console.warn("Failed to restore saved highlights.", error);
   }
@@ -802,12 +804,12 @@ async function disposeViewer() {
   runtime.scrollEdgeFeedbackTimer = undefined;
 
   emitViewerEvent(VIEWER_EVENTS.annotationClose);
-  await highlightState.flushPendingWrites();
+  await annotationState.flushPendingWrites();
 
   runtime.listeners?.abort();
   runtime.input?.destroy();
   runtime.interactions?.destroy();
-  highlightState.destroy();
+  annotationState.destroy();
   runtime.search?.dispose();
   runtime.search = null;
   await disposeContent();

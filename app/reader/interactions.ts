@@ -1,7 +1,8 @@
 import type { ReaderView } from "./model";
-import type { Resolved } from "../renderer";
+import type { Content, Resolved } from "../renderer";
 import { observeRenderedDocuments } from "./documents";
 import { consumeReaderEvent, resolveReaderPointerIntent } from "./interaction-arbiter";
+import { openMediaClipboardMenu } from "./media-context";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
@@ -25,7 +26,9 @@ const TARGET_STYLE = `
 type Point = { x: number; y: number };
 
 type InteractionOptions = {
+  closeContentMenu: () => void;
   navigate: (href: string) => Promise<Resolved | undefined>;
+  openContentMenu: (event: MouseEvent, content: Content, coordinateSpace: "content" | "viewport") => void;
   openExternal: (href: string) => void;
 };
 
@@ -144,6 +147,34 @@ export function createInteractions(options: InteractionOptions) {
         }
       }
     }, { capture: true, signal });
+
+    const dismissContentMenu = () => options.closeContentMenu();
+    doc.addEventListener("pointerdown", dismissContentMenu, { capture: true, signal });
+    doc.addEventListener("keydown", dismissContentMenu, { capture: true, signal });
+    doc.addEventListener("scroll", dismissContentMenu, { capture: true, signal });
+    doc.addEventListener("contextmenu", (event) => {
+      const content = view.renderer.getContents().find((item) => item.index === index);
+      if (!content) return;
+      const media = asElement(event.target)?.closest("img, svg");
+      consumeReaderEvent(event, "stop");
+      if (media && media !== content.overlay?.element) {
+        const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+        openMediaClipboardMenu(media,
+          frame ? frame.left + event.clientX : event.clientX,
+          frame ? frame.top + event.clientY : event.clientY);
+        return;
+      }
+      options.openContentMenu(event, content, "content");
+    }, { signal });
+
+    const frame = doc.defaultView?.frameElement;
+    frame?.addEventListener("contextmenu", (event) => {
+      if (!(event instanceof MouseEvent)) return;
+      const content = view.renderer.getContents().find((item) => item.index === index);
+      if (!content) return;
+      consumeReaderEvent(event, "stop");
+      options.openContentMenu(event, content, "viewport");
+    }, { signal });
   };
 
   const bindView = (view: ReaderView) => {

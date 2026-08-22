@@ -1,8 +1,8 @@
-import type { ReaderHighlight } from "../epub/annotations";
+import type { ReaderAnnotation } from "../epub/annotation";
 
 type EpubFileWriter =
   | { save(blob: Blob): Promise<boolean> }
-  | { saveAnnotations(highlights: readonly ReaderHighlight[]): Promise<boolean> };
+  | { saveAnnotations(highlights: readonly ReaderAnnotation[]): Promise<boolean> };
 
 /**
  * Cross-platform reference to the EPUB currently being edited.

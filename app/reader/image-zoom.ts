@@ -1,4 +1,4 @@
-import { consumeReaderEvent, resolveReaderPointerIntent } from "../interaction-arbiter";
+import { consumeReaderEvent, resolveReaderPointerIntent } from "./interaction-arbiter";
 
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;

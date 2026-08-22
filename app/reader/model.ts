@@ -1,6 +1,6 @@
 import { platform } from "#platform";
 import type { View } from "../renderer";
-import type { ReaderHighlight } from "../epub/annotations";
+import type { ReaderAnnotation } from "../epub/annotation";
 import { DEFAULT_TYPOGRAPHY_FONTS } from "../typography/model";
 import type {
   TypographyFonts,
@@ -30,7 +30,7 @@ export type ReadingPosition = {
   settings?: Partial<ReaderSettings>;
 };
 
-export type ReaderView = View<ReaderHighlight>;
+export type ReaderView = View<ReaderAnnotation>;
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },

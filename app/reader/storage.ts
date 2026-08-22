@@ -2,16 +2,13 @@ import type {
   ReaderSettings,
   ReadingPosition,
 } from "./model";
-import type { ReaderHighlight } from "../epub/annotations";
 import type { Location } from "./navigation";
 import { platform } from "#platform";
 import { SerialTaskQueue } from "../shared/async-tasks";
 
 const positionWrites = new SerialTaskQueue();
-const highlightAccess = new SerialTaskQueue();
 
 const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
-const getBookHighlightsKey = (bookKey: string) => `reading-highlights:${bookKey}`;
 
 function updateBookPosition(
   bookKey: string,
@@ -45,15 +42,4 @@ export async function saveReaderSettings(bookKey: string, settings: ReaderSettin
     fraction: previous?.fraction,
     settings,
   }));
-}
-
-export async function getSavedHighlights(bookKey: string) {
-  if (!bookKey) return [];
-  return highlightAccess.add(async () =>
-    (await platform.readViewerMetadata<ReaderHighlight[]>(getBookHighlightsKey(bookKey))) ?? []);
-}
-
-export async function setSavedHighlights(bookKey: string, bookHighlights: ReaderHighlight[]) {
-  if (!bookKey) return;
-  await highlightAccess.add(() => platform.writeViewerMetadata(getBookHighlightsKey(bookKey), bookHighlights));
 }
