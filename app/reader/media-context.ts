@@ -1,9 +1,11 @@
+import { contextMenuStore } from "./context-menu-store";
+
 const PNG_MIME_TYPE = "image/png";
 const SVG_MIME_TYPE = "image/svg+xml";
 const SVG_COPY_PADDING_RATIO = 0.015;
 const SVG_RASTER_SCALE = 2;
 
-export async function copyReaderMedia(element: Element) {
+async function copyReaderMedia(element: Element) {
   if (element.localName === "svg") {
     await copySvg(element);
     return;
@@ -13,7 +15,7 @@ export async function copyReaderMedia(element: Element) {
   }
 }
 
-export function openMediaClipboardMenu(element: Element, x: number, y: number) {
+export function openMediaContext(element: Element, x: number, y: number) {
   contextMenuStore.getState().openMenu({
     canCopy: true,
     canDelete: false,
@@ -147,4 +149,3 @@ function renderToPng(source: CanvasImageSource, width: number, height: number) {
 
   return canvas.convertToBlob({ type: PNG_MIME_TYPE });
 }
-import { contextMenuStore } from "./context-menu-store";

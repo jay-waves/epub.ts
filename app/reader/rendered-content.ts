@@ -1,14 +1,14 @@
 import type { Content } from "../renderer";
 import type { ReaderView } from "./model";
 
-export type DocumentBinding = (content: Content & { doc: Document }, signal: AbortSignal) => void;
+export type RenderedContentBinding = (content: Content & { doc: Document }, signal: AbortSignal) => void;
 
 type Subscriber = {
-  bind: DocumentBinding;
-  documents: Map<Document, AbortController>;
+  bind: RenderedContentBinding;
+  bindings: Map<Document, AbortController>;
 };
 
-class RenderedDocuments {
+class RenderedContents {
   readonly #subscribers = new Set<Subscriber>();
   readonly #contents = new Map<Document, Content & { doc: Document }>();
   readonly #events = new AbortController();
@@ -25,19 +25,19 @@ class RenderedDocuments {
     view.addEventListener("unload", (event) => {
       this.#contents.delete(event.detail.doc);
       this.#subscribers.forEach((subscriber) => {
-        subscriber.documents.get(event.detail.doc)?.abort();
-        subscriber.documents.delete(event.detail.doc);
+        subscriber.bindings.get(event.detail.doc)?.abort();
+        subscriber.bindings.delete(event.detail.doc);
       });
     }, { signal: this.#events.signal });
   }
 
-  subscribe(bind: DocumentBinding) {
-    const subscriber: Subscriber = { bind, documents: new Map() };
+  subscribe(bind: RenderedContentBinding) {
+    const subscriber: Subscriber = { bind, bindings: new Map() };
     this.#subscribers.add(subscriber);
     this.#contents.forEach((content) => this.#bind(subscriber, content));
     return () => {
-      subscriber.documents.forEach((events) => events.abort());
-      subscriber.documents.clear();
+      subscriber.bindings.forEach((events) => events.abort());
+      subscriber.bindings.clear();
       this.#subscribers.delete(subscriber);
       if (!this.#subscribers.size) this.destroy();
     };
@@ -46,8 +46,8 @@ class RenderedDocuments {
   destroy() {
     this.#events.abort();
     this.#subscribers.forEach((subscriber) => {
-      subscriber.documents.forEach((events) => events.abort());
-      subscriber.documents.clear();
+      subscriber.bindings.forEach((events) => events.abort());
+      subscriber.bindings.clear();
     });
     this.#subscribers.clear();
     this.#contents.clear();
@@ -55,19 +55,19 @@ class RenderedDocuments {
   }
 
   #bind(subscriber: Subscriber, content: Content & { doc: Document }) {
-    if (subscriber.documents.has(content.doc)) return;
+    if (subscriber.bindings.has(content.doc)) return;
     const events = new AbortController();
-    subscriber.documents.set(content.doc, events);
+    subscriber.bindings.set(content.doc, events);
     subscriber.bind(content, events.signal);
   }
 }
 
-const hubs = new WeakMap<ReaderView, RenderedDocuments>();
+const hubs = new WeakMap<ReaderView, RenderedContents>();
 
-export function observeRenderedDocuments(view: ReaderView, bind: DocumentBinding) {
+export function observeRenderedContent(view: ReaderView, bind: RenderedContentBinding) {
   let hub = hubs.get(view);
   if (!hub) {
-    hub = new RenderedDocuments(view);
+    hub = new RenderedContents(view);
     hubs.set(view, hub);
   }
   return hub.subscribe(bind);

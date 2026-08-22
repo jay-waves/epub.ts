@@ -20,9 +20,9 @@
     --reader-control-strong-fg: var(--reader-chrome-fg, #1f2933);
     --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
     --reader-control-hover-fg: var(--reader-chrome-fg, #1f2933);
-    --reader-danger-fg: #dc2626;
-    --reader-danger-hover-bg: #fef2f2;
-    --reader-danger-hover-fg: #b91c1c;
+    --reader-danger-fg: #a65f5f;
+    --reader-danger-hover-bg: color-mix(in srgb, #a65f5f 9%, transparent);
+    --reader-danger-hover-fg: #8f4f4f;
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
     --reader-field-placeholder: #94a3b8;
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
@@ -52,9 +52,9 @@
     --reader-control-strong-fg: #e5ebf3;
     --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 10%, transparent);
     --reader-control-hover-fg: white;
-    --reader-danger-fg: #fca5a5;
-    --reader-danger-hover-bg: rgb(239 68 68 / 14%);
-    --reader-danger-hover-fg: #fecaca;
+    --reader-danger-fg: #d09a9a;
+    --reader-danger-hover-bg: rgb(208 154 154 / 11%);
+    --reader-danger-hover-fg: #dfabab;
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, var(--reader-chrome-fg, #e5ebf3) 6%);
     --reader-field-placeholder: #8ea0b3;
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 10%);
@@ -425,7 +425,6 @@
     @apply size-3.5 shrink-0;
   }
 
-  .reader-context-menu-item:is([data-action="highlight"], [data-action="annotate"]) svg,
   .reader-text-popover-title svg {
     color: var(--reader-accent-secondary, #f4c430);
   }

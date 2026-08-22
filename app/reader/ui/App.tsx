@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ReaderDock } from "./components/reader-dock";
 import { BookInfoPage } from "./components/book-info-page";
-import { HighlightContextMenu } from "./components/context-menu";
+import { ContentContextMenu } from "./components/context-menu";
 import { ReadingProgress } from "./components/reading-progress";
 import { SearchBar } from "./components/search-bar";
 import { TranslationPopover } from "./components/translation-popover";
@@ -37,7 +37,7 @@ export function App({
         <SearchBar />
         <BookInfoPage />
         <TocPage />
-        <HighlightContextMenu />
+        <ContentContextMenu />
         <AnnotationPopover />
         <TranslationPopover />
       </div>

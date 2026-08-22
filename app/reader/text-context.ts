@@ -1,4 +1,4 @@
-import type { HighlightContextAction } from "./context-menu-store";
+import type { ContentContextAction } from "./context-menu-store";
 import { contextMenuStore } from "./context-menu-store";
 import { emitViewerEvent, VIEWER_EVENTS } from "./events";
 import { createTranslation } from "./translation";
@@ -6,10 +6,13 @@ import { createTranslation } from "./translation";
 type TextContextRequest = {
   canDelete: boolean;
   canHighlight: boolean;
-  onAnnotate: () => void;
-  onDelete?: () => void;
-  onHighlight?: () => void;
   point: { x: number; y: number };
+  text: string;
+};
+
+export type TextContextActionDetail = {
+  action: ContentContextAction;
+  point: TextContextRequest["point"];
   text: string;
 };
 
@@ -24,16 +27,22 @@ export function createTextContext(options: TextContextOptions) {
     modelPolicy: options.translationModelPolicy,
     openExternal: options.openExternal,
   });
+  const events = new EventTarget();
   let current: TextContextRequest | null = null;
 
-  const close = () => {
+  const clear = () => {
+    if (!current) return;
     current = null;
+    events.dispatchEvent(new Event("close"));
+  };
+  const close = () => {
     contextMenuStore.getState().close();
+    clear();
   };
   const run = (task: Promise<unknown>, message: string) => {
     void task.catch((error) => console.warn(message, error));
   };
-  const handleAction = (action: HighlightContextAction) => {
+  const handleAction = (action: ContentContextAction) => {
     const request = current;
     if (!request) return;
     switch (action) {
@@ -43,15 +52,10 @@ export function createTextContext(options: TextContextOptions) {
       case "translate":
         void translation.translate({ sourceText: request.text, ...request.point });
         break;
-      case "annotate":
-        request.onAnnotate();
-        break;
-      case "delete":
-        request.onDelete?.();
-        break;
-      case "highlight":
-        request.onHighlight?.();
     }
+    events.dispatchEvent(new CustomEvent<TextContextActionDetail>("action", {
+      detail: { action, point: request.point, text: request.text },
+    }));
   };
 
   return {
@@ -60,6 +64,7 @@ export function createTextContext(options: TextContextOptions) {
       close();
       translation.destroy();
     },
+    events,
     dismiss() {
       close();
       translation.cancel();
@@ -74,7 +79,7 @@ export function createTextContext(options: TextContextOptions) {
         canHighlight: request.canHighlight,
         kind: "text",
         ...request.point,
-      }, handleAction, () => { current = null; });
+      }, handleAction, clear);
     },
   };
 }

@@ -1,8 +1,8 @@
 import type { ReaderView } from "./model";
 import type { Content, Resolved } from "../renderer";
-import { observeRenderedDocuments } from "./documents";
+import { observeRenderedContent } from "./rendered-content";
 import { consumeReaderEvent, resolveReaderPointerIntent } from "./interaction-arbiter";
-import { openMediaClipboardMenu } from "./media-context";
+import { openMediaContext } from "./media-context";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
@@ -159,7 +159,7 @@ export function createInteractions(options: InteractionOptions) {
       consumeReaderEvent(event, "stop");
       if (media && media !== content.overlay?.element) {
         const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
-        openMediaClipboardMenu(media,
+        openMediaContext(media,
           frame ? frame.left + event.clientX : event.clientX,
           frame ? frame.top + event.clientY : event.clientY);
         return;
@@ -182,7 +182,7 @@ export function createInteractions(options: InteractionOptions) {
     const events = new AbortController();
     const binding: ViewBinding = {
       events,
-      stopDocuments: observeRenderedDocuments(view, ({ doc, index }, signal) => bindDoc(view, doc, index, signal)),
+      stopDocuments: observeRenderedContent(view, ({ doc, index }, signal) => bindDoc(view, doc, index, signal)),
     };
     views.set(view, binding);
     cursor.add(view, () => view.hasAttribute("autohide-cursor"), events.signal);

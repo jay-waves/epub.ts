@@ -2,7 +2,7 @@ import { DragGesture } from "@use-gesture/vanilla";
 import { WheelGestures } from "wheel-gestures";
 import type { ReaderView, StepDirection } from "./model";
 import type { Navigation } from "./navigation";
-import { observeRenderedDocuments } from "./documents";
+import { observeRenderedContent } from "./rendered-content";
 import { KineticScroller } from "./kinetic-scroller";
 import type { ReaderCommand } from "./events";
 import {
@@ -586,7 +586,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     const previousTouchAction = view.style.touchAction;
     view.style.touchAction = "pinch-zoom";
     const stopShellDrag = bindDragGesture(view, document);
-    const stopDocuments = observeRenderedDocuments(view, ({ doc }, signal) => {
+    const stopDocuments = observeRenderedContent(view, ({ doc }, signal) => {
       bindInputTarget(doc);
       signal.addEventListener("abort", () => unbindInputTarget(doc), { once: true });
     });

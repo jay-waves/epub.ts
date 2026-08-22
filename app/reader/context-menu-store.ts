@@ -1,8 +1,8 @@
 import { createStore } from "zustand/vanilla";
 
-export type HighlightContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
+export type ContentContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
 
-export type HighlightContextMenu = {
+export type ContentContextMenu = {
   canCopy: boolean;
   canDelete: boolean;
   canHighlight: boolean;
@@ -11,18 +11,18 @@ export type HighlightContextMenu = {
   y: number;
 };
 
-type ContextMenuState = HighlightContextMenu & {
+type ContextMenuState = ContentContextMenu & {
   close: () => void;
   open: boolean;
   openMenu: (
-    menu: HighlightContextMenu,
-    onAction: (action: HighlightContextAction) => void,
+    menu: ContentContextMenu,
+    onAction: (action: ContentContextAction) => void,
     onClose: () => void,
   ) => void;
-  select: (action: HighlightContextAction) => void;
+  select: (action: ContentContextAction) => void;
 };
 
-const closedMenu: HighlightContextMenu = {
+const closedMenu: ContentContextMenu = {
   canCopy: false,
   canDelete: false,
   canHighlight: false,
@@ -31,7 +31,7 @@ const closedMenu: HighlightContextMenu = {
   y: 0,
 };
 
-let actionHandler: ((action: HighlightContextAction) => void) | undefined;
+let actionHandler: ((action: ContentContextAction) => void) | undefined;
 let closeHandler: (() => void) | undefined;
 
 export const contextMenuStore = createStore<ContextMenuState>((set, get) => ({

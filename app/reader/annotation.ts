@@ -1,14 +1,12 @@
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./events";
-import type { HighlightContextAction } from "./context-menu-store";
-import { contextMenuStore } from "./context-menu-store";
 import type { ReaderAnnotation } from "../epub/annotation";
 import { annotationRepository } from "./annotation-repository";
 import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
 import type { ReaderView } from "./model";
-import { createTranslation } from "./translation";
 import type { Navigation } from "./navigation";
 import { TaskTracker } from "../shared/async-tasks";
 import { drawAnnotation as drawAnnotationOverlay } from "./annotation-overlay";
+import { createTextContext, type TextContextActionDetail } from "./text-context";
 
 type PointerCoordinateSpace = "content" | "viewport";
 
@@ -21,19 +19,17 @@ type AnnotationOptions = {
   translationModelPolicy: "allow-download" | "external-fallback";
 };
 
+type TextSelection = {
+  index: number;
+  range: Range;
+  text: string;
+  value: string;
+};
+
 type AnnotationContext = {
   highlight?: ReaderAnnotation;
-  point?: {
-    x: number;
-    y: number;
-  };
-  selection?: {
-    index: number;
-    range: Range;
-    text: string;
-    value: string;
-  };
-} | null;
+  selection?: TextSelection;
+};
 
 const AUTO_HIGHLIGHT_COLOR = "auto";
 const LEGACY_HIGHLIGHT_COLOR = "#f4c430";
@@ -41,11 +37,11 @@ const THEME_HIGHLIGHT_COLOR = "var(--reader-annotation-color, #f4c430)";
 
 export function createAnnotations(options: AnnotationOptions) {
   const viewerEvents = new AbortController();
-  let activeContext: AnnotationContext = null;
+  let activeContext: AnnotationContext | null = null;
   const pendingWrites = new TaskTracker();
-  const translation = createTranslation({
-    modelPolicy: options.translationModelPolicy,
+  const textContext = createTextContext({
     openExternal: options.openExternal,
+    translationModelPolicy: options.translationModelPolicy,
   });
   const run = (task: Promise<unknown>, message: string) => {
     void task.catch((error) => console.warn(message, error));
@@ -60,22 +56,27 @@ export function createAnnotations(options: AnnotationOptions) {
   listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
     run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
   }, { signal: viewerEvents.signal });
+  textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail>) => {
+    const context = activeContext;
+    if (!context) return;
+    const { action, point } = event.detail;
+    if (action === "copy" || action === "translate") {
+      options.getNavigation()?.clearSelection();
+    } else if (action === "highlight" && context.selection) {
+      run(track(highlightSelectedText(context.selection)), "Failed to save highlight.");
+    } else if (action === "annotate") {
+      run(track(annotateContextText(context, point)), "Failed to create annotation.");
+    } else if (action === "delete" && context.highlight) {
+      run(track(deleteHighlight(context.highlight)), "Failed to delete highlight.");
+    }
+  }) as EventListener, { signal: viewerEvents.signal });
+  textContext.events.addEventListener("close", () => { activeContext = null; }, {
+    signal: viewerEvents.signal,
+  });
 
   const getContents = () => options.getView()?.renderer?.getContents?.() ?? [];
 
   const findContentByIndex = (index: number) => getContents().find((item) => item.index === index);
-
-  const close = () => {
-    activeContext = null;
-    contextMenuStore.getState().close();
-  };
-
-  const dismiss = () => {
-    close();
-    translation.cancel();
-    emitViewerEvent(VIEWER_EVENTS.translationClose);
-    emitViewerEvent(VIEWER_EVENTS.annotationClose);
-  };
 
   const getSelectedReaderRange = () => {
     for (const { doc, index } of getContents()) {
@@ -136,24 +137,22 @@ export function createAnnotations(options: AnnotationOptions) {
     highlight?: ReaderAnnotation;
     pageX: number;
     pageY: number;
-    selection?: NonNullable<AnnotationContext>["selection"];
+    selection?: TextSelection;
   }) => {
     const hasSelection = Boolean(selection);
     const hasHighlight = Boolean(highlight);
     if (!hasSelection && !hasHighlight) {
-      close();
+      textContext.close();
       return;
     }
-
-    activeContext = { highlight, point: { x: pageX, y: pageY }, selection };
-    contextMenuStore.getState().openMenu({
-      canCopy: hasSelection || hasHighlight,
+    const context = { highlight, selection };
+    activeContext = context;
+    textContext.open({
       canDelete: hasHighlight,
       canHighlight: hasSelection,
-      kind: "text",
-      x: pageX,
-      y: pageY,
-    }, handleContextAction, () => { activeContext = null; });
+      point: { x: pageX, y: pageY },
+      text: highlight ? getAnnotationText(highlight) : selection!.text,
+    });
   };
 
   const getAnnotationText = (highlight: ReaderAnnotation) => highlight.text?.trim() || highlight.value;
@@ -233,7 +232,7 @@ export function createAnnotations(options: AnnotationOptions) {
         const highlight = annotationRepository.getByCfi(detail.annotation.value) ?? detail.annotation;
         if (!hasAnnotationNote(highlight)) return;
         openAnnotationPopover(highlight, getPagePointFromDocumentEvent(event));
-        close();
+        textContext.close();
       },
       onActivate: (event) => {
         const highlight = annotationRepository.getByCfi(detail.annotation.value)
@@ -276,37 +275,6 @@ export function createAnnotations(options: AnnotationOptions) {
     if (shouldPersist) await annotationRepository.replace(bookKey, restoredHighlights);
   };
 
-  const copyHighlight = async (highlight: ReaderAnnotation) => {
-    await navigator.clipboard.writeText(getAnnotationText(highlight));
-    close();
-  };
-
-  const copySelectedText = async () => {
-    const text = activeContext?.selection?.text.trim();
-    if (!text) return;
-
-    await navigator.clipboard.writeText(text);
-    options.getNavigation()?.clearSelection();
-    close();
-  };
-
-  const translateContextText = () => {
-    const text = activeContext?.highlight?.text?.trim()
-      || activeContext?.selection?.text.trim()
-      || activeContext?.highlight?.value.trim()
-      || "";
-    if (!text) return;
-
-    const point = activeContext?.point ?? getViewportCenter();
-    void translation.translate({
-      sourceText: text,
-      x: point.x,
-      y: point.y,
-    });
-    options.getNavigation()?.clearSelection();
-    close();
-  };
-
   const markUnsaved = () => {
     emitViewerEvent(VIEWER_EVENTS.unsavedChange);
   };
@@ -332,7 +300,7 @@ export function createAnnotations(options: AnnotationOptions) {
     await view.deleteAnnotation?.(highlight);
     await annotationRepository.remove(bookKey, highlight.id);
     emitViewerEvent(VIEWER_EVENTS.annotationClose);
-    close();
+    textContext.close();
   };
 
   const deleteAnnotationNote = async (value: string) => {
@@ -366,17 +334,15 @@ export function createAnnotations(options: AnnotationOptions) {
     await persistHighlight(annotation);
   };
 
-  const highlightSelectedText = async () => {
+  const highlightSelectedText = async (selection: TextSelection) => {
     const view = options.getView();
     const bookKey = options.getBookKey();
-    if (!view || !bookKey || !activeContext?.selection) return;
-
-    const selection = activeContext.selection;
+    if (!view || !bookKey) return;
     const { value } = selection;
     const existing = annotationRepository.getByCfi(value);
     if (existing) {
       options.getNavigation()?.clearSelection();
-      close();
+      textContext.close();
       return existing;
     }
 
@@ -394,16 +360,17 @@ export function createAnnotations(options: AnnotationOptions) {
 
     await persistHighlight(annotation);
     options.getNavigation()?.clearSelection();
-    close();
+    textContext.close();
     return annotation;
   };
 
-  const annotateContextText = async () => {
+  const annotateContextText = async (
+    context: AnnotationContext,
+    point = getViewportCenter(),
+  ) => {
     const view = options.getView();
     const bookKey = options.getBookKey();
-    const context = activeContext;
-    const point = context?.point ?? getViewportCenter();
-    if (!view || !bookKey || !context) return;
+    if (!view || !bookKey) return;
 
     if (context.highlight) {
       const annotation: ReaderAnnotation = {
@@ -411,7 +378,7 @@ export function createAnnotations(options: AnnotationOptions) {
         note: context.highlight.note ?? "",
       };
       openAnnotationPopover(annotation, point);
-      close();
+      textContext.close();
       return;
     }
 
@@ -437,47 +404,22 @@ export function createAnnotations(options: AnnotationOptions) {
     if (!existing) await persistHighlight(annotation);
     options.getNavigation()?.clearSelection();
     openAnnotationPopover(annotation, point);
-    close();
-  };
-
-  const handleContextAction = (action: HighlightContextAction) => {
-    switch (action) {
-      case "copy":
-        run(
-          activeContext?.highlight ? copyHighlight(activeContext.highlight) : copySelectedText(),
-          "Failed to copy reader text.",
-        );
-        break;
-      case "highlight":
-        run(track(highlightSelectedText()), "Failed to save highlight.");
-        break;
-      case "translate":
-        translateContextText();
-        break;
-      case "annotate":
-        run(track(annotateContextText()), "Failed to create annotation.");
-        break;
-      case "delete":
-        if (activeContext?.highlight) {
-          run(track(deleteHighlight(activeContext.highlight)), "Failed to delete highlight.");
-        }
-    }
+    textContext.close();
   };
 
   const reset = () => {
-    translation.cancel();
     annotationRepository.clearMemory();
-    close();
+    textContext.close();
   };
 
   return {
     addCurrentAnnotationsToOverlay,
-    close,
-    dismiss,
+    close: textContext.close,
+    dismiss: textContext.dismiss,
     drawAnnotation,
     destroy: () => {
       reset();
-      translation.destroy();
+      textContext.destroy();
       viewerEvents.abort();
     },
     flushPendingWrites: () => pendingWrites.idle(),

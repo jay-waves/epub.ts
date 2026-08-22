@@ -2,7 +2,7 @@ import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-
 import type { LucideIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { usePointPopover } from "./use-point-popover";
-import type { HighlightContextAction } from "../../context-menu-store";
+import type { ContentContextAction } from "../../context-menu-store";
 import { contextMenuStore } from "../../context-menu-store";
 
 const menuItems = [
@@ -13,7 +13,7 @@ const menuItems = [
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
 ] as const;
 
-export function HighlightContextMenu() {
+export function ContentContextMenu() {
   const state = useStore(contextMenuStore);
   const popover = usePointPopover({
     gap: 4,
@@ -54,12 +54,12 @@ function ContextMenuItem({
   label,
   onSelect,
 }: {
-  action: HighlightContextAction;
+  action: ContentContextAction;
   destructive?: boolean;
   disabled: boolean;
   icon: LucideIcon;
   label: string;
-  onSelect: (action: HighlightContextAction) => void;
+  onSelect: (action: ContentContextAction) => void;
 }) {
   return (
     <button
