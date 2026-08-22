@@ -2,6 +2,8 @@ import { createElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
+  applyReaderFontFamily,
+  applyReaderFonts,
   applyReaderFontSize,
   applyReaderLayoutLevel,
   applyReaderLayoutMode,
@@ -81,6 +83,8 @@ const runtime: ViewerRuntime = {
   reader: null,
   search: null,
 };
+
+console.log(`[epub.ts] v${__EPUB_TS_VERSION__} · built ${__EPUB_TS_BUILD_TIME__}`);
 
 const getView = () => runtime.reader?.view ?? null;
 const getNavigation = () => runtime.reader?.navigation ?? null;
@@ -178,12 +182,12 @@ function emitTocUpdate() {
 }
 
 function emitBookInfoUpdate() {
-  const sourceLabel = session.document?.sourceLabel ?? "";
   emitViewerEvent(
     VIEWER_EVENTS.bookInfoUpdate,
     createBookInfo({
       book: getView()?.book,
-      sourceLabel,
+      fontFamily: readerSettings.fontFamily,
+      fonts: readerSettings.fonts,
     }),
   );
 }
@@ -380,10 +384,17 @@ async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined
   const layoutMode: ReaderSettings["layoutMode"] = settings?.layoutMode === "scrolled"
     ? "scrolled"
     : "paginated";
-  const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings, layoutMode };
+  const fontFamily: ReaderSettings["fontFamily"] = settings?.fontFamily === "sans"
+    || settings?.fontFamily === "mono"
+    ? settings.fontFamily
+    : "serif";
+  const fonts = normalizeReaderFonts(settings?.fonts);
+  const nextSettings = { ...DEFAULT_READER_SETTINGS, ...settings, fontFamily, fonts, layoutMode };
   const nextLayoutMode = getView()?.renderMode === "fixed" ? "paginated" : nextSettings.layoutMode;
 
   applyReaderTheme(nextSettings.theme);
+  applyReaderFontFamily(nextSettings.fontFamily);
+  applyReaderFonts(nextSettings.fonts);
   applyReaderFontSize(nextSettings.fontSize);
   applyReaderLayoutLevel(nextSettings.layoutLevel, { view: null });
   await applyReaderLayoutMode(nextLayoutMode, readerLayoutTarget);
@@ -639,11 +650,39 @@ function setupEventListeners(signal: AbortSignal) {
   }, { signal });
   listenViewerEvent(VIEWER_EVENTS.searchClear, clearSearchState, { signal });
   listenViewerEvent(VIEWER_EVENTS.unsavedChange, () => setHasUnsavedChanges(true), { signal });
+  listenViewerEvent(VIEWER_EVENTS.bookInfoFontChange, (fontFamily) => {
+    void runReaderStyleChange(() => applyReaderFontFamily(fontFamily, getView()))
+      .then(() => {
+        saveCurrentReaderSettings();
+        emitBookInfoUpdate();
+      })
+      .catch((error) => console.warn("Failed to change reader font.", error));
+  }, { signal });
+  listenViewerEvent(VIEWER_EVENTS.bookInfoFontsChange, (fonts) => {
+    void runReaderStyleChange(() => applyReaderFonts(fonts, getView()))
+      .then(() => {
+        saveCurrentReaderSettings();
+        emitBookInfoUpdate();
+      })
+      .catch((error) => console.warn("Failed to change reader fonts.", error));
+  }, { signal });
   listenViewerEvent(VIEWER_EVENTS.dockAction, (action) => {
     void handleDockAction(action).catch((error) => {
       console.warn("Failed to apply reader action.", error);
     });
   }, { signal });
+}
+
+function normalizeReaderFonts(fonts: Partial<ReaderSettings["fonts"]> | undefined): ReaderSettings["fonts"] {
+  return {
+    serif: fonts?.serif === "noto-serif" || fonts?.serif === "system-serif"
+      ? fonts.serif
+      : "eb-garamond",
+    sans: fonts?.sans === "system-sans" ? fonts.sans : "noto-sans",
+    mono: fonts?.mono === "fira-code" || fonts?.mono === "system-mono"
+      ? fonts.mono
+      : "monaspace-argon",
+  };
 }
 
 async function runReaderStyleChange(action: () => void | Promise<void>) {

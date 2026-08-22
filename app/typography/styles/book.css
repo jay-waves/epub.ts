@@ -7,9 +7,9 @@
       --reader-small-font-size: calc(var(--reader-font-size) * 0.78);
       --reader-footnote-font-size: calc(var(--reader-font-size) * 0.82);
       --reader-small-line-height: 1.4;
-      --reader-font-serif: var(--reader-config-font-serif);
-      --reader-font-sans: var(--reader-config-font-sans);
-      --reader-font-mono: var(--reader-config-font-mono);
+      --reader-font-serif: var(--reader-preferred-font-serif), var(--reader-config-font-serif);
+      --reader-font-sans: var(--reader-preferred-font-sans), var(--reader-config-font-sans);
+      --reader-font-mono: var(--reader-preferred-font-mono), var(--reader-config-font-mono);
       color-scheme: var(--reader-color-scheme);
       font-size: var(--reader-font-size) !important;
       background: var(--theme-bg-color) !important;
@@ -22,7 +22,7 @@
       scrollbar-width: none !important;
     }
     body {
-      font-family: var(--reader-font-serif) !important;
+      font-family: var(--reader-font-body) !important;
       font-size-adjust: var(--reader-font-size-adjust);
       line-height: var(--reader-line-height) !important;
       letter-spacing: var(--reader-letter-spacing) !important;
@@ -30,7 +30,7 @@
     body :where(
       *:not(math):not(math *):not(svg):not(svg *):not(code):not(pre):not(kbd):not(samp):not(input):not(textarea):not(select):not(button):not(.hljs):not(.hljs *)
     ) {
-      font-family: var(--reader-font-serif) !important;
+      font-family: var(--reader-font-body) !important;
     }
     body,
     body :where(*:not(svg):not(svg *):not(a):not(a *):not(.hljs):not(.hljs *)) {

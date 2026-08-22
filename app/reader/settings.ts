@@ -1,6 +1,6 @@
 import { createBookStyles } from "../typography/styles/book-styles";
 import { readerSettings } from "./model";
-import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
+import type { ReaderFlow, ReaderFontFamily, ReaderFonts, ReaderTheme, ReaderThemeId } from "./model";
 import type { ReaderView } from "./model";
 import type { Renderer } from "../renderer";
 
@@ -180,6 +180,8 @@ function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
 
 export function getBookStyles(themeId = readerSettings.theme): [string, string] {
   return createBookStyles({
+    fontFamily: readerSettings.fontFamily,
+    fonts: readerSettings.fonts,
     fontSize: readerSettings.fontSize,
     layout: getLayoutPreset(),
     layoutLevel: readerSettings.layoutLevel,
@@ -225,6 +227,16 @@ function clampLayoutLevel(layoutLevel: number) {
 
 export function applyReaderFontSize(fontSize: number, view?: ReaderView | null) {
   readerSettings.fontSize = clampReaderFontSize(fontSize);
+  view?.setStyles(getBookStyles());
+}
+
+export function applyReaderFontFamily(fontFamily: ReaderFontFamily, view?: ReaderView | null) {
+  readerSettings.fontFamily = fontFamily;
+  view?.setStyles(getBookStyles());
+}
+
+export function applyReaderFonts(fonts: ReaderFonts, view?: ReaderView | null) {
+  readerSettings.fonts = fonts;
   view?.setStyles(getBookStyles());
 }
 

@@ -690,6 +690,10 @@
     scrollbar-width: none;
   }
 
+  .book-info-section {
+    @apply grid gap-2;
+  }
+
   .book-info-header {
     @apply grid gap-1 border-b pb-3;
     border-color: var(--reader-border-subtle);
@@ -707,7 +711,12 @@
     overflow-wrap: anywhere;
   }
 
-  .book-info-section {
+  .book-info-section-title {
+    @apply m-0 text-xs font-semibold;
+    color: var(--reader-control-strong-fg);
+  }
+
+  .book-info-stats {
     @apply grid grid-cols-3 gap-2;
   }
 
@@ -727,26 +736,39 @@
   }
 
   .book-info-list {
-    @apply m-0 grid gap-0.5;
+    @apply m-0 grid overflow-hidden rounded-md border;
+    border-color: var(--reader-border-subtle);
+    background-color: var(--reader-field-bg);
   }
 
   .book-info-row {
-    @apply grid grid-cols-[7.5rem_minmax(0,1fr)] gap-3 rounded-md px-2 py-2 text-sm leading-5;
-  }
-
-  .book-info-row:hover {
-    background-color: var(--reader-toc-hover-bg);
+    @apply grid grid-cols-[7.5rem_minmax(0,1fr)] gap-4 border-b px-3 py-2 text-xs leading-5 last:border-b-0;
+    border-color: var(--reader-border-subtle);
   }
 
   .book-info-row dt {
-    @apply font-medium;
+    @apply font-normal;
     color: var(--reader-control-fg);
   }
 
   .book-info-row dd {
-    @apply m-0;
+    @apply m-0 tabular-nums;
     color: var(--reader-control-strong-fg);
     overflow-wrap: anywhere;
+  }
+
+  .book-info-control {
+    @apply grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-4 rounded-md border px-3 py-2 text-xs;
+    border-color: var(--reader-border-subtle);
+    background-color: var(--reader-field-bg);
+    color: var(--reader-control-fg);
+  }
+
+  .book-info-control select {
+    @apply min-w-0 rounded-sm border px-2 py-1 outline-none;
+    border-color: var(--reader-border-subtle);
+    background-color: var(--reader-chrome-bg);
+    color: var(--reader-control-strong-fg);
   }
 }
 
@@ -759,12 +781,13 @@
     @apply h-9 w-9;
   }
 
-  .book-info-section {
-    @apply grid-cols-1;
+  .book-info-row,
+  .book-info-control {
+    @apply grid-cols-1 gap-1;
   }
 
-  .book-info-row {
-    @apply grid-cols-1 gap-1;
+  .book-info-stats {
+    @apply grid-cols-1;
   }
 }
 

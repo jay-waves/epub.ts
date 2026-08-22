@@ -6,6 +6,7 @@ import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
 import { platform } from "#platform";
 import bookStyles from "./book.css?raw";
 import type { TypographyTheme, TypographyThemeId } from "../model";
+import type { ReaderFonts } from "../../reader/model";
 
 const readerProfile = platform.readerProfile;
 
@@ -85,6 +86,8 @@ type ReaderBookLayout = {
 };
 
 type ReaderBookStyleOptions = {
+  fontFamily: "serif" | "sans" | "mono";
+  fonts: ReaderFonts;
   fontSize: number;
   layout: ReaderBookLayout;
   layoutLevel: number;
@@ -141,8 +144,8 @@ const READER_BOOK_FOUNDATION_STYLES = `
 `;
 
 export function createBookStyles(options: ReaderBookStyleOptions): [string, string] {
-  const { fontSize, layout, layoutLevel, theme } = options;
-  const cacheKey = `${theme.id}|${fontSize}|${layoutLevel}`;
+  const { fontFamily, fonts, fontSize, layout, layoutLevel, theme } = options;
+  const cacheKey = `${theme.id}|${fontFamily}|${fonts.serif}|${fonts.sans}|${fonts.mono}|${fontSize}|${layoutLevel}`;
   if (cachedBookStyles?.key === cacheKey) return cachedBookStyles.value;
 
   const imageMaxInlineSize = clamp(
@@ -176,10 +179,14 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
       --reader-media-filter: ${mediaFilter};
       --reader-image-max-inline-size: ${imageMaxInlineSize}%;
       --reader-color-scheme: ${theme.mode};
+      --reader-preferred-font-serif: ${getPreferredFont("serif", fonts.serif)};
+      --reader-preferred-font-sans: ${getPreferredFont("sans", fonts.sans)};
+      --reader-preferred-font-mono: ${getPreferredFont("mono", fonts.mono)};
       --reader-config-font-serif: ${READER_SERIF_STACK};
       --reader-config-font-sans: ${READER_SANS_STACK};
       --reader-config-font-mono: ${READER_MONO_STACK};
-      --reader-font-size-adjust: ${readerProfile.fontSizeAdjust};
+      --reader-font-body: var(--reader-font-${fontFamily});
+      --reader-font-size-adjust: ${fontFamily === "serif" ? readerProfile.fontSizeAdjust : "none"};
       color-scheme: ${theme.mode};
     }
     ::selection {
@@ -219,6 +226,26 @@ export function createBookStyles(options: ReaderBookStyleOptions): [string, stri
   ];
   cachedBookStyles = { key: cacheKey, value };
   return value;
+}
+
+function getPreferredFont(role: keyof ReaderFonts, font: ReaderFonts[keyof ReaderFonts]) {
+  const families = {
+    serif: {
+      "eb-garamond": `"${READER_LATIN_FONT_FAMILY}"`,
+      "noto-serif": `"Noto Serif"`,
+      "system-serif": "serif",
+    },
+    sans: {
+      "noto-sans": `"Noto Sans"`,
+      "system-sans": "system-ui",
+    },
+    mono: {
+      "monaspace-argon": `"${READER_MONO_FONT_FAMILY}"`,
+      "fira-code": `"Fira Code"`,
+      "system-mono": "monospace",
+    },
+  } as const;
+  return (families[role] as Record<string, string>)[font] ?? families[role][Object.keys(families[role])[0] as never];
 }
 
 function clamp(value: number, min: number, max: number) {
