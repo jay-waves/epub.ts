@@ -10,7 +10,7 @@ const ANNOTATION_BADGE_SELECTOR = "[data-reader-annotation-badge]";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_COLOR = "var(--reader-annotation-color, #f4c430)";
 
-export type AnnotationDrawOptions = OverlayDrawOptions & {
+type AnnotationDrawOptions = OverlayDrawOptions & {
   annotationValue?: string;
   color: string;
   hasNote?: boolean;

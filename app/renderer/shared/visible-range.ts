@@ -1,5 +1,3 @@
-import type { SpineEntry } from "./spine-buffer";
-
 type MappedRect = { left: number; right: number };
 
 export type VisibleLocationView = {
@@ -8,42 +6,6 @@ export type VisibleLocationView = {
   mapRect: (rect: DOMRect) => MappedRect;
   visibleRange: (start: number, end: number) => Range;
 };
-
-type VisibleLocationOptions<View extends VisibleLocationView> = {
-  current?: SpineEntry<View>;
-  end: number;
-  edgeTurns?: number;
-  entryOffset: (entry: SpineEntry<View>) => number;
-  findAt: (offset: number) => SpineEntry<View> | undefined;
-  layout:
-    | {
-      kind: "paginated";
-      continuous: boolean;
-      rtl: boolean;
-    }
-    | {
-      kind: "scrolled";
-      continuous: boolean;
-      range: (entry: SpineEntry<View>) => Range | undefined;
-    };
-  margin: number;
-  page: number;
-  pages: number;
-  start: number;
-  viewportSize: number;
-};
-
-type ReadingEdgeOptions = {
-  contentOffset: number;
-  layout: "paginated" | "scrolled";
-  margin: number;
-  start: number;
-};
-
-/** Coordinate used to decide which chapter owns the viewport's reading edge. */
-export function getReadingEdge({ contentOffset, layout, margin, start }: ReadingEdgeOptions) {
-  return Math.max(0, start + (layout === "scrolled" ? margin : -contentOffset));
-}
 
 const makeRange = (doc: Document, node: Node, start: number, end = start) => {
   const range = doc.createRange();
@@ -140,63 +102,4 @@ export function getVisibleRange(
   range.setStart(from, startOffset);
   range.setEnd(to, endOffset);
   return range;
-}
-
-/** Resolves one immutable relocation snapshot from viewport geometry. */
-export function resolveVisibleLocation<View extends VisibleLocationView>({
-  current,
-  end,
-  edgeTurns = 1,
-  entryOffset,
-  findAt,
-  layout,
-  margin,
-  page,
-  pages,
-  start,
-  viewportSize,
-}: VisibleLocationOptions<View>) {
-  const { continuous } = layout;
-  const contentOffset = continuous && layout.kind === "paginated" && current
-    ? entryOffset(current) - current.start
-    : 0;
-  const readingEdge = getReadingEdge({ contentOffset, layout: layout.kind, margin, start });
-  const entry = continuous
-    ? findAt(readingEdge)
-    : current;
-  if (!entry) return undefined;
-
-  const offset = entryOffset(entry);
-  const { view } = entry;
-  const range = layout.kind === "scrolled"
-    ? layout.range(entry)
-    : continuous
-      ? view.visibleRange(
-        Math.max(0, start - offset),
-        Math.min(view.extent, end - offset),
-      )
-      : getVisibleRange(
-        view.document,
-        start - (layout.rtl ? -viewportSize : viewportSize),
-        end - (layout.rtl ? -viewportSize : viewportSize),
-        (rect) => view.mapRect(rect),
-      );
-
-  let fraction: number | undefined;
-  let visibleSize: number | undefined;
-  if (layout.kind === "scrolled") {
-    fraction = Math.min(1, Math.max(0, (readingEdge - offset) / view.extent));
-    visibleSize = Math.min(1, viewportSize / view.extent);
-  } else if (pages > 0) {
-    if (continuous) {
-      fraction = Math.min(1, Math.max(0, (start - offset) / view.extent));
-      visibleSize = Math.min(1, viewportSize / view.extent);
-    } else {
-      const contentTurns = pages - edgeTurns * 2;
-      fraction = (page - edgeTurns) / contentTurns;
-      visibleSize = edgeTurns / contentTurns;
-    }
-  }
-
-  return { entry, fraction, range, size: visibleSize };
 }

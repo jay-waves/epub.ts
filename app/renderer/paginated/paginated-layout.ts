@@ -1,5 +1,5 @@
 /** Geometry for one stable paginated spread. */
-export type PaginatedColumnGeometry = {
+type PaginatedColumnGeometry = {
   columnCount: number;
   columnStep: number;
   columnWidth: number;

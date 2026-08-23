@@ -1,7 +1,11 @@
 import type { ReaderView } from "./model";
 import type { Content, Resolved } from "../renderer";
 import { observeRenderedContent } from "./rendered-content";
-import { consumeReaderEvent, resolveReaderPointerIntent } from "./interaction-arbiter";
+import {
+  consumeReaderEvent,
+  eventTargetElement,
+  resolveReaderPointerIntent,
+} from "./interaction-arbiter";
 import { openMediaContext } from "./media-context";
 
 const CURSOR_DELAY = 1_000;
@@ -36,12 +40,6 @@ type ViewBinding = {
   events: AbortController;
   stopDocuments: () => void;
 };
-
-function asElement(target: EventTarget | null) {
-  // Nodes from a rendered iframe belong to a different realm, so they are not
-  // instanceof the host window's Element constructor.
-  return target && (target as Node).nodeType === 1 ? target as Element : null;
-}
 
 function isPlainClick(event: MouseEvent | PointerEvent) {
   return event.button === 0
@@ -128,7 +126,7 @@ export function createInteractions(options: InteractionOptions) {
       if (!isPlainClick(event)) return;
 
       if (resolveReaderPointerIntent(event.target) === "link") {
-        const anchor = asElement(event.target)?.closest<HTMLAnchorElement>("a[href]");
+        const anchor = eventTargetElement(event.target)?.closest<HTMLAnchorElement>("a[href]");
         if (!anchor) return;
         consumeReaderEvent(event, "immediate");
         doc.defaultView?.getSelection()?.removeAllRanges();
@@ -155,7 +153,7 @@ export function createInteractions(options: InteractionOptions) {
     doc.addEventListener("contextmenu", (event) => {
       const content = view.renderer.getContents().find((item) => item.index === index);
       if (!content) return;
-      const media = asElement(event.target)?.closest("img, svg");
+      const media = eventTargetElement(event.target)?.closest("img, svg");
       consumeReaderEvent(event, "stop");
       if (media && media !== content.overlay?.element) {
         const frame = doc.defaultView?.frameElement?.getBoundingClientRect();

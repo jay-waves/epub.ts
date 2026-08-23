@@ -1,5 +1,5 @@
 import { Overlay } from "./overlay";
-import { getVisibleRange } from "./visible-location";
+import { getVisibleRange } from "./visible-range";
 
 export type SectionDirection = {
   background?: string;

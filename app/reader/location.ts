@@ -1,7 +1,5 @@
 import type { TocItem } from "../renderer/reader-view.js";
 
-export type { TocItem } from "../renderer/reader-view.js";
-
 type Section = {
   linear?: string;
   size?: number;
@@ -113,14 +111,9 @@ export class SectionIndex {
     this.#sizePerLocation = sizePerLocation;
     this.#sizePerTime = sizePerTime;
     this.#total = this.#sizes.reduce((sum, size) => sum + size, 0);
-    this.fractions = this.#buildFractions();
-  }
-
-  #buildFractions() {
-    const result = [0];
+    this.fractions = [0];
     let sum = 0;
-    for (const size of this.#sizes) result.push((sum += size) / this.#total);
-    return result;
+    for (const size of this.#sizes) this.fractions.push((sum += size) / this.#total);
   }
 
   get(index: number, sectionFraction?: number, pageFraction = 0): SectionLocation {

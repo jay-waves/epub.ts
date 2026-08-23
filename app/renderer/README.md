@@ -12,8 +12,9 @@ application state, or UI.
 - `shared/`：章节 iframe、spine 缓存与轨道、导航事务、坐标和选区工具
 
 `ReaderView` 负责选择 renderer。Paginated 与 Scrolled 通过
-`ReflowableSpine` 共享章节加载、样式注入、虚拟缓存和轨道维护；各 renderer
-只处理自身的布局、滚动、吸附与定位投影。
+`ReflowableSpine` 共享章节加载、样式注入和虚拟缓存。轨道布局、可见位置、
+边界判断和翻页规划由各 renderer 自己的模式组件负责；共享导航事务只提供
+串行执行与 reflow 互斥，不理解具体滚动模式。
 
 Paginated 始终以栏为最小单位：`prev()` / `next()` 移动一栏，
 `prevPage()` / `nextPage()` 按当前可见栏数移动。相邻 section 在同一条

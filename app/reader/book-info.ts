@@ -15,11 +15,7 @@ type BookInfoRow = {
 const WORDS_PER_MINUTE = 250;
 const CHARS_PER_WORD = 6;
 
-type BookInfoSource = {
-  book?: Book;
-};
-
-export function createBookInfo({ book }: BookInfoSource): BookInfo {
+export function createBookInfo(book?: Book): BookInfo {
   if (!book) return { metadataRows: [], statsRows: [], title: "Book information" };
 
   const metadata = book.metadata;

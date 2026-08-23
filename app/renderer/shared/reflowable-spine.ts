@@ -1,10 +1,9 @@
 import type { Book, Content } from "../reader-view.js";
 import type { RendererStyles } from "../renderer";
-import type { TrackProjection } from "./flow-geometry";
 import { getDocumentBackground, SectionFrame, type SectionDirection, type SectionLayout } from "./section-frame";
 import { SpineBuffer, type SpineBufferChange, type SpineBufferRequest, type SpineEntry } from "./spine-buffer";
-import { SpineTrack } from "./spine-track";
-import { ViewportNavigation } from "./viewport-navigation";
+import type { SpineTrack } from "./spine-track";
+import type { NavigationTransaction } from "./navigation-transaction";
 
 type SpineOptions = {
   activeEntry: () => SpineEntry<SectionFrame> | undefined;
@@ -17,13 +16,14 @@ type SpineOptions = {
   layout: () => void;
   layoutFor: (direction: SectionDirection) => SectionLayout;
   layoutRevision?: () => number;
+  navigation: NavigationTransaction;
   onClear?: () => void;
   onDestroyCurrent: (view: SectionFrame) => void;
   onExpand: (view: SectionFrame) => void;
-  projection: () => TrackProjection;
   restoreViewport: (offset: number) => void;
   scheduleRender: () => void;
   trackElement: HTMLElement;
+  track: SpineTrack<SectionFrame>;
   viewportOffset: () => number;
   viewport: () => Pick<SpineBufferRequest,
     "activeIndex" | "viewportEnd" | "viewportSize" | "viewportStart">;
@@ -31,8 +31,7 @@ type SpineOptions = {
 
 /** Shared lifecycle and virtualization for reflowable spine renderers. */
 export class ReflowableSpine {
-  readonly navigation = new ViewportNavigation();
-  readonly track = new SpineTrack<SectionFrame>();
+  readonly track: SpineTrack<SectionFrame>;
   readonly #buffer: SpineBuffer<SectionFrame>;
   readonly #options: SpineOptions;
   readonly #styleMap = new WeakMap<Document, [HTMLStyleElement, HTMLStyleElement]>();
@@ -46,6 +45,7 @@ export class ReflowableSpine {
 
   constructor(options: SpineOptions) {
     this.#options = options;
+    this.track = options.track;
     this.#mediaQuery.addEventListener("change", this.#mediaQueryListener);
     this.#buffer = new SpineBuffer({
       create: index => this.#create(index),
@@ -78,7 +78,7 @@ export class ReflowableSpine {
   get contentExtent() { return this.track.contentExtent; }
   get physicalExtent() { return this.track.physicalExtent; }
 
-  find(index: number) { return this.#buffer.find(index); }
+  #find(index: number) { return this.#buffer.find(index); }
   findAt(offset: number) { return this.#buffer.findAt(offset); }
   contains(index: number) {
     return Number.isInteger(index) && index >= 0 && index < (this.#book?.sections.length ?? 0);
@@ -95,26 +95,25 @@ export class ReflowableSpine {
       if (index < this.#openingEnd || sections[index]?.linear !== "no") return index;
     }
   }
-  entryOffset(entry: SpineEntry<SectionFrame> | undefined, projection = this.#options.projection()) {
-    return this.track.entryOffset(entry, projection);
+  entryOffset(entry: SpineEntry<SectionFrame> | undefined) {
+    return this.track.entryOffset(entry);
   }
-  viewportRange(start: number, end: number, projection = this.#options.projection()) {
-    return this.track.viewportRange(this.first, start, end, projection);
+  viewportRange(start: number, end: number) {
+    return this.track.viewportRange(start, end);
   }
 
-  layout(projection: Exclude<TrackProjection, { kind: "single" }>) {
-    return this.track.layout(this.entries, projection);
+  layout() {
+    return this.track.layout(this.entries);
   }
 
   commit(change: SpineBufferChange<SectionFrame>, activeEntry = this.#options.activeEntry()) {
-    const projection = this.#options.projection();
-    const oldOffset = activeEntry ? this.entryOffset(activeEntry, projection) : 0;
+    const oldOffset = activeEntry ? this.entryOffset(activeEntry) : 0;
     const viewportOffset = activeEntry ? this.#options.viewportOffset() : 0;
     const applied = this.#buffer.commit(change);
     if (!applied.added.length && !applied.removed.length) return applied;
 
     if (this.#options.continuous()) {
-      this.track.updateForChange(applied, activeEntry?.index, projection);
+      this.track.updateForChange?.(applied, activeEntry?.index);
       this.#options.layout();
       if (activeEntry) {
         this.#options.restoreViewport(
@@ -128,7 +127,7 @@ export class ReflowableSpine {
   }
 
   async activate(index: number) {
-    let entry = this.find(index);
+    let entry = this.#find(index);
     if (!entry) {
       const adjacentToWindow = this.#options.continuous() && this.entries.some(candidate =>
         this.adjacent(candidate.index, -1) === index
@@ -136,7 +135,7 @@ export class ReflowableSpine {
       if (!adjacentToWindow) this.clear();
       const prepared = await this.#buffer.prepare(index);
       this.commit(this.#buffer.changeFor([prepared]));
-      entry = this.find(index);
+      entry = this.#find(index);
     }
     if (!entry) throw new DOMException("Stale spine entry", "AbortError");
     return entry;
@@ -179,7 +178,7 @@ export class ReflowableSpine {
         this.scheduleCache();
         return;
       }
-      const committed = await this.navigation.run(() => {
+      const committed = await this.#options.navigation.run(() => {
         if (revision && layoutRevision !== revision()) return false;
         this.commit(change);
         return true;

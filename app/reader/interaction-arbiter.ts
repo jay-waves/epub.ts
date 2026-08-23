@@ -1,7 +1,7 @@
 export type ReaderPointerIntent = "control" | "link" | "highlight" | "image" | "content";
 const pointerOwners = new WeakMap<Document, Map<number, ReaderPointerIntent>>();
 
-function asElement(target: EventTarget | null) {
+export function eventTargetElement(target: EventTarget | null) {
   return target && (target as Node).nodeType === Node.ELEMENT_NODE
     ? target as Element
     : null;
@@ -11,7 +11,7 @@ function asElement(target: EventTarget | null) {
 export function resolveReaderPointerIntent(
   target: EventTarget | null,
 ): ReaderPointerIntent {
-  const element = asElement(target);
+  const element = eventTargetElement(target);
   if (!element) return "content";
   if (element.closest(
     "button, input, select, textarea, label, summary, audio[controls], video[controls], object, embed, "
@@ -25,7 +25,7 @@ export function resolveReaderPointerIntent(
   return "content";
 }
 
-export type ReaderEventPropagation = "none" | "stop" | "immediate";
+type ReaderEventPropagation = "none" | "stop" | "immediate";
 
 /** Applies the routing decision in one place after an input owner accepts an event. */
 export function consumeReaderEvent(event: Event, propagation: ReaderEventPropagation = "none") {
@@ -35,7 +35,7 @@ export function consumeReaderEvent(event: Event, propagation: ReaderEventPropaga
 }
 
 function pointerDocument(event: PointerEvent) {
-  const target = asElement(event.target);
+  const target = eventTargetElement(event.target);
   return target?.ownerDocument ?? document;
 }
 

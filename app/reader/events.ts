@@ -112,7 +112,7 @@ export type TocUpdateDetail = {
   items: TocItem[];
 };
 
-export type TocNavigateDetail = {
+type TocNavigateDetail = {
   href: string;
   item: TocItem;
 };

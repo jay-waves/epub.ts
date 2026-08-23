@@ -197,9 +197,7 @@ function emitTocUpdate() {
 function emitBookInfoUpdate() {
   emitViewerEvent(
     VIEWER_EVENTS.bookInfoUpdate,
-    createBookInfo({
-      book: getView()?.book,
-    }),
+    createBookInfo(getView()?.book),
   );
 }
 

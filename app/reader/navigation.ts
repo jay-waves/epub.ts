@@ -1,7 +1,7 @@
 import * as CFI from "../epub/cfi.js";
-import type { Book, RawRelocateDetail, Renderer, Resolved } from "../renderer/reader-view.js";
+import type { Book, RawRelocateDetail, Renderer, Resolved, TocItem } from "../renderer/reader-view.js";
 import { SectionIndex, TocIndex } from "./location";
-import type { SectionLocation, TocItem } from "./location";
+import type { SectionLocation } from "./location";
 
 type Target = string | number | Resolved;
 
