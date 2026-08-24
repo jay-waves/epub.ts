@@ -353,7 +353,11 @@ export function createViewerInput(options: ViewerInputOptions) {
         active = false;
         selecting = false;
         gestureAxis = null;
-        if (!eventBelongsToReader(event) || !event.isPrimary || event.button !== 0) {
+        // Touch PointerEvents do not consistently expose mouse button state in
+        // mobile browsers/WebViews. Only enforce the left-button contract for
+        // an actual mouse; touch and pen input are identified by pointerType.
+        if (!eventBelongsToReader(event) || !event.isPrimary
+          || (event.pointerType === "mouse" && event.button !== 0)) {
           state.cancel();
           return;
         }
@@ -426,7 +430,10 @@ export function createViewerInput(options: ViewerInputOptions) {
     }, {
       eventOptions: { capture: true, passive: false },
       filterTaps: true,
-      pointer: { buttons: 1, capture: false, keys: false },
+      // use-gesture otherwise requires `buttons === 1` before it starts a drag.
+      // Some touch implementations report 0, so accept the pointer here and
+      // apply the mouse-only button check above.
+      pointer: { buttons: -1, capture: false, keys: false },
       threshold: TOUCH_PAN_THRESHOLD_PX,
       triggerAllEvents: true,
       window: sourceDocument.defaultView ?? window,
