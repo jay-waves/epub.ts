@@ -54,17 +54,17 @@ Auto-hiding Dock toolbar:
 
 ### 构建依赖 / Build prerequisites
 
-All builds require Node.js with Corepack/pnpm. Native launchers additionally
-require Go 1.23 or newer.
+All builds require Node.js with Corepack/pnpm. Native packaging additionally
+requires:
+
+- Go 1.23+ to build the launcher
+- [nFPM](https://nfpm.goreleaser.com/docs/install/) to create `deb`/`rpm` packages
+- NSIS and a PE resource compiler to create the Windows installer on Linux
 
 ```bash
 corepack enable
 pnpm install
 ```
-
-Linux `deb`/`rpm` packages require
-[nFPM](https://nfpm.goreleaser.com/docs/install/). Windows cross-packaging on
-Linux additionally requires a PE resource compiler and NSIS:
 
 ```bash
 # Debian / Ubuntu
@@ -72,6 +72,9 @@ sudo apt install golang-go binutils-mingw-w64-x86-64 nsis
 
 # Fedora
 sudo dnf install golang mingw64-binutils mingw32-nsis
+
+# Install nFPM; ensure $(go env GOPATH)/bin is in PATH
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
 ```
 
 The Fedora `mingw32-nsis` package is intentional: NSIS uses its traditional
