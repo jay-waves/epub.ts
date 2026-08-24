@@ -13,8 +13,8 @@ const dockItems = [
     icon: LayoutTemplate,
   },
   {
-    action: "toggle-theme",
-    label: "Change theme",
+    action: "open-theme",
+    label: "Themes",
     icon: Palette,
   },
   { action: "decrease-font", label: "Decrease font size", icon: Minus },

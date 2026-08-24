@@ -12,7 +12,6 @@ import {
   canChangeReaderLayoutLevel,
   changeReaderLayoutMode,
   getBookStyles,
-  getNextReaderThemeId,
   READER_FONT_SIZE_STEP,
   READER_LAYOUT_LEVEL_STEP,
 } from "./settings";
@@ -534,12 +533,11 @@ async function replaceBook(platformDocument: PlatformDocument) {
     view = await mountView();
     if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
     renderState.begin();
-    await preloadReaderFonts();
-    if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
+    const fontsReady = preloadReaderFonts();
     reader = new Reader(platformDocument, view);
     runtime.reader = reader;
     wireReaderEvents(reader);
-    await reader.open();
+    await reader.open(fontsReady);
     reader.signal.throwIfAborted();
     const { navigation } = reader;
     emitViewerEvent(VIEWER_EVENTS.documentOpen);
@@ -677,6 +675,15 @@ function setupEventListeners(signal: AbortSignal) {
       console.warn("Failed to apply reader action.", error);
     });
   }, { signal });
+  listenViewerEvent(VIEWER_EVENTS.themeSelect, (theme) => {
+    void runReaderStyleChange(() => {
+      applyReaderTheme(theme);
+      getView()?.setStyles(getBookStyles());
+    }).then(() => {
+      saveCurrentReaderSettings();
+      emitDockUpdate();
+    }).catch((error) => console.warn("Failed to apply reader theme.", error));
+  }, { signal });
 }
 
 async function applyAdvancedSettings(settings: AdvancedReaderSettings) {
@@ -721,13 +728,8 @@ async function handleDockAction(action: DockAction) {
       saveCurrentReaderSettings();
       emitDockUpdate();
       return;
-    case "toggle-theme":
-      await runReaderStyleChange(() => {
-        applyReaderTheme(getNextReaderThemeId());
-        getView()?.setStyles(getBookStyles());
-      });
-      saveCurrentReaderSettings();
-      emitDockUpdate();
+    case "open-theme":
+      emitViewerEvent(VIEWER_EVENTS.themeOpen, readerSettings.theme);
       return;
     case "decrease-font":
     case "increase-font": {

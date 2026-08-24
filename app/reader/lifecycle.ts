@@ -23,7 +23,7 @@ export class Reader {
     this.signal = this.#abort.signal;
   }
 
-  async open() {
+  async open(fontsReady: Promise<void>) {
     if (this.#disposed) throw new DOMException("Reader disposed", "AbortError");
     if (this.#opened) throw new Error("Reader already opened");
     this.#opened = true;
@@ -36,6 +36,8 @@ export class Reader {
       this.book = book;
       installTypographyNormalization(book);
       this.navigation = await Navigation.create(book);
+      this.#throwIfDisposed();
+      await fontsReady;
       this.#throwIfDisposed();
       await this.view.open(book, this.navigation);
       this.#throwIfDisposed();

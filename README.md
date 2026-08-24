@@ -52,18 +52,47 @@ Auto-hiding Dock toolbar:
 
 ## 构建 / Build
 
+### 构建依赖 / Build prerequisites
+
+All builds require Node.js with Corepack/pnpm. Native launchers additionally
+require Go 1.23 or newer.
+
+```bash
+corepack enable
+pnpm install
+```
+
+Linux `deb`/`rpm` packages require
+[nFPM](https://nfpm.goreleaser.com/docs/install/). Windows cross-packaging on
+Linux additionally requires a PE resource compiler and NSIS:
+
+```bash
+# Debian / Ubuntu
+sudo apt install golang-go binutils-mingw-w64-x86-64 nsis
+
+# Fedora
+sudo dnf install golang mingw64-binutils mingw32-nsis
+```
+
+The Fedora `mingw32-nsis` package is intentional: NSIS uses its traditional
+x86 bootstrap to install the 64-bit `epub.ts.exe` into `%ProgramFiles%`.
+Custom tool locations can be supplied through `EPUB_TS_GO`,
+`EPUB_TS_WINDRES`, `EPUB_TS_MAKENSIS`, and `EPUB_TS_NFPM`.
+
+### 构建命令 / Build commands
+
 ```bash
 pnpm compile         # compile the shared reader to release/web once
 pnpm package:chrome  # package the compiled reader as a Chrome extension
-pnpm package:windows # package the Windows binary and Inno Setup installer
+pnpm package:windows # package the Windows binary and NSIS installer
 pnpm package:linux   # package the Linux binary, deb, and Fedora-compatible rpm
 pnpm package:deb     # package only the Linux binary and deb
 pnpm package:rpm     # package only the Linux binary and rpm
 pnpm build:all       # compile once, then package every host
 ```
 
-Native packaging requires nFPM for deb/rpm and NSIS for the Windows
-installer. See [`packaging/README.md`](packaging/README.md).
+See [`packaging/README.md`](packaging/README.md) for installed files and
+platform-specific package behavior.
 
 ### 运行环境 / Runtime support
 

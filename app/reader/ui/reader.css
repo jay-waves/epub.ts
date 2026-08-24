@@ -740,6 +740,74 @@
     @apply col-span-2;
   }
 
+  #theme-modal.reader-modal {
+    @apply h-fit w-[min(25rem,calc(100vw-2rem))] rounded-lg border;
+    border-color: var(--reader-border-subtle);
+    background: var(--reader-chrome-bg);
+    box-shadow: 0 8px 24px color-mix(in srgb, black 18%, transparent);
+  }
+
+  #theme-modal.reader-modal::backdrop {
+    background: color-mix(in srgb, var(--reader-chrome-fg) 20%, transparent);
+    backdrop-filter: blur(1.5px);
+  }
+
+  .theme-dialog-header {
+    @apply border-b px-3.5 py-3;
+    border-color: var(--reader-border-subtle);
+  }
+
+  .theme-dialog-header h2 {
+    @apply m-0 text-sm font-semibold;
+  }
+
+  .theme-dialog-form {
+    @apply grid gap-3 px-3.5 pt-2.5 pb-4;
+  }
+
+  .theme-group {
+    @apply m-0 min-w-0 border-0 p-0;
+  }
+
+  .theme-group legend {
+    @apply mb-1.5 p-0 text-[11px] font-medium;
+    color: var(--reader-control-fg);
+  }
+
+  .theme-options {
+    @apply grid grid-cols-3 gap-1.5;
+  }
+
+  .theme-option {
+    @apply relative grid min-w-0 cursor-pointer gap-1 rounded border border-transparent bg-transparent p-1 text-inherit outline-none;
+  }
+
+  .theme-option:hover {
+    background: var(--reader-control-hover-bg);
+  }
+
+  .theme-option:focus-visible,
+  .theme-option[data-state="checked"] {
+    border-color: var(--reader-accent-primary);
+  }
+
+  .theme-preview {
+    @apply flex h-6 overflow-hidden rounded-sm;
+  }
+
+  .theme-preview > span {
+    @apply flex-1;
+  }
+
+  .theme-option-label {
+    @apply overflow-hidden text-center text-[10px] leading-3.5 text-ellipsis whitespace-nowrap;
+    color: var(--reader-control-fg);
+  }
+
+  .theme-option[data-state="checked"] .theme-option-label {
+    color: var(--reader-control-strong-fg);
+  }
+
 }
 
 @media (max-width: 960px) {

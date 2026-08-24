@@ -7,6 +7,7 @@ import { SearchBar } from "./components/search-bar";
 import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
+import { ThemeDialog } from "./components/theme-dialog";
 import { listenViewerEvent, VIEWER_EVENTS } from "../events";
 
 export function App({
@@ -37,6 +38,7 @@ export function App({
         <SearchBar />
         <BookInfoPage />
         <TocPage />
+        <ThemeDialog />
         <ContentContextMenu />
         <AnnotationPopover />
         <TranslationPopover />

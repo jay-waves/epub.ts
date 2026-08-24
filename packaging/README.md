@@ -39,6 +39,12 @@ the package.
 toolchain are required. Both run on Linux. Run `pnpm package:windows` after
 `pnpm compile`.
 
+Install NSIS on Debian/Ubuntu with `sudo apt install nsis`, or on Fedora with
+`sudo dnf install mingw32-nsis`. NSIS uses a traditional x86 installer
+bootstrap to install the 64-bit launcher into `%ProgramFiles%`. Set
+`EPUB_TS_MAKENSIS` when `makensis` is
+installed outside `PATH`.
+
 The all-users installer requests administrator permission, writes to
 `%ProgramFiles%\epub.ts`, registers the EPUB file association, and appears in
 Windows Installed Apps. Upgrade and uninstall stop the current user's daemon

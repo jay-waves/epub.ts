@@ -67,13 +67,23 @@ const READER_THEMES: ReaderTheme[] = [
   },
 ];
 
-function getReaderTheme(themeId = readerSettings.theme) {
-  return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
+const READER_THEME_LABELS: Record<ReaderThemeId, string> = {
+  light: "Light",
+  grey: "Solar",
+  dark: "Nord",
+  "one-dark": "Dark",
+  gruvbox: "Gruvbox",
+};
+
+export function getReaderThemeOptions() {
+  return READER_THEMES.map((theme) => ({
+    label: READER_THEME_LABELS[theme.id],
+    theme,
+  }));
 }
 
-export function getNextReaderThemeId(themeId = readerSettings.theme) {
-  const currentIndex = READER_THEMES.findIndex((theme) => theme.id === getReaderTheme(themeId).id);
-  return (READER_THEMES[(currentIndex + 1) % READER_THEMES.length] ?? READER_THEMES[0]).id;
+function getReaderTheme(themeId = readerSettings.theme) {
+  return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
 }
 
 export function applyReaderTheme(themeId: ReaderThemeId) {

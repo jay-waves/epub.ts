@@ -1,5 +1,6 @@
 import type { TocItem } from "../renderer";
 import type { BookInfo } from "./book-info";
+import type { ReaderThemeId } from "./model";
 import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
@@ -30,6 +31,8 @@ export const VIEWER_EVENTS = {
   tocClose: "reader:toc-close",
   tocNavigate: "reader:toc-navigate",
   tocUpdate: "reader:toc-update",
+  themeOpen: "reader:theme-open",
+  themeSelect: "reader:theme-select",
 } as const;
 
 type TranslationStatus = "error" | "loading" | "success";
@@ -56,7 +59,7 @@ export type AnnotationDetail = {
 
 export type DockAction =
   | "toggle-layout"
-  | "toggle-theme"
+  | "open-theme"
   | "decrease-font"
   | "increase-font"
   | "decrease-width"
@@ -145,6 +148,8 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.tocClose]: void;
   [VIEWER_EVENTS.tocNavigate]: TocNavigateDetail;
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
+  [VIEWER_EVENTS.themeOpen]: ReaderThemeId;
+  [VIEWER_EVENTS.themeSelect]: ReaderThemeId;
 };
 
 const viewerEvents = new EventTarget();
