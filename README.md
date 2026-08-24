@@ -62,7 +62,7 @@ pnpm package:rpm     # package only the Linux binary and rpm
 pnpm build:all       # compile once, then package every host
 ```
 
-Native packaging requires nFPM for deb/rpm and Inno Setup for the Windows
+Native packaging requires nFPM for deb/rpm and NSIS for the Windows
 installer. See [`packaging/README.md`](packaging/README.md).
 
 ### 运行环境 / Runtime support

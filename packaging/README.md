@@ -19,14 +19,31 @@ The packages install:
 - `/usr/bin/epub.ts`
 - `/usr/share/applications/epub.ts.desktop`
 - `/usr/share/icons/hicolor/128x128/apps/epub.ts.png`
+- `/usr/lib/systemd/user/epub.ts.service`
 
 Removing a package leaves per-user reader data intact.
 
+The daemon remains on-demand by default. To start it automatically for the
+current user:
+
+```sh
+systemctl --user enable --now epub.ts.service
+```
+
+Disable it with `systemctl --user disable --now epub.ts.service` before removing
+the package.
+
 ## Windows
 
-[Inno Setup](https://jrsoftware.org/isinfo.php) and a Windows launcher build
-toolchain are required. Run `pnpm package:windows` after `pnpm compile`.
+[NSIS](https://nsis.sourceforge.io/) and a Windows launcher cross-build
+toolchain are required. Both run on Linux. Run `pnpm package:windows` after
+`pnpm compile`.
 
-The per-user installer writes to `%LocalAppData%\Programs\epub.ts`, registers
-the EPUB file association, and appears in Windows Installed Apps. Upgrade and
-uninstall stop the daemon first. Uninstall leaves reader data intact.
+The all-users installer requests administrator permission, writes to
+`%ProgramFiles%\epub.ts`, registers the EPUB file association, and appears in
+Windows Installed Apps. Upgrade and uninstall stop the current user's daemon
+first. Uninstall leaves every user's reader data intact.
+
+Automatic daemon startup is opt-in. Copy
+`%ProgramFiles%\epub.ts\epub.ts-startup.cmd` into the folder opened by
+`shell:startup` for the current user. Remove that copied script to disable it.

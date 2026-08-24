@@ -23,6 +23,10 @@ contents:
     dst: /usr/share/applications/epub.ts.desktop
     file_info:
       mode: 0644
+  - src: packaging/linux/epub.ts.service
+    dst: /usr/lib/systemd/user/epub.ts.service
+    file_info:
+      mode: 0644
   - src: assets/icon-128.png
     dst: /usr/share/icons/hicolor/128x128/apps/epub.ts.png
     file_info:
