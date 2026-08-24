@@ -1,4 +1,5 @@
-import { get, set } from "idb-keyval";
+import { browserLocalDocumentCapabilities } from "./browser-local-document";
+import { readViewerMetadata, writeViewerMetadata } from "./browser-storage";
 import { openExternal } from "./external";
 import { createBundledReaderProfile } from "./reader-profile";
 import type { ReaderAnnotation } from "../epub/annotation";
@@ -152,13 +153,9 @@ function getViewerAssetUrl(filename: string) {
 export const platform: ViewerPlatform = {
   readerProfile: createBundledReaderProfile(getViewerAssetUrl),
   translationModelPolicy: "allow-download",
-  async loadInitialDocument() {
-    if (!launcher) {
-      throw new Error("This EPUB.ts viewer URL is missing its document identifier.");
-    }
-    return launcher.openDocument();
-  },
+  loadInitialDocument: () => launcher?.openDocument(),
+  ...browserLocalDocumentCapabilities,
   openExternal,
-  readViewerMetadata: get,
-  writeViewerMetadata: set,
+  readViewerMetadata,
+  writeViewerMetadata,
 };

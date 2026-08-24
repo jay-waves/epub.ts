@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ReaderDock } from "./components/reader-dock";
 import { BookInfoPage } from "./components/book-info-page";
 import { ContentContextMenu } from "./components/context-menu";
@@ -13,16 +13,22 @@ import { listenViewerEvent, VIEWER_EVENTS } from "../events";
 export function App({
   onOpenLocalFile,
   onPickLocalFile,
+  showWelcomeInitially,
 }: {
-  onOpenLocalFile?: (file: File) => void;
+  onOpenLocalFile: (file: File) => void;
   onPickLocalFile?: () => Promise<void>;
+  showWelcomeInitially: boolean;
 }) {
-  const [showWelcome, setShowWelcome] = useState(Boolean(onOpenLocalFile));
+  const [showWelcome, setShowWelcome] = useState(showWelcomeInitially);
 
-  useEffect(
-    () => listenViewerEvent(VIEWER_EVENTS.documentOpen, () => setShowWelcome(false)),
-    [],
-  );
+  useEffect(() => {
+    const close = listenViewerEvent(VIEWER_EVENTS.documentOpen, () => setShowWelcome(false));
+    const open = listenViewerEvent(VIEWER_EVENTS.welcomeOpen, () => setShowWelcome(true));
+    return () => {
+      close();
+      open();
+    };
+  }, []);
 
   return (
     <>
@@ -44,10 +50,10 @@ export function App({
         <TranslationPopover />
       </div>
       {showWelcome ? (
-        <WebBookPicker
+        <Welcome
           onSelect={(file) => {
             setShowWelcome(false);
-            onOpenLocalFile?.(file);
+            onOpenLocalFile(file);
           }}
           onPick={onPickLocalFile ? async () => {
             await onPickLocalFile();
@@ -59,7 +65,7 @@ export function App({
   );
 }
 
-function WebBookPicker({
+function Welcome({
   onSelect,
   onPick,
 }: {
@@ -68,6 +74,7 @@ function WebBookPicker({
 }) {
   const [dragging, setDragging] = useState(false);
   const [selectionError, setSelectionError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const selectFile = (file?: File) => {
     if (!file) return;
@@ -79,10 +86,21 @@ function WebBookPicker({
     onSelect(file);
   };
 
+  const chooseFile = () => {
+    if (!onPick) return inputRef.current?.click();
+    void onPick().catch((error: unknown) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setSelectionError(error instanceof Error ? error.message : "Unable to open EPUB.");
+      }
+    });
+  };
+
   return (
-    <main className="web-welcome">
+    <main className="welcome">
       <section
-        className={`web-welcome-card${dragging ? " is-dragging" : ""}`}
+        aria-label="Choose or drop an EPUB file"
+        className={`welcome-frame${dragging ? " is-dragging" : ""}`}
+        onClick={chooseFile}
         onDragEnter={(event) => {
           event.preventDefault();
           setDragging(true);
@@ -98,32 +116,30 @@ function WebBookPicker({
           setDragging(false);
           selectFile(event.dataTransfer.files[0]);
         }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          chooseFile();
+        }}
+        role="button"
+        tabIndex={0}
       >
-        <img className="web-welcome-logo" src="./icon.png" alt="" />
-        <h1>EPUB.ts Web Reader</h1>
-        {onPick ? (
-          <button className="web-file-button" type="button" onClick={() => {
-            void onPick().catch((error: unknown) => {
-              if (!(error instanceof DOMException && error.name === "AbortError")) {
-                setSelectionError(error instanceof Error ? error.message : "Unable to open EPUB.");
-              }
-            });
-          }}>
-            Choose an EPUB file
-          </button>
-        ) : (
-          <label className="web-file-button">
-            Choose an EPUB file
-            <input
-              type="file"
-              accept="application/epub+zip,.epub"
-              onChange={(event) => selectFile(event.target.files?.[0])}
-            />
-          </label>
-        )}
-        <span className="web-drop-hint">or drop an EPUB here</span>
-        {selectionError ? <p className="web-selection-error" role="alert">{selectionError}</p> : null}
-        <small>Local files are processed only in this browser tab and are never uploaded.</small>
+        <img className="welcome-logo" src="./icon.png" alt="" />
+        <h1>EPUB.ts</h1>
+        <p className="welcome-prompt">Click to choose or drop an EPUB</p>
+        <input
+          ref={inputRef}
+          className="welcome-input"
+          type="file"
+          accept="application/epub+zip,.epub"
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            selectFile(file);
+          }}
+        />
+        {selectionError ? <p className="welcome-error" role="alert">{selectionError}</p> : null}
       </section>
     </main>
   );

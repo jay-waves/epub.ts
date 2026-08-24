@@ -741,7 +741,7 @@
   }
 
   #theme-modal.reader-modal {
-    @apply h-fit w-[min(25rem,calc(100vw-2rem))] rounded-lg border;
+    @apply h-fit w-[min(23rem,calc(100vw-2rem))] rounded-lg border;
     border-color: var(--reader-border-subtle);
     background: var(--reader-chrome-bg);
     box-shadow: 0 8px 24px color-mix(in srgb, black 18%, transparent);
@@ -753,7 +753,7 @@
   }
 
   .theme-dialog-header {
-    @apply border-b px-3.5 py-3;
+    @apply border-b px-4.5 py-3.5;
     border-color: var(--reader-border-subtle);
   }
 
@@ -762,24 +762,20 @@
   }
 
   .theme-dialog-form {
-    @apply grid gap-3 px-3.5 pt-2.5 pb-4;
+    @apply grid gap-5 p-4.5;
   }
 
   .theme-group {
     @apply m-0 min-w-0 border-0 p-0;
   }
 
-  .theme-group legend {
-    @apply mb-1.5 p-0 text-[11px] font-medium;
-    color: var(--reader-control-fg);
-  }
-
   .theme-options {
-    @apply grid grid-cols-3 gap-1.5;
+    @apply grid justify-start gap-3;
+    grid-template-columns: repeat(3, minmax(0, 6rem));
   }
 
   .theme-option {
-    @apply relative grid min-w-0 cursor-pointer gap-1 rounded border border-transparent bg-transparent p-1 text-inherit outline-none;
+    @apply relative grid min-w-0 cursor-pointer gap-2 rounded border border-transparent bg-transparent p-1 text-inherit outline-none;
   }
 
   .theme-option:hover {
@@ -792,7 +788,7 @@
   }
 
   .theme-preview {
-    @apply flex h-6 overflow-hidden rounded-sm;
+    @apply flex h-9 overflow-hidden rounded-sm;
   }
 
   .theme-preview > span {
@@ -832,63 +828,60 @@
 
 }
 
-/* Standalone web entry */
-.web-welcome {
+.welcome {
   position: fixed;
   z-index: 100;
   inset: 0;
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #f7f8fa;
-  color: #0f172a;
+  background: var(--reader-chrome-bg, #fffefd);
+  color: var(--reader-chrome-fg, #1f2933);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.web-welcome-card {
+.welcome-frame {
+  box-sizing: border-box;
+  display: grid;
   width: min(520px, 100%);
   padding: 42px;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  background: #fff;
+  justify-items: center;
+  gap: 12px;
+  border: 1px dashed var(--reader-control-fg, #64748b);
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+  outline: none;
   text-align: center;
-  box-shadow: 0 8px 30px rgb(15 23 42 / 5%);
-  transition: border-color 160ms ease, transform 160ms ease;
 }
 
-.web-welcome-card.is-dragging {
-  border-color: #2563eb;
-  transform: translateY(-2px);
+.welcome-frame:hover,
+.welcome-frame:focus-visible,
+.welcome-frame.is-dragging {
+  border-color: var(--reader-accent-primary, #2563eb);
 }
 
-.web-welcome-logo {
+.welcome-logo {
   display: block;
   width: 54px;
   height: 54px;
-  margin-inline: auto;
+  margin: 0 0 6px;
 }
 
-.web-welcome h1 {
-  margin: 18px 0 26px;
+.welcome h1 {
+  margin: 0;
   font-size: 25px;
+  line-height: 1.2;
 }
 
-.web-file-button {
-  display: inline-flex;
-  min-height: 38px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 22px;
-  border: 1px solid #2563eb;
-  border-radius: 8px;
-  background: #2563eb;
-  color: #fff;
-  cursor: pointer;
+.welcome-prompt {
+  margin: 0;
+  color: var(--reader-control-fg, #475569);
   font-size: 13px;
   font-weight: 600;
 }
 
-.web-file-button input {
+.welcome-input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -896,27 +889,14 @@
   clip: rect(0 0 0 0);
 }
 
-.web-drop-hint {
-  display: block;
-  margin: 10px 0 26px;
-  color: #64748b;
-  font-size: 11px;
-}
-
-.web-selection-error {
-  margin: 0 0 12px;
+.welcome-error {
+  margin: 0;
   color: #dc2626;
   font-size: 12px;
 }
 
-.web-welcome small {
-  display: block;
-  color: #64748b;
-  line-height: 1.6;
-}
-
 @media (max-width: 540px) {
-  .web-welcome-card {
+  .welcome-frame {
     padding: 30px 20px;
   }
 }

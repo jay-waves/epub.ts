@@ -127,17 +127,17 @@ await epub.settings.reset()
 
 | 形态 | 运行环境 | 打开本地 EPUB | 保存 | 翻译 |
 | --- | --- | --- | --- | --- |
-| 插件 | Chrome 129+ | 重定向已打开的 `file://*.epub` 标签；访问本地文件需授权 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
+| 插件 | Chrome 129+ | 欢迎页可手动选择或拖入文件；也会重定向已打开的 `file://*.epub` 标签 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
 | Web | Chrome/Edge 129+、Firefox 147+、Safari/iOS 26+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 未安装内置翻译模型时转到 Google 翻译 |
-| 桌面 | Chrome/Edge 129+、Firefox 147+ 或 Safari 26+ | 支持系统文件关联，通过 `epub.ts.localhost` 本地服务读取 | 本地服务写回批注；检测到外部修改时改存冲突副本 | 内置翻译模型可按需下载 |
+| 桌面 | Chrome/Edge 129+、Firefox 147+ 或 Safari 26+ | 无参数启动显示欢迎页；也支持系统文件关联 | 文件关联由本地服务写回；欢迎页选择沿用浏览器保存能力 | 内置翻译模型可按需下载 |
 
 Key differences between platforms:
 
 | Application | Runtime | Opening local EPUBs | Saving | Translation |
 | --- | --- | --- | --- | --- |
-| Extension | Chrome 129+ | Redirects opened `file://*.epub` tabs; local-file access requires permission | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
+| Extension | Chrome 129+ | The welcome screen accepts selected or dropped files and redirects opened `file://*.epub` tabs | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
 | Web | Chrome/Edge 129+, Firefox 147+, Safari/iOS 26+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Translation falls back to Google Translate when no built-in model is installed |
-| Desktop | Chrome/Edge 129+, Firefox 147+, or Safari 26+ | Supports OS file association and reads through the local `epub.ts.localhost` service | The local service writes annotations back; external changes produce a conflict copy | Built-in translation models may be downloaded on demand |
+| Desktop | Chrome/Edge 129+, Firefox 147+, or Safari 26+ | Shows the welcome screen without arguments and also supports OS file associations | Associated files use local-service write-back; welcome-screen files use browser saving | Built-in translation models may be downloaded on demand |
 
 ### EPUB 内容兼容 / EPUB content compatibility
 

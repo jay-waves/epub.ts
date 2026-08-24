@@ -4,6 +4,7 @@ import {
   writeViewerMetadata,
 } from "./browser-storage";
 import { BrowserEpubFileHandle } from "./browser-file-handle";
+import { browserLocalDocumentCapabilities } from "./browser-local-document";
 import { openExternal } from "./external";
 import { createBundledReaderProfile } from "./reader-profile";
 import type { ViewerPlatform } from "./types";
@@ -45,27 +46,29 @@ export const platform: ViewerPlatform = {
   // module initialization safe even when Chrome extension APIs are absent.
   readerProfile: createBundledReaderProfile(getChromeAssetUrl),
   translationModelPolicy: "allow-download",
-  async loadInitialDocument() {
+  loadInitialDocument() {
     const rawSourceUrl = getInitialSourceUrl();
     if (!rawSourceUrl) return undefined;
-    const sourceUrl = normalizeSourceUrl(rawSourceUrl);
-    if (sourceUrl.startsWith("file://")) {
-      const allowed = await chrome.extension.isAllowedFileSchemeAccess();
-      if (!allowed) {
-        console.warn("File URL access is disabled. Enable 'Allow access to file URLs' for this extension.");
-        return undefined;
+    return (async () => {
+      const sourceUrl = normalizeSourceUrl(rawSourceUrl);
+      if (sourceUrl.startsWith("file://")) {
+        const allowed = await chrome.extension.isAllowedFileSchemeAccess();
+        if (!allowed) {
+          throw new Error("File URL access is disabled. Enable 'Allow access to file URLs' for this extension.");
+        }
       }
-    }
-    const name = getFileName(sourceUrl);
-    return {
-      input: sourceUrl,
-      sourceUrl,
-      key: sourceUrl,
-      name,
-      sourceLabel: sourceUrl,
-      fileHandle: new BrowserEpubFileHandle(name, sourceUrl),
-    };
+      const name = getFileName(sourceUrl);
+      return {
+        input: sourceUrl,
+        sourceUrl,
+        key: sourceUrl,
+        name,
+        sourceLabel: sourceUrl,
+        fileHandle: new BrowserEpubFileHandle(name, sourceUrl),
+      };
+    })();
   },
+  ...browserLocalDocumentCapabilities,
   openExternal,
   readViewerMetadata,
   writeViewerMetadata,

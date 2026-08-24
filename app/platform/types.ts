@@ -41,8 +41,8 @@ export interface ReaderProfile {
 export interface ViewerPlatform {
   readonly readerProfile: ReaderProfile;
   readonly translationModelPolicy: "allow-download" | "external-fallback";
-  loadInitialDocument(): Promise<PlatformDocument | undefined>;
-  openLocalDocument?(file: File): PlatformDocument;
+  loadInitialDocument(): Promise<PlatformDocument> | undefined;
+  openLocalDocument(file: File): PlatformDocument;
   pickLocalDocument?(): Promise<PlatformDocument | undefined>;
   openExternal(url: string): void;
   readViewerMetadata<Value>(key: string): Promise<Value | undefined>;

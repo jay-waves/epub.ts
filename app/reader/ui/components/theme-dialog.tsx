@@ -66,8 +66,7 @@ export function ThemeDialog() {
       </header>
       <div className="theme-dialog-form">
         {THEME_GROUPS.map((group) => (
-          <fieldset className="theme-group" key={group.mode}>
-            <legend>{group.label}</legend>
+          <div className="theme-group" key={group.mode}>
             <div className="theme-options" role="radiogroup" aria-label={`${group.label} themes`}>
               {THEME_OPTIONS
                 .filter(({ theme }) => theme.mode === group.mode)
@@ -84,7 +83,7 @@ export function ThemeDialog() {
                   />
                 ))}
             </div>
-          </fieldset>
+          </div>
         ))}
       </div>
     </Dialog>

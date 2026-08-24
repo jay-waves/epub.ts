@@ -33,6 +33,7 @@ export const VIEWER_EVENTS = {
   tocUpdate: "reader:toc-update",
   themeOpen: "reader:theme-open",
   themeSelect: "reader:theme-select",
+  welcomeOpen: "reader:welcome-open",
 } as const;
 
 type TranslationStatus = "error" | "loading" | "success";
@@ -150,6 +151,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
   [VIEWER_EVENTS.themeOpen]: ReaderThemeId;
   [VIEWER_EVENTS.themeSelect]: ReaderThemeId;
+  [VIEWER_EVENTS.welcomeOpen]: void;
 };
 
 const viewerEvents = new EventTarget();

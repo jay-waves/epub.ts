@@ -98,6 +98,8 @@ const getView = () => runtime.reader?.view ?? null;
 const getNavigation = () => runtime.reader?.navigation ?? null;
 
 const appRoot = queryRequired<HTMLElement>("#app");
+const initialDocument = platform.loadInitialDocument();
+void initialDocument?.catch(() => {}); // Reported by bootstrap after initialization.
 
 function goToProgress(progress: number) {
   const navigation = getNavigation();
@@ -112,13 +114,14 @@ const reactRoot = createRoot(appRoot);
 flushSync(() => {
   const { openLocalDocument, pickLocalDocument } = platform;
   reactRoot.render(createElement(App, {
-    onOpenLocalFile: openLocalDocument ? (file) => {
+    onOpenLocalFile: (file) => {
       void openBook(openLocalDocument(file));
-    } : undefined,
+    },
     onPickLocalFile: pickLocalDocument ? async () => {
       const selectedDocument = await pickLocalDocument();
       if (selectedDocument) void openBook(selectedDocument);
     } : undefined,
+    showWelcomeInitially: !initialDocument,
   }));
 });
 
@@ -605,6 +608,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
       session.bookKey = "";
       renderDocumentTitle();
       emitDockUpdate();
+      emitViewerEvent(VIEWER_EVENTS.welcomeOpen);
     }
   }
 }
@@ -782,20 +786,19 @@ async function bootstrap() {
   setupEventListeners(runtime.listeners.signal);
   ensureViewerInput();
   try {
-    const initialDocument = await platform.loadInitialDocument();
-    if (initialDocument) {
-      if (runtime.disposed) {
-        initialDocument.release?.();
-        return;
-      }
-      void openBook(initialDocument);
+    if (!initialDocument) return;
+    const document = await initialDocument;
+    if (runtime.disposed) {
+      document.release?.();
       return;
     }
+    void openBook(document);
   } catch (error) {
     console.error("[EPUB.ts] Failed to load the initial EPUB document.", {
       durationMs: Math.round(performance.now() - startedAt),
       error,
     });
+    emitViewerEvent(VIEWER_EVENTS.welcomeOpen);
   }
 }
 
