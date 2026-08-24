@@ -1,10 +1,9 @@
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./events";
-import type { ReaderAnnotation } from "../epub/annotation";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
+import type { ReaderAnnotation } from "../../epub/annotation";
 import { annotationRepository } from "./annotation-repository";
-import type { Content, OverlayDraw, OverlayDrawOptions } from "../renderer";
-import type { ReaderView } from "./model";
-import type { Navigation } from "./navigation";
-import { TaskTracker } from "../shared/async-tasks";
+import type { Content, OverlayDraw, OverlayDrawOptions } from "../../renderer";
+import type { ReaderView } from "../model";
+import type { Navigation } from "../navigation";
 import { drawAnnotation as drawAnnotationOverlay } from "./annotation-overlay";
 import { createTextContext, type TextContextActionDetail } from "./text-context";
 
@@ -38,7 +37,7 @@ const THEME_HIGHLIGHT_COLOR = "var(--reader-annotation-color, #f4c430)";
 export function createAnnotations(options: AnnotationOptions) {
   const viewerEvents = new AbortController();
   let activeContext: AnnotationContext | null = null;
-  const pendingWrites = new TaskTracker();
+  const pendingWrites = new Set<Promise<unknown>>();
   const textContext = createTextContext({
     openExternal: options.openExternal,
     translationModelPolicy: options.translationModelPolicy,
@@ -47,7 +46,9 @@ export function createAnnotations(options: AnnotationOptions) {
     void task.catch((error) => console.warn(message, error));
   };
   const track = <Result>(task: Promise<Result>) => {
-    return pendingWrites.track(task);
+    pendingWrites.add(task);
+    void task.finally(() => pendingWrites.delete(task)).catch(() => undefined);
+    return task;
   };
 
   listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
@@ -422,7 +423,7 @@ export function createAnnotations(options: AnnotationOptions) {
       textContext.destroy();
       viewerEvents.abort();
     },
-    flushPendingWrites: () => pendingWrites.idle(),
+    flushPendingWrites: () => Promise.allSettled(pendingWrites).then(() => undefined),
     getAll: () => annotationRepository.all(),
     openContextMenu,
     openFromAnnotation,

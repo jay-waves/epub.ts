@@ -1,7 +1,7 @@
 import type { Anchor, Book, Content, OverlayDraw } from "../renderer";
 import type { ReaderView } from "./model";
 import { emitViewerEvent, VIEWER_EVENTS } from "./events";
-import { annotationRepository } from "./annotation-repository";
+import { annotationRepository } from "./context-menu/annotation-repository";
 import type { Navigation } from "./navigation";
 
 const MAX_QUERY_LENGTH = 120;

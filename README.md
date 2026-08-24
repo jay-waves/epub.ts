@@ -55,10 +55,15 @@ Auto-hiding Dock toolbar:
 ```bash
 pnpm compile         # compile the shared reader to release/web once
 pnpm package:chrome  # package the compiled reader as a Chrome extension
-pnpm package:windows # package epub.ts.exe with the compiled reader
-pnpm package:linux   # package epub.ts with the compiled reader
+pnpm package:windows # package the Windows binary and Inno Setup installer
+pnpm package:linux   # package the Linux binary, deb, and Fedora-compatible rpm
+pnpm package:deb     # package only the Linux binary and deb
+pnpm package:rpm     # package only the Linux binary and rpm
 pnpm build:all       # compile once, then package every host
 ```
+
+Native packaging requires nFPM for deb/rpm and Inno Setup for the Windows
+installer. See [`packaging/README.md`](packaging/README.md).
 
 ### 运行环境 / Runtime support
 

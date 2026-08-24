@@ -1,4 +1,5 @@
 type TraceDetails = Record<string, unknown>;
+
 type TraceStage =
   | "document-opening"
   | "epub-download"

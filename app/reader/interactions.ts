@@ -6,7 +6,7 @@ import {
   eventTargetElement,
   resolveReaderPointerIntent,
 } from "./interaction-arbiter";
-import { openMediaContext } from "./media-context";
+import { openMediaContext } from "./context-menu/media-context";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";

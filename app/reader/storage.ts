@@ -4,9 +4,8 @@ import type {
 } from "./model";
 import type { Location } from "./navigation";
 import { platform } from "#platform";
-import { SerialTaskQueue } from "../shared/async-tasks";
 
-const positionWrites = new SerialTaskQueue();
+let pendingPositionWrite = Promise.resolve();
 
 const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
 
@@ -14,9 +13,11 @@ function updateBookPosition(
   bookKey: string,
   update: (previous: ReadingPosition | undefined) => ReadingPosition,
 ) {
-  return positionWrites.add(async () => {
+  const result = pendingPositionWrite.then(async () => {
     await platform.writeViewerMetadata(getBookPositionKey(bookKey), update(await getSavedPosition(bookKey)));
   });
+  pendingPositionWrite = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 export async function getSavedPosition(bookKey: string) {

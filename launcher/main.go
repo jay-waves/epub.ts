@@ -62,10 +62,10 @@ func run(args []string) error {
 		}
 		return Install(executable)
 	case "uninstall":
-		if len(args) != 1 {
+		if len(args) > 2 || len(args) == 2 && args[1] != "--purge" {
 			return usageError()
 		}
-		return Uninstall()
+		return Uninstall(len(args) == 2)
 	default:
 		return usageError()
 	}
@@ -93,7 +93,7 @@ func printStatus() error {
 }
 
 func usageError() error {
-	return errors.New("usage: epub.ts <start|daemon|status|stop|open <document>|install|uninstall>")
+	return errors.New("usage: epub.ts <start|daemon|status|stop|open <document>|install|uninstall [--purge]>")
 }
 
 func openDocument(argument string) error {

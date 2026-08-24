@@ -7,7 +7,7 @@ import {
 } from "@zip.js/zip.js";
 import type { FileEntry } from "@zip.js/zip.js";
 import type { Book } from "../renderer/reader-view.js";
-import { startupTrace } from "../shared/startup-trace";
+import { startupTrace } from "../startup-trace";
 
 class ResponseError extends Error {}
 class NotFoundError extends Error {}

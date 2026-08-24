@@ -37,7 +37,7 @@
       0 30px 72px rgb(15 23 42 / 8%),
       inset 0 1px 0 rgb(255 255 255 / 88%);
     --reader-glass-filter: blur(18px) saturate(145%);
-    --reader-field-bg: rgb(255 255 255 / 96%);
+    --reader-field-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 5%, white);
     --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, white);
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 6%, white);
   }
@@ -69,7 +69,7 @@
     --reader-control-strong-fg: #ebdbb2;
     --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary) 10%, #3c3836);
     --reader-control-hover-fg: #f9f5d7;
-    --reader-field-bg: #32302f;
+    --reader-field-bg: #3c3836;
     --reader-field-placeholder: #a89984;
     --reader-toc-hover-bg: #3c3836;
   }

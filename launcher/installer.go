@@ -27,9 +27,23 @@ func Install(executable string) error {
 	return nil
 }
 
-func Uninstall() error {
+func Uninstall(purge bool) error {
+	if purge {
+		if err := StopDaemon(); err != nil {
+			return fmt.Errorf("stop epub.ts daemon: %w", err)
+		}
+	}
 	if err := uninstallAssociations(); err != nil {
 		return fmt.Errorf("uninstall epub.ts file associations: %w", err)
+	}
+	if purge {
+		directory, err := defaultStateDir()
+		if err != nil {
+			return err
+		}
+		if err := os.RemoveAll(directory); err != nil {
+			return fmt.Errorf("remove epub.ts application data: %w", err)
+		}
 	}
 	return nil
 }

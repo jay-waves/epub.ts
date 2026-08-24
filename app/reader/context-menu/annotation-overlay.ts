@@ -1,10 +1,10 @@
-import { Overlay } from "../renderer";
-import type { OverlayDrawOptions } from "../renderer";
+import { Overlay } from "../../renderer";
+import type { OverlayDrawOptions } from "../../renderer";
 import {
   claimReaderPointer,
   consumeReaderEvent,
   consumeReaderPointerClaim,
-} from "./interaction-arbiter";
+} from "../interaction-arbiter";
 
 const ANNOTATION_BADGE_SELECTOR = "[data-reader-annotation-badge]";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";

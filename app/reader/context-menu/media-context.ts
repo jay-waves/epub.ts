@@ -1,5 +1,6 @@
 import { contextMenuStore } from "./context-menu-store";
 
+
 const PNG_MIME_TYPE = "image/png";
 const SVG_MIME_TYPE = "image/svg+xml";
 const SVG_COPY_PADDING_RATIO = 0.015;

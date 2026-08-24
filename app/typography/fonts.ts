@@ -1,6 +1,6 @@
 import { platform } from "#platform";
 import { READER_LATIN_FONT_FAMILY, READER_MONO_FONT_FAMILY } from "./styles/book-styles";
-import { startupTrace } from "../shared/startup-trace";
+import { startupTrace } from "../startup-trace";
 
 const documentFontLoads = new WeakMap<Document, Promise<void>>();
 const FONT_LOAD_TIMEOUT = 2_000;

@@ -1,5 +1,6 @@
 import { createStore } from "zustand/vanilla";
 
+
 export type ContentContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
 
 export type ContentContextMenu = {

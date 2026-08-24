@@ -23,7 +23,7 @@ import {
 } from "../epub/annotation";
 import { createView } from "../renderer";
 import { getBookKey } from "../epub/metadata";
-import { createAnnotations } from "./annotation";
+import { createAnnotations } from "./context-menu/annotation";
 import {
   clearMathCache,
   prepareTypography,
@@ -46,7 +46,7 @@ import {
 } from "./storage";
 import type { ReaderSettings, ReaderView, ReadingPosition } from "./model";
 import type { ReaderAnnotation } from "../epub/annotation";
-import { annotationRepository } from "./annotation-repository";
+import { annotationRepository } from "./context-menu/annotation-repository";
 import type { Location } from "./navigation";
 import type { DockAction, ReaderCommand } from "./events";
 import { DEFAULT_READER_SETTINGS, readerSettings } from "./model";
@@ -59,8 +59,7 @@ import { Reader } from "./lifecycle";
 import { getReaderFontQueries, preloadReaderFonts } from "../typography/fonts";
 import { platform } from "#platform";
 import type { PlatformDocument } from "../platform/types";
-import { SerialTaskQueue } from "../shared/async-tasks";
-import { startupTrace } from "../shared/startup-trace";
+import { startupTrace } from "../startup-trace";
 import "./ui/reader.css";
 
 type ViewerRuntime = {
@@ -202,8 +201,8 @@ function emitBookInfoUpdate() {
 }
 
 const POSITION_SAVE_DELAY_MS = 350;
-const positionWrites = new SerialTaskQueue();
-const tocNavigations = new SerialTaskQueue();
+let pendingPositionWrite = Promise.resolve();
+let pendingTocNavigation = Promise.resolve();
 let pendingPosition: { bookKey: string; detail: Location } | undefined;
 let positionSaveTimer: number | undefined;
 
@@ -218,11 +217,13 @@ async function persistReadingPosition(bookKey: string, detail: Location) {
 function flushPositionSave() {
   window.clearTimeout(positionSaveTimer);
   positionSaveTimer = undefined;
-  if (!pendingPosition) return positionWrites.idle();
+  if (!pendingPosition) return pendingPositionWrite;
 
   const { bookKey, detail } = pendingPosition;
   pendingPosition = undefined;
-  return positionWrites.add(() => persistReadingPosition(bookKey, detail));
+  const result = pendingPositionWrite.then(() => persistReadingPosition(bookKey, detail));
+  pendingPositionWrite = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 function queuePositionSave(detail: Location) {
@@ -506,10 +507,12 @@ async function restoreSavedPosition(navigation: Navigation, savedPosition?: Read
   }
 }
 
-const bookOpens = new SerialTaskQueue();
+let pendingBookOpen = Promise.resolve();
 
 function openBook(platformDocument: PlatformDocument) {
-  return bookOpens.add(() => replaceBook(platformDocument));
+  const result = pendingBookOpen.then(() => replaceBook(platformDocument));
+  pendingBookOpen = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 async function replaceBook(platformDocument: PlatformDocument) {
@@ -615,7 +618,7 @@ function setupEventListeners(signal: AbortSignal) {
 
   listenViewerEvent(VIEWER_EVENTS.tocNavigate, ({ href, item }) => {
     if (!href) return;
-    void tocNavigations.add(async () => {
+    const navigation = pendingTocNavigation.then(async () => {
       const navigation = getNavigation();
       if (!navigation) return;
       session.tocIntent = item;
@@ -626,6 +629,8 @@ function setupEventListeners(signal: AbortSignal) {
         console.warn("Failed to open table-of-contents entry.", error);
       }
     });
+    pendingTocNavigation = navigation.then(() => undefined, () => undefined);
+    void navigation;
   }, { signal });
   listenViewerEvent(VIEWER_EVENTS.progressSeek, goToProgress, { signal });
   const runDockCommand = (command: "zoom-in" | "zoom-out", action: DockAction) => {

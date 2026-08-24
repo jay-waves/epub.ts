@@ -1,14 +1,13 @@
-import type { ReaderAnnotation } from "../epub/annotation";
-import { normalizeAnnotation } from "../epub/annotation";
+import type { ReaderAnnotation } from "../../epub/annotation";
+import { normalizeAnnotation } from "../../epub/annotation";
 import { platform } from "#platform";
-import { SerialTaskQueue } from "../shared/async-tasks";
 
 const storageKey = (bookKey: string) => `reading-annotations:${bookKey}`;
 const legacyStorageKey = (bookKey: string) => `reading-highlights:${bookKey}`;
 
 /** Local annotation working set with indexes for rendering and list UIs. */
 class AnnotationRepository {
-  readonly #writes = new SerialTaskQueue();
+  #pendingWrite = Promise.resolve();
   readonly #byCfi = new Map<string, ReaderAnnotation>();
   readonly #byId = new Map<string, ReaderAnnotation>();
   readonly #bySection = new Map<number, Set<ReaderAnnotation>>();
@@ -91,7 +90,11 @@ class AnnotationRepository {
 
   #persist(bookKey: string) {
     const snapshot = this.all();
-    return this.#writes.add(() => platform.writeViewerMetadata(storageKey(bookKey), snapshot));
+    const result = this.#pendingWrite.then(
+      () => platform.writeViewerMetadata(storageKey(bookKey), snapshot),
+    );
+    this.#pendingWrite = result.then(() => undefined, () => undefined);
+    return result;
   }
 }
 

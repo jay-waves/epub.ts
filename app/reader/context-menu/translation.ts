@@ -1,4 +1,37 @@
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./events";
+import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
+
+type BuiltInAiAvailability = "available" | "downloadable" | "downloading" | "unavailable";
+
+type BuiltInAiMonitor = {
+  addEventListener: (
+    type: "downloadprogress",
+    listener: (event: { loaded: number }) => void,
+  ) => void;
+};
+
+type TranslationLanguagePair = {
+  sourceLanguage: string;
+  targetLanguage: string;
+};
+
+type LanguageDetectorConstructor = {
+  availability(): Promise<BuiltInAiAvailability>;
+  create(options?: { monitor?: (monitor: BuiltInAiMonitor) => void }): Promise<{
+    destroy?(): void;
+    detect(text: string): Promise<Array<{ confidence: number; detectedLanguage: string }>>;
+  }>;
+};
+
+type TranslatorConstructor = {
+  availability(options: TranslationLanguagePair): Promise<BuiltInAiAvailability>;
+  create(options: TranslationLanguagePair & {
+    monitor?: (monitor: BuiltInAiMonitor) => void;
+  }): Promise<{
+    destroy?(): void;
+    ready?: Promise<void>;
+    translate(text: string): Promise<string>;
+  }>;
+};
 
 type TranslationResource = {
   destroy?: () => void;

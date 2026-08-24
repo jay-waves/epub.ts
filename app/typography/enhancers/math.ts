@@ -3,7 +3,6 @@ import {
   clearBookMathSvgCache,
   getCachedMathSvg,
 } from "./math-svg-cache";
-import { SerialTaskQueue } from "../../shared/async-tasks";
 
 type MathJaxSvgModule = typeof import("./mathjax-svg");
 type MathJaxSvgRenderer = ReturnType<MathJaxSvgModule["createMathJaxSvgRenderer"]>;
@@ -18,7 +17,7 @@ const MATH_TEXT_SPACING = "0.25em";
 const enhancedMathDocuments = new WeakSet<Document>();
 const normalizedMathDocuments = new WeakSet<Document>();
 let mathRendererReady: Promise<MathJaxSvgRenderer> | null = null;
-const mathRenders = new SerialTaskQueue();
+let pendingMathRender = Promise.resolve();
 
 export async function clearMathCache() {
   clearBookMathSvgCache();
@@ -73,7 +72,9 @@ export async function renderMathDocument(
 }
 
 function enqueueMathRender(render: () => Promise<void>) {
-  return mathRenders.add(render);
+  const result = pendingMathRender.then(render);
+  pendingMathRender = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 async function renderMathFormulas(

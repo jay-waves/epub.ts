@@ -7,7 +7,7 @@ import type {
   PlatformDocument,
   ViewerPlatform,
 } from "./types";
-import { startupTrace } from "../shared/startup-trace";
+import { startupTrace } from "../startup-trace";
 
 type WriteResponse = {
   version: string;

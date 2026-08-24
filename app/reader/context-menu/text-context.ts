@@ -1,6 +1,6 @@
 import type { ContentContextAction } from "./context-menu-store";
 import { contextMenuStore } from "./context-menu-store";
-import { emitViewerEvent, VIEWER_EVENTS } from "./events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../events";
 import { createTranslation } from "./translation";
 
 type TextContextRequest = {

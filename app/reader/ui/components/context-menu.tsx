@@ -2,8 +2,8 @@ import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-
 import type { LucideIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { usePointPopover } from "./use-point-popover";
-import type { ContentContextAction } from "../../context-menu-store";
-import { contextMenuStore } from "../../context-menu-store";
+import type { ContentContextAction } from "../../context-menu/context-menu-store";
+import { contextMenuStore } from "../../context-menu/context-menu-store";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },

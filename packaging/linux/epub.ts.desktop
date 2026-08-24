@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=epub.ts
+Comment=Open EPUB documents in a local browser viewer
+Exec=epub.ts open %f
+Terminal=false
+MimeType=application/epub+zip;
+Categories=Office;Viewer;
+Icon=epub.ts
