@@ -747,11 +747,6 @@
     box-shadow: 0 8px 24px color-mix(in srgb, black 18%, transparent);
   }
 
-  #theme-modal.reader-modal::backdrop {
-    background: color-mix(in srgb, var(--reader-chrome-fg) 20%, transparent);
-    backdrop-filter: blur(1.5px);
-  }
-
   .theme-dialog-header {
     @apply border-b px-4.5 py-3.5;
     border-color: var(--reader-border-subtle);
