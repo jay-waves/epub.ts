@@ -60,6 +60,8 @@ requires:
 - Go 1.23+ to build the launcher
 - [nFPM](https://nfpm.goreleaser.com/docs/install/) to create `deb`/`rpm` packages
 - NSIS and a PE resource compiler to create the Windows installer on Linux
+- macOS system tools `hdiutil`, `sips`, `iconutil`, and `ditto` to create
+  unsigned app bundles and disk images
 
 ```bash
 corepack enable
@@ -77,10 +79,20 @@ sudo dnf install golang mingw64-binutils mingw32-nsis
 go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
 ```
 
+macOS launchers, app bundles, and DMGs must be built on macOS. The required
+packaging commands are provided by the operating system, so no third-party DMG
+dependency is needed. The macOS artifacts are intentionally neither signed nor
+notarized, and the packaging process does not invoke `codesign`. Set
+`EPUB_TS_HDIUTIL` only when `hdiutil` is installed outside its normal system
+location. Go may add the minimal ad-hoc code-signature structure required for
+an Apple Silicon executable; this does not identify the developer or make the
+app trusted by Gatekeeper.
+
 The Fedora `mingw32-nsis` package is intentional: NSIS uses its traditional
 x86 bootstrap to install the 64-bit `epub.ts.exe` into `%ProgramFiles%`.
 Custom tool locations can be supplied through `EPUB_TS_GO`,
-`EPUB_TS_WINDRES`, `EPUB_TS_MAKENSIS`, and `EPUB_TS_NFPM`.
+`EPUB_TS_WINDRES`, `EPUB_TS_MAKENSIS`, `EPUB_TS_NFPM`, and
+`EPUB_TS_HDIUTIL`.
 
 ### 构建命令 / Build commands
 
@@ -89,13 +101,19 @@ pnpm compile         # compile the shared reader to release/web once
 pnpm package:chrome  # package the compiled reader as a Chrome extension
 pnpm package:windows # package the Windows binary and NSIS installer
 pnpm package:linux   # package the Linux binary, deb, and Fedora-compatible rpm
+pnpm package:macos   # package unsigned amd64 and arm64 macOS apps and DMGs
 pnpm package:deb     # package only the Linux binary and deb
 pnpm package:rpm     # package only the Linux binary and rpm
-pnpm build:all       # compile once, then package every host
+pnpm build:all       # compile once, then package Chrome, Linux, and Windows
 ```
 
 See [`packaging/README.md`](packaging/README.md) for installed files and
 platform-specific package behavior.
+
+Portable launchers expose `epub.ts purge` to stop the current user's daemon and
+delete that user's reader data. Installation, uninstallation, and file
+association are owned by nFPM, NSIS, or the macOS app bundle instead of launcher
+commands.
 
 ### 运行环境 / Runtime support
 

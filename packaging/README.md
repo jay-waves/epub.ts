@@ -2,6 +2,9 @@
 
 Native packages are intentionally unsigned. They install the launcher and file
 association, while reader data remains in the per-user application data directory.
+The launcher itself does not install or uninstall platform integration; each
+platform package owns that lifecycle. Portable launchers provide only `purge`
+for explicitly deleting the current user's reader data.
 
 ## Chrome
 
@@ -53,3 +56,22 @@ first. Uninstall leaves every user's reader data intact.
 Automatic daemon startup is opt-in. Copy
 `%ProgramFiles%\epub.ts\epub.ts-startup.cmd` into the folder opened by
 `shell:startup` for the current user. Remove that copied script to disable it.
+
+## macOS
+
+Run `pnpm package:macos` on macOS after `pnpm compile` to build separate Intel and
+Apple Silicon applications and disk images. Use `pnpm package:macos:amd64` or
+`pnpm package:macos:arm64` to build one architecture.
+
+The app bundle and DMG packaging step runs only on macOS and uses the system
+`sips`, `iconutil`, `ditto`, and `hdiutil` commands; there is no third-party
+packaging dependency. Linux DMG writers are intentionally unsupported because
+they do not provide the same compatibility guarantees. Override the `hdiutil`
+path with `EPUB_TS_HDIUTIL` when necessary.
+
+The resulting `epub.ts.app` and DMG have no Developer ID signature and are not
+notarized. The packaging script does not invoke `codesign`; the Go linker may
+add the minimal ad-hoc signature structure required for an Apple Silicon
+executable. The app bundle declares EPUB metadata in `Info.plist`; macOS owns
+application discovery and file-association registration when the app is copied
+to or launched from `/Applications`.
