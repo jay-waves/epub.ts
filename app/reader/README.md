@@ -12,3 +12,8 @@ Typography, and owns navigation, settings, persistence, input, and UI.
 
 Dependencies point from Reader to Renderer and Typography. Neither lower layer
 depends on Reader.
+
+Renderer relocation uses a section-bound `ReadingPosition`. Reader converts its
+Range to an exact CFI when possible and always keeps whole-book progress as the
+fallback. Saved positions restore in that order; a missing Range must not be
+replaced with a section-start CFI.

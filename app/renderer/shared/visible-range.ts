@@ -4,7 +4,7 @@ export type VisibleLocationView = {
   document: Document;
   extent: number;
   mapRect: (rect: DOMRect) => MappedRect;
-  visibleRange: (start: number, end: number) => Range;
+  visibleRange: (start: number, end: number) => Range | undefined;
 };
 
 const makeRange = (doc: Document, node: Node, start: number, end = start) => {
@@ -80,8 +80,11 @@ export function getVisibleRange(
     from ??= node;
     to = node;
   }
-  from ??= doc.body;
-  to ??= from;
+  // Alignment reserves and partially filled spreads can leave a viewport with
+  // no rendered book content. Returning `body` here turns that empty page into
+  // a real anchor at the beginning of the chapter; a later reflow can then
+  // restore that synthetic anchor and visibly jump backwards.
+  if (!from || !to) return undefined;
 
   const startOffset = from.nodeType === Node.ELEMENT_NODE ? 0
     : bisectNode(doc, from, (a, b) => {

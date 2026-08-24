@@ -1,6 +1,7 @@
 import type { OverlayDraw, OverlayDrawOptions } from "./shared/overlay";
 import type { RenderMode } from "./shared/flow-geometry";
 import type { Renderer, RendererStyles } from "./renderer";
+import type { RelocateDetail } from "./shared/reading-position";
 
 export type { Renderer } from "./renderer";
 
@@ -67,13 +68,7 @@ export type Content = {
   };
 };
 
-export type RawRelocateDetail = {
-  fraction?: number;
-  index: number;
-  range?: Range;
-  reason?: string;
-  size?: number;
-};
+export type { ReadingPosition, RelocateDetail } from "./shared/reading-position";
 
 type ViewNavigation = {
   attach?(renderer: Renderer): void;
@@ -106,7 +101,7 @@ type ViewEvents<Item extends Annotation = Annotation> = {
   };
   load: { doc: Document; index: number };
   unload: { doc: Document };
-  relocate: RawRelocateDetail;
+  relocate: RelocateDetail;
   "show-annotation": { index: number; range?: Range; value: string };
 };
 

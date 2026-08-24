@@ -92,10 +92,9 @@ function getReadingRange(
     }
   }
 
-  const fallback = doc.createRange();
-  fallback.selectNodeContents(doc.body);
-  fallback.collapse(true);
-  return fallback;
+  // Physical alignment space has no text anchor. The renderer retains the
+  // section fraction instead of manufacturing a chapter-start Range.
+  return undefined;
 }
 
 /** Owns the scroll-mode hot path: geometry, throttling, and reading-edge sampling. */
@@ -104,6 +103,7 @@ export class ScrollCoordinator {
   readonly #container: HTMLElement;
   readonly #update: () => void;
   #updateFrame = 0;
+  #suppressScrollEnd = false;
 
   constructor(container: HTMLElement, update: () => void) {
     this.#container = container;
@@ -120,6 +120,7 @@ export class ScrollCoordinator {
   }
 
   schedule() {
+    this.#suppressScrollEnd = false;
     if (!this.#updateFrame) {
       this.#updateFrame = requestAnimationFrame(() => {
         this.#updateFrame = 0;
@@ -129,6 +130,11 @@ export class ScrollCoordinator {
   }
 
   readonly #handleScrollEnd = () => {
+    if (this.#suppressScrollEnd) {
+      this.#suppressScrollEnd = false;
+      this.cancel();
+      return;
+    }
     if (this.#updateFrame) {
       cancelAnimationFrame(this.#updateFrame);
       this.#updateFrame = 0;
@@ -145,9 +151,10 @@ export class ScrollCoordinator {
     return true;
   }
 
-  cancel() {
+  cancel(suppressScrollEnd = false) {
     cancelAnimationFrame(this.#updateFrame);
     this.#updateFrame = 0;
+    if (suppressScrollEnd) this.#suppressScrollEnd = true;
   }
 
   destroy() {

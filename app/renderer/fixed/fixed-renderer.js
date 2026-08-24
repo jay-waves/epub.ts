@@ -274,7 +274,7 @@ export class FixedRenderer extends HTMLElement {
     }
     #reportLocation(reason) {
         this.dispatchEvent(new CustomEvent('relocate', { detail:
-            { reason, range: null, index: this.index, fraction: 0, size: 1 } }))
+            { reason, index: this.index, fraction: 0, size: 1 } }))
     }
     #getSpreadOf(section) {
         const spreads = this.#spreads

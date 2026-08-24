@@ -12,12 +12,17 @@ import { ScrolledTrack } from './scrolled-track'
 import { SectionFrame, type SectionDirection } from '../shared/section-frame'
 import { animateNumber, easeOutQuad } from '../shared/animation'
 import { setSelectionTarget, uncollapseRange } from '../shared/selection'
-import type { Book, RawRelocateDetail, Resolved } from '../reader-view.js'
+import type { Book, Resolved } from '../reader-view.js'
 import type { RendererStyles } from '../renderer'
 import { getLayoutGap, supportsContinuousSpine } from '../shared/flow-geometry'
 import type { ScrolledSectionLayout } from '../shared/section-frame'
-
-type ResolvedAnchor = number | Node | Range
+import {
+    anchorForPosition,
+    createReadingPosition,
+    type NavigationAnchor,
+    type ReadingPosition,
+    type RelocateDetail,
+} from '../shared/reading-position'
 
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
 export class ScrolledRenderer extends HTMLElement {
@@ -42,8 +47,10 @@ export class ScrolledRenderer extends HTMLElement {
     #vertical = false
     #rtl = false
     #margin = 0
-    #index = -1
-    #anchor: ResolvedAnchor = 0 // anchor view to a fraction (0-1), Range, or Element
+    #position?: ReadingPosition
+    #targetAnchor: NavigationAnchor = 0
+    #motion?: AbortController
+    #navigationRevision = 0
     #justAnchored = false
     #scrollBounds: [number, number, number] | null = null
     #renderFrame?: number
@@ -100,7 +107,9 @@ export class ScrolledRenderer extends HTMLElement {
         this.#container = root.getElementById('container')!
         this.#track = root.getElementById('track')!
         this.#scrolledViewport = new ScrollCoordinator(this.#container, () => {
-            if (!this.#destroyed) this.#afterScroll('scroll')
+            if (!this.#destroyed)
+                void this.#scrollTo(this.start, 'scroll').catch(error =>
+                    console.warn('Failed to commit reader scroll position.', error))
         })
         this.#spine = new ReflowableSpine({
             activeEntry: () => this.#entryAtReadingEdge(),
@@ -125,7 +134,7 @@ export class ScrolledRenderer extends HTMLElement {
             viewport: () => {
                 const { start, end } = this.#spine.viewportRange(this.start, this.end)
                 return {
-                    activeIndex: this.#index,
+                    activeIndex: this.#position?.index ?? -1,
                     viewportEnd: end,
                     viewportSize: this.size,
                     viewportStart: start,
@@ -141,12 +150,12 @@ export class ScrolledRenderer extends HTMLElement {
         })
 
         this.addEventListener('relocate', (({ detail }: CustomEvent) => {
-            if (detail.reason === 'selection') setSelectionTarget(this.#anchor, 0)
+            if (detail.reason === 'selection') setSelectionTarget(this.#targetAnchor, 0)
             else if (detail.reason === 'navigation') {
-                if (this.#anchor === 1) setSelectionTarget(detail.range, 1)
-                else if (typeof this.#anchor === 'number')
+                if (this.#targetAnchor === 1) setSelectionTarget(detail.range, 1)
+                else if (typeof this.#targetAnchor === 'number')
                     setSelectionTarget(detail.range, -1)
-                else setSelectionTarget(this.#anchor, -1)
+                else setSelectionTarget(this.#targetAnchor, -1)
             }
         }) as EventListener)
     }
@@ -170,15 +179,7 @@ export class ScrolledRenderer extends HTMLElement {
     }
     #onViewExpand(view: SectionFrame) {
         if (!this.#spine.entries.some(entry => entry.view === view)) return
-        if (this.#navigation.deferReflow()) return
-        this.#scrolledViewport.flush()
-        const activeEntry = this.#entryAtReadingEdge()
-        const oldOffset = activeEntry ? this.#entryOffset(activeEntry) : 0
-        this.#layoutEntries()
-        if (activeEntry) {
-            const shift = this.#entryOffset(activeEntry) - oldOffset
-            if (shift) this.#restoreViewport(this.#container[this.scrollProp] + shift)
-        }
+        this.#scheduleRender()
     }
     #layoutEntries() {
         if (!this.#spine.entries.length || !this.continuous) return
@@ -228,6 +229,10 @@ export class ScrolledRenderer extends HTMLElement {
         // the same way as section content expansion.
         this.#scrolledViewport.flush()
         if (!this.#navigation.beginReflow()) return
+        const entry = this.#entryForView()
+        const anchor = entry
+            ? anchorForPosition(this.#position, entry.index, entry.view.document)
+            : 0
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeOtherThan(this.#view)
         for (const { view } of this.#spine.entries) {
@@ -247,7 +252,9 @@ export class ScrolledRenderer extends HTMLElement {
         } else this.#layoutEntries()
         // Clear overflow accidentally retained on the inactive axis.
         this.#container[this.#vertical ? 'scrollTop' : 'scrollLeft'] = 0
-        this.#scrollToAnchor(this.#anchor)
+        void this.#scrollToAnchor(anchor, 'anchor', entry).catch(error => {
+            if (!this.#destroyed) console.warn('Failed to restore scrolled reading position.', error)
+        })
     }
     #scheduleRender() {
         if (this.#destroyed || this.#renderFrame) return
@@ -320,47 +327,101 @@ export class ScrolledRenderer extends HTMLElement {
         return this.#spine.entryOffset(entry)
     }
     #restoreViewport(offset: number) {
+        if (this.#container[this.scrollProp] !== offset) {
+            this.#justAnchored = true
+            this.#scrolledViewport.cancel(true)
+        }
         this.#container[this.scrollProp] = offset
         if (this.#scrollBounds) this.#scrollBounds[0] = offset
     }
     async #scrollToRect(rect: DOMRect, reason: string, entry = this.#entryForView()) {
-        if (!entry) return
+        if (!entry) return false
         const offset = getRectTarget(this.#entryOffset(entry),
             this.#getRectMapper(entry.view)(rect).left, this.#margin)
         return this.#scrollTo(offset, reason)
     }
     async #scrollTo(offset: number, reason: string, smooth = false) {
+        if (this.#destroyed) return false
         const element = this.#container
         const { scrollProp, size } = this
-        if (element[scrollProp] === offset) {
-            this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
-            this.#afterScroll(reason)
-            this.#justAnchored = false
-            return
-        }
         // FIXME: vertical-rl only, not -lr
         if (this.#vertical) offset = -offset
-        if ((reason === 'snap' || smooth) && this.hasAttribute('animated')) return animateNumber(
-            element[scrollProp], offset, 300, easeOutQuad,
-            x => element[scrollProp] = x,
-        ).then(() => {
-            this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
-            this.#afterScroll(reason)
-        })
-        else {
-            element[scrollProp] = offset
-            this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
-            this.#afterScroll(reason)
+        const moved = element[scrollProp] !== offset
+        const commit = () => {
+            if (this.#destroyed) return false
+            const actualOffset = element[scrollProp]
+            this.#scrollBounds = [
+                actualOffset,
+                this.atStart ? 0 : size,
+                this.atEnd ? 0 : size,
+            ]
+            const location = resolveScrolledLocation({
+                continuous: this.continuous,
+                current: this.#entryForView(),
+                entryOffset: entry => this.#entryOffset(entry),
+                findAt: value => this.#spine.findAt(value),
+                margin: this.#margin,
+                range: entry => this.#scrolledViewport.readingRange(
+                    entry.view.document, this.#margin),
+                start: this.start,
+                viewportSize: this.size,
+            })
+            if (!location) return false
+
+            const { entry, fraction, range, size: viewportSize } = location
+            const position = createReadingPosition(entry.index, fraction, range)
+            if (moved) {
+                this.#scrolledViewport.cancel(true)
+                this.#justAnchored = true
+            }
+            this.#view = entry.view
+            this.#position = position
+            if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
+                this.#targetAnchor = position.range ?? position.fraction
+            else {
+                this.#scrolledViewport.cancel()
+                this.#justAnchored = true
+            }
+
+            const detail: RelocateDetail = {
+                ...position,
+                reason,
+                size: viewportSize,
+            }
+            this.dispatchEvent(new CustomEvent('relocate', { detail }))
+            if (this.continuous) this.#spine.scheduleCache()
+            if (!moved) this.#justAnchored = false
+            return true
         }
+
+        if (!moved) return commit()
+        if ((reason === 'snap' || smooth) && this.hasAttribute('animated')
+            && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            this.#motion?.abort()
+            const motion = new AbortController()
+            this.#motion = motion
+            try {
+                const completed = await animateNumber(
+                    element[scrollProp], offset, 300, easeOutQuad,
+                    x => element[scrollProp] = x,
+                    motion.signal,
+                )
+                return completed && !motion.signal.aborted ? commit() : false
+            } finally {
+                if (this.#motion === motion) this.#motion = undefined
+            }
+        }
+        element[scrollProp] = offset
+        return commit()
     }
     async scrollToAnchor(anchor: number, select = false) {
-        return this.#runNavigation(() => this.#scrollToAnchor(
+        await this.#enqueueNavigation(() => this.#scrollToAnchor(
             anchor, select ? 'selection' : 'navigation'))
     }
-    async #scrollToAnchor(anchor: ResolvedAnchor, reason = 'anchor', entry = this.#entryForView()) {
-        if (!entry) return
+    async #scrollToAnchor(anchor: NavigationAnchor, reason = 'anchor', entry = this.#entryForView()) {
+        if (!entry) return false
         this.#scrolledViewport.cancel()
-        this.#anchor = anchor
+        this.#targetAnchor = anchor
         const rect = typeof anchor === 'number' ? undefined : getAnchorRect(uncollapseRange(anchor))
         // if anchor is an element or a range
         if (rect) {
@@ -369,53 +430,18 @@ export class ScrolledRenderer extends HTMLElement {
                     entry.view.document, rect, this.#margin)
                 if (target) {
                     if (target.visible) {
-                        this.#afterScroll(reason)
-                        this.#justAnchored = false
-                        return
+                        return this.#scrollTo(
+                            this.#container[this.scrollProp], reason)
                     }
-                    await this.#scrollTo(target.offset, reason)
-                    return
+                    return this.#scrollTo(target.offset, reason)
                 }
             }
-            await this.#scrollToRect(rect, reason, entry)
-            return
+            return this.#scrollToRect(rect, reason, entry)
         }
-        if (typeof anchor !== 'number') return
+        if (typeof anchor !== 'number') return false
         // if anchor is a fraction
-        await this.#scrollTo(getFractionTarget(
+        return this.#scrollTo(getFractionTarget(
             this.#entryOffset(entry), entry.view.extent, anchor), reason)
-    }
-    #afterScroll(reason: string) {
-        const location = resolveScrolledLocation({
-            continuous: this.continuous,
-            current: this.#entryForView(),
-            entryOffset: entry => this.#entryOffset(entry),
-            findAt: offset => this.#spine.findAt(offset),
-            margin: this.#margin,
-            range: entry => this.#scrolledViewport.readingRange(
-                entry.view.document, this.#margin),
-            start: this.start,
-            viewportSize: this.size,
-        })
-        if (!location) return
-
-        const { entry, fraction, range, size } = location
-        this.#view = entry.view
-        this.#index = entry.index
-        // don't set new anchor if relocation was to scroll to anchor
-        if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
-            if (range) this.#anchor = range
-        else this.#justAnchored = true
-
-        const detail: RawRelocateDetail = { reason, range, index: entry.index }
-        if (fraction !== undefined) {
-            detail.fraction = fraction
-            detail.size = size
-        }
-        this.dispatchEvent(new CustomEvent('relocate', { detail }))
-        // Run iframe creation and disposal after the landed page has painted.
-        // Exact jumps benefit from the same warm cache as user-driven turns.
-        if (this.continuous) this.#spine.scheduleCache()
     }
     #navigationState() {
         return {
@@ -429,25 +455,40 @@ export class ScrolledRenderer extends HTMLElement {
             start: this.start,
         }
     }
-    async #goTo({ index, anchor, select = false }: Resolved) {
+    async #goTo({ index, anchor, select = false }: Resolved,
+        revision = this.#navigationRevision,
+        reason = select ? 'selection' : 'navigation') {
         const hasFocus = this.#view?.document?.hasFocus()
         const entry = await this.#spine.activate(index)
+        if (this.#destroyed || revision !== this.#navigationRevision) return false
         this.#view = entry.view
-        this.#index = index
         const resolvedAnchor = typeof anchor === 'function'
             ? anchor(entry.view.document) : anchor
-        await this.#scrollToAnchor(resolvedAnchor ?? 0,
-            select ? 'selection' : 'navigation', entry)
-        if (hasFocus) this.#view?.document?.defaultView?.focus()
+        const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
+        if (landed !== false && hasFocus) this.#view?.document?.defaultView?.focus()
+        return landed !== false
     }
-    async #runNavigation<T>(task: () => T | Promise<T>) {
-        return this.#navigation.run(task, () => this.#scheduleRender())
+    #enqueueNavigation<T>(task: (revision: number) => T | Promise<T>,
+        revision = this.#navigationRevision) {
+        return this.#navigation.enqueue(() => {
+            if (this.#destroyed || revision !== this.#navigationRevision) return
+            return task(revision)
+        }, () => this.#scheduleRender())
+    }
+    cancelNavigation() {
+        this.#navigationRevision += 1
+        this.#motion?.abort()
+        this.#motion = undefined
+        this.#scrollBounds = null
+        this.#scrolledViewport.cancel(true)
     }
     async goTo(target: Resolved | Promise<Resolved>) {
+        const revision = this.#navigationRevision
         const resolved = await target
+        if (this.#destroyed || revision !== this.#navigationRevision) return
         if (this.#spine.contains(resolved.index))
-            return this.#navigation.enqueue(
-                () => this.#goTo(resolved), () => this.#scheduleRender())
+            return this.#enqueueNavigation(
+                current => this.#goTo(resolved, current), revision)
     }
     get atStart() {
         return isAtScrolledBookEdge(this.#navigationState(), -1)
@@ -456,12 +497,13 @@ export class ScrolledRenderer extends HTMLElement {
         return isAtScrolledBookEdge(this.#navigationState(), 1)
     }
     #adjacentIndex(dir: -1 | 1) {
-        return this.#spine.adjacent(this.#index, dir)
+        return this.#spine.adjacent(
+            this.#entryForView()?.index ?? this.#position?.index ?? -1, dir)
     }
-    #crossCacheWindow(dir: -1 | 1) {
+    #crossCacheWindow(dir: -1 | 1, reason = 'scroll') {
         const boundary = this.continuous
             ? (dir < 0 ? this.#spine.first : this.#spine.last)?.index
-            : this.#index
+            : this.#entryForView()?.index ?? this.#position?.index
         if (boundary == null) return
         const index = this.#spine.adjacent(boundary, dir)
         if (index == null) return
@@ -469,11 +511,11 @@ export class ScrolledRenderer extends HTMLElement {
             index,
             anchor: dir < 0 ? 1 : 0,
             select: false,
-        })
+        }, this.#navigationRevision, reason)
     }
     async #turnPage(dir: -1 | 1, distance?: number) {
         if (!this.#view) return
-        return this.#runNavigation(async () => {
+        return this.#enqueueNavigation(async () => {
             const action = planScrolledNavigation(this.#navigationState(), dir, distance)
             if (action.kind === 'scroll') {
                 await this.#scrollTo(action.offset, 'scroll', true)
@@ -495,6 +537,7 @@ export class ScrolledRenderer extends HTMLElement {
     destroy() {
         if (this.#destroyed) return
         this.#destroyed = true
+        this.cancelNavigation()
         if (this.#renderFrame !== undefined) cancelAnimationFrame(this.#renderFrame)
         this.#scrolledViewport.destroy()
         this.#observer.disconnect()

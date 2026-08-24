@@ -9,6 +9,7 @@ export interface Renderer {
   atEnd?: boolean;
   atStart?: boolean;
   beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
+  cancelNavigation?(): void;
   end?: number;
   start?: number;
   viewSize?: number;

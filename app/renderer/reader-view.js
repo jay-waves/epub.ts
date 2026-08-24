@@ -64,6 +64,7 @@ export class ReaderView extends HTMLElement {
             return
         }
 
+        current.cancelNavigation?.()
         const target = this.#readingTarget(current)
         const next = await createRenderer(mode)
         if (this.#destroyed) {
@@ -110,7 +111,7 @@ export class ReaderView extends HTMLElement {
     #readingTarget(renderer) {
         const location = this.#relocations.get(renderer)
         if (!location) return
-        const { fraction = 0, index, range } = location
+        const { fraction, index, range } = location
         try {
             const cfi = range && this.navigation.cfi?.(index, range)
             return cfi ? this.navigation.resolve(cfi) ?? { index, anchor: fraction }

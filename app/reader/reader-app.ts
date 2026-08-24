@@ -43,7 +43,7 @@ import {
   saveReaderSettings,
   saveReadingPosition,
 } from "./storage";
-import type { ReaderSettings, ReaderView, ReadingPosition } from "./model";
+import type { ReaderSettings, ReaderView } from "./model";
 import type { ReaderAnnotation } from "../epub/annotation";
 import { annotationRepository } from "./context-menu/annotation-repository";
 import type { Location } from "./navigation";
@@ -53,7 +53,6 @@ import { createAdvancedSettingsController } from "./advanced-settings";
 import type { AdvancedReaderSettings } from "./advanced-settings";
 import { createBookSession, resetBookSession } from "./session";
 import { createRenderState } from "./render";
-import { Navigation } from "./navigation";
 import { Reader } from "./lifecycle";
 import { getReaderFontQueries, preloadReaderFonts } from "../typography/fonts";
 import { platform } from "#platform";
@@ -268,7 +267,7 @@ function wireReaderEvents(reader: Reader) {
       session.href = currentHref;
       emitTocUpdate();
     }
-    session.progress = detail.fraction ?? session.progress;
+    session.progress = detail.fraction;
     emitViewerEvent(VIEWER_EVENTS.progressUpdate, {
       fraction: session.progress,
       index: sectionIndex,
@@ -483,32 +482,6 @@ function showChapterBoundaryPending(direction: number, pending: boolean) {
   readerRoot.classList.toggle(ownClass, pending);
 }
 
-async function restoreSavedPosition(navigation: Navigation, savedPosition?: ReadingPosition) {
-  session.restoring = true;
-  try {
-    const attempts: Array<Parameters<Navigation["init"]>[0]> = [];
-    if (savedPosition?.cfi) attempts.push({ lastLocation: savedPosition.cfi });
-    if (typeof savedPosition?.fraction === "number") {
-      attempts.push({ progress: savedPosition.fraction });
-    }
-    attempts.push({ showTextStart: true });
-
-    let lastError: unknown;
-    for (const attempt of attempts) {
-      try {
-        await navigation.init(attempt);
-        return;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (lastError) throw lastError;
-  } finally {
-    session.restoring = false;
-  }
-}
-
 let pendingBookOpen = Promise.resolve();
 
 function openBook(platformDocument: PlatformDocument) {
@@ -564,7 +537,12 @@ async function replaceBook(platformDocument: PlatformDocument) {
     emitTocUpdate();
     await restoreAnnotations(reader, bookKey);
     reader.signal.throwIfAborted();
-    await restoreSavedPosition(navigation, savedPosition);
+    session.restoring = true;
+    try {
+      await navigation.restore(savedPosition);
+    } finally {
+      session.restoring = false;
+    }
     reader.signal.throwIfAborted();
     const paintStartedAt = performance.now();
     await renderState.revealAfterPaint();

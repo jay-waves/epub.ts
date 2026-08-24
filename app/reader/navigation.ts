@@ -1,5 +1,5 @@
 import * as CFI from "../epub/cfi.js";
-import type { Book, RawRelocateDetail, Renderer, Resolved, TocItem } from "../renderer/reader-view.js";
+import type { Book, RelocateDetail, Renderer, Resolved, TocItem } from "../renderer/reader-view.js";
 import { SectionIndex, TocIndex } from "./location";
 import type { SectionLocation } from "./location";
 
@@ -17,8 +17,8 @@ const cfiFilter = (node: Node) => {
     : NodeFilter.FILTER_ACCEPT;
 };
 
-export type Location = SectionLocation & Omit<RawRelocateDetail, "fraction" | "size"> & {
-  cfi: string;
+export type Location = SectionLocation & Omit<RelocateDetail, "fraction" | "size"> & {
+  cfi?: string;
   pageItem?: TocItem | null;
   tocItem?: TocItem | null;
 };
@@ -120,27 +120,32 @@ export class Navigation {
     return resolved;
   }
 
-  async init({
-    lastLocation,
-    progress,
-    showTextStart,
-  }: {
-    lastLocation?: Target;
-    progress?: number;
-    showTextStart?: boolean;
-  }) {
-    const resolved = lastLocation !== undefined ? this.resolve(lastLocation) : undefined;
-    if (lastLocation !== undefined && !resolved) {
-      throw new Error(`Could not resolve initial location ${String(lastLocation)}`);
+  async restore(position?: { cfi?: string; fraction?: number }) {
+    let lastError: unknown;
+    if (position?.cfi) {
+      try {
+        const resolved = this.resolve(position.cfi);
+        if (!resolved) throw new Error(`Could not resolve saved CFI ${position.cfi}`);
+        const isSectionStartFallback = typeof position.fraction === "number"
+          && position.cfi === this.cfi(resolved.index);
+        // Older versions stored the section base when no exact Range existed.
+        // Prefer their accompanying progress instead of restoring that lossy CFI.
+        if (!isSectionStartFallback) return await this.go(resolved);
+      } catch (error) {
+        lastError = error;
+      }
     }
-    if (resolved) {
-      await this.go(lastLocation!);
-    } else if (progress !== undefined) {
-      await this.goToProgress(progress);
-    } else if (showTextStart) {
-      await this.start();
-    } else {
-      await this.next();
+    if (typeof position?.fraction === "number") {
+      try {
+        return await this.goToProgress(position.fraction);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    try {
+      return await this.start();
+    } catch (error) {
+      throw lastError ?? error;
     }
   }
 
@@ -185,7 +190,7 @@ export class Navigation {
     }
   }
 
-  location(raw: RawRelocateDetail): Location {
+  location(raw: RelocateDetail): Location {
     const {
       fraction: sectionFraction,
       index,
@@ -194,12 +199,15 @@ export class Navigation {
     } = raw;
     const progress = this.#sections.get(index, sectionFraction, viewportFraction);
     const { range } = relocation;
-    const cfi = this.cfi(index, range);
+    // A section-base CFI is not an exact substitute for a missing rendered
+    // range. Persist the global fraction instead of manufacturing a locator
+    // that would reopen at the start of the chapter.
+    const cfi = range ? this.cfi(index, range) : undefined;
     return {
       ...relocation,
       index,
       ...progress,
-      cfi,
+      ...(cfi ? { cfi } : {}),
       pageItem: this.#pages?.get(index, range),
       tocItem: this.#toc?.get(index, range),
     };

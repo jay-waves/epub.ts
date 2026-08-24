@@ -1,6 +1,6 @@
 import type {
   ReaderSettings,
-  ReadingPosition,
+  SavedReadingPosition,
 } from "./model";
 import type { Location } from "./navigation";
 import { platform } from "#platform";
@@ -11,7 +11,7 @@ const getBookPositionKey = (bookKey: string) => `reading-position:${bookKey}`;
 
 function updateBookPosition(
   bookKey: string,
-  update: (previous: ReadingPosition | undefined) => ReadingPosition,
+  update: (previous: SavedReadingPosition | undefined) => SavedReadingPosition,
 ) {
   const result = pendingPositionWrite.then(async () => {
     await platform.writeViewerMetadata(getBookPositionKey(bookKey), update(await getSavedPosition(bookKey)));
@@ -22,11 +22,11 @@ function updateBookPosition(
 
 export async function getSavedPosition(bookKey: string) {
   if (!bookKey) return undefined;
-  return platform.readViewerMetadata<ReadingPosition>(getBookPositionKey(bookKey));
+  return platform.readViewerMetadata<SavedReadingPosition>(getBookPositionKey(bookKey));
 }
 
 export async function saveReadingPosition(bookKey: string, detail: Location) {
-  if (!bookKey || (!detail.cfi && typeof detail.fraction !== "number")) return;
+  if (!bookKey) return;
 
   await updateBookPosition(bookKey, (previous) => ({
     cfi: detail.cfi,

@@ -1,5 +1,6 @@
 import type { SpineEntry } from "../shared/spine-buffer";
 import { getVisibleRange, type VisibleLocationView } from "../shared/visible-range";
+import { clampFraction } from "../shared/reading-position";
 
 type Options<View extends VisibleLocationView> = {
   continuous: boolean;
@@ -38,18 +39,18 @@ export function resolvePaginatedLocation<View extends VisibleLocationView>(optio
       rect => view.mapRect(rect),
     );
 
-  if (!(options.pages > 0)) return { entry, range, fraction: undefined, size: undefined };
+  if (!(options.pages > 0)) return { entry, range, fraction: 0, size: 0 };
   if (continuous) return {
     entry,
     range,
-    fraction: Math.min(1, Math.max(0, (start - offset) / view.extent)),
+    fraction: clampFraction((start - offset) / view.extent),
     size: Math.min(1, viewportSize / view.extent),
   };
-  const contentTurns = options.pages - options.edgeTurns * 2;
+  const contentTurns = Math.max(1, options.pages - options.edgeTurns * 2);
   return {
     entry,
     range,
-    fraction: (options.page - options.edgeTurns) / contentTurns,
-    size: options.edgeTurns / contentTurns,
+    fraction: clampFraction((options.page - options.edgeTurns) / contentTurns),
+    size: Math.min(1, options.edgeTurns / contentTurns),
   };
 }

@@ -24,7 +24,7 @@ export type ReaderSettings = {
 
 export type ReaderTheme = TypographyTheme;
 
-export type ReadingPosition = {
+export type SavedReadingPosition = {
   cfi?: string;
   fraction?: number;
   settings?: Partial<ReaderSettings>;
