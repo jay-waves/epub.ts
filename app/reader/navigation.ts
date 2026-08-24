@@ -99,8 +99,10 @@ export class Navigation {
   #resolveCfi(cfi: string): Resolved {
     if (this.book.resolveCFI) return this.book.resolveCFI(cfi, cfiFilter);
     const parts = CFI.parse(cfi);
-    const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
-    return { index, anchor: (doc) => CFI.toRange(doc, parts, cfiFilter) };
+    const [spine, ...path] = Array.isArray(parts) ? parts : parts.parent;
+    const local = Array.isArray(parts) ? path : { ...parts, parent: path };
+    const index = spine ? CFI.fake.toIndex(spine) : -1;
+    return { index, anchor: (doc) => CFI.toRange(doc, local, cfiFilter) };
   }
 
   async go(target: Target, options: GoOptions = {}) {
