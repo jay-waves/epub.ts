@@ -1,7 +1,7 @@
 import type { OverlayDraw, OverlayDrawOptions } from "./shared/overlay";
 import type { RenderMode } from "./shared/flow-geometry";
 import type { Renderer, RendererStyles } from "./renderer";
-import type { RelocateDetail } from "./shared/reading-position";
+import type { RelocateDetail } from "./shared/navigation";
 
 export type { Renderer } from "./renderer";
 
@@ -68,7 +68,7 @@ export type Content = {
   };
 };
 
-export type { ReadingPosition, RelocateDetail } from "./shared/reading-position";
+export type { ReadingPosition, RelocateDetail } from "./shared/navigation";
 
 type ViewNavigation = {
   attach?(renderer: Renderer): void;

@@ -1,9 +1,9 @@
-import type { SpineEntry } from "../shared/spine-buffer";
 import type {
+  SpineEntry,
   SpineTrack,
   SpineTrackLayout,
   SpineTrackView,
-} from "../shared/spine-track";
+} from "../shared/spine-state";
 
 export class ScrolledTrack<View extends SpineTrackView> implements SpineTrack<View> {
   #contentExtent = 0;

@@ -1,6 +1,6 @@
-import type { SpineEntry } from "../shared/spine-buffer";
+import type { SpineEntry } from "../shared/spine-state";
 import type { VisibleLocationView } from "../shared/visible-range";
-import { clampFraction } from "../shared/reading-position";
+import { clampFraction } from "../shared/navigation";
 
 type Options<View extends VisibleLocationView> = {
   continuous: boolean;

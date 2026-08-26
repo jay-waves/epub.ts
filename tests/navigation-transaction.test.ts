@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { NavigationTransaction } from "../app/renderer/shared/navigation-transaction.ts";
+import { NavigationTransaction } from "../app/renderer/shared/navigation.ts";
 
 test("queued navigation executes mixed moves serially", async () => {
   const navigation = new NavigationTransaction();

@@ -72,7 +72,7 @@ export async function createBook(input: File | string): Promise<Book> {
   try {
     startupTrace.start("epub-parsing");
     const { EPUB } = await import("./parser.js");
-    book = await new EPUB(source).init() as Book;
+    book = await new EPUB(source).init();
     if (!book.sections.length) {
       throw new UnsupportedTypeError("EPUB has no readable sections");
     }

@@ -91,7 +91,6 @@ export class SectionFrame {
   #columnStep = 0;
   #contentColumns = 1;
   #contentExtent = 1;
-  #compact = false;
   #layout?: SectionLayout;
   #destroyed = false;
 
@@ -137,16 +136,6 @@ export class SectionFrame {
     return this.#layout?.kind === "columns"
       ? this.#contentColumns * this.#columnStep
       : this.#contentExtent;
-  }
-
-  set compact(value: boolean) {
-    this.setCompact(value);
-  }
-
-  setCompact(value: boolean, notify = true) {
-    if (this.#compact === value) return;
-    this.#compact = value;
-    this.expand(notify);
   }
 
   async load(source: string, afterLoad?: AfterLoad, resolveLayout?: ResolveLayout) {
@@ -299,26 +288,21 @@ export class SectionFrame {
         : this.#rtl ? rootRect.right - contentRect.right : contentRect.left - rootRect.left;
       const contentSize = contentStart + contentRect[side];
       this.#contentColumns = Math.max(1, Math.ceil(contentSize / this.#columnStep));
-      this.#contentExtent = this.#contentColumns * this.#columnStep;
       const pageCount = Math.ceil(this.#contentColumns / this.#columnCount);
       const expandedSize = pageCount * this.#size;
       this.#element.style.padding = "0";
       this.#iframe.style[side] = `${expandedSize}px`;
       this.#iframe.style.flex = `0 0 ${expandedSize}px`;
-      this.#element.style[side] = this.#compact
-        ? `${this.extent}px`
-        : `${expandedSize + this.#size * 2}px`;
-      this.#element.style.justifyContent = this.#compact ? "flex-start" : "center";
-      this.#element.style.alignItems = this.#compact ? "flex-start" : "center";
+      this.#element.style[side] = `${this.extent}px`;
+      this.#element.style.justifyContent = "flex-start";
+      this.#element.style.alignItems = "flex-start";
       this.#iframe.style[otherSide] = "100%";
       this.#element.style[otherSide] = "100%";
       documentElement.style[side] = `${this.#size}px`;
       if (this.#overlay) {
         this.#overlay.element.style.margin = "0";
-        this.#overlay.element.style.left = this.#compact || this.#vertical
-          ? "0" : `${this.#size}px`;
-        this.#overlay.element.style.top = this.#compact || !this.#vertical
-          ? "0" : `${this.#size}px`;
+        this.#overlay.element.style.left = "0";
+        this.#overlay.element.style.top = "0";
         this.#overlay.element.style[side] = `${expandedSize}px`;
         this.#overlay.redraw();
       }
@@ -362,8 +346,8 @@ export class SectionFrame {
       return { left: rect.top + margin, right: rect.bottom + margin };
     }
     const pixelSize = Math.ceil(this.#contentColumns / this.#columnCount) * this.#size;
-    if (this.#rtl) return { left: pixelSize - rect.right, right: pixelSize - rect.left };
     if (this.#vertical) return { left: rect.top, right: rect.bottom };
+    if (this.#rtl) return { left: pixelSize - rect.right, right: pixelSize - rect.left };
     return rect;
   }
 

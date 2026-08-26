@@ -1,25 +1,26 @@
 import type { Book, Content } from "../reader-view.js";
 import type { RendererStyles } from "../renderer";
 import { getDocumentBackground, SectionFrame, type SectionDirection, type SectionLayout } from "./section-frame";
-import { SpineBuffer, type SpineBufferChange, type SpineBufferRequest, type SpineEntry } from "./spine-buffer";
-import type { SpineTrack } from "./spine-track";
-import type { NavigationTransaction } from "./navigation-transaction";
+import {
+  SpineBuffer,
+  type SpineBufferChange,
+  type SpineBufferRequest,
+  type SpineEntry,
+  type SpineTrack,
+} from "./spine-state";
+import type { NavigationTransaction } from "./navigation";
 
 type SpineOptions = {
   activeEntry: () => SpineEntry<SectionFrame> | undefined;
   backgroundElement: HTMLElement;
   beforeRenderDocument: (doc: Document, index: number) => Promise<void> | void;
-  compact: () => boolean;
   continuous: () => boolean;
-  currentView: () => SectionFrame | null;
   host: HTMLElement;
   layout: () => void;
   layoutFor: (direction: SectionDirection) => SectionLayout;
   layoutRevision?: () => number;
   navigation: NavigationTransaction;
   onClear?: () => void;
-  onDestroyCurrent: (view: SectionFrame) => void;
-  onExpand: (view: SectionFrame) => void;
   restoreViewport: (offset: number) => void;
   scheduleRender: () => void;
   trackElement: HTMLElement;
@@ -39,6 +40,7 @@ export class ReflowableSpine {
   readonly #mediaQueryListener = () => this.#updateBackground();
   #book?: Book;
   #cacheFrame?: number;
+  #currentView?: SectionFrame;
   #loading = false;
   #openingEnd = 0;
   #styles?: RendererStyles;
@@ -76,6 +78,7 @@ export class ReflowableSpine {
   get first() { return this.#buffer.first; }
   get last() { return this.#buffer.last; }
   get contentExtent() { return this.track.contentExtent; }
+  get currentView() { return this.#currentView ?? null; }
   get physicalExtent() { return this.track.physicalExtent; }
 
   #find(index: number) { return this.#buffer.find(index); }
@@ -83,7 +86,7 @@ export class ReflowableSpine {
   contains(index: number) {
     return Number.isInteger(index) && index >= 0 && index < (this.#book?.sections.length ?? 0);
   }
-  entryForView(view: SectionFrame | null | undefined) {
+  entryForView(view: SectionFrame | null | undefined = this.#currentView) {
     return this.entries.find(entry => entry.view === view);
   }
   adjacent(from: number, direction: -1 | 1) {
@@ -126,7 +129,7 @@ export class ReflowableSpine {
     return applied;
   }
 
-  async activate(index: number) {
+  async prepare(index: number) {
     let entry = this.#find(index);
     if (!entry) {
       const adjacentToWindow = this.#options.continuous() && this.entries.some(candidate =>
@@ -141,8 +144,13 @@ export class ReflowableSpine {
     return entry;
   }
 
-  removeOtherThan(view: SectionFrame) {
-    return this.#buffer.removeWhere(entry => entry.view !== view);
+  activate(entry: SpineEntry<SectionFrame>) {
+    if (!this.entries.includes(entry)) throw new DOMException("Stale spine entry", "AbortError");
+    this.#currentView = entry.view;
+  }
+
+  removeOtherThanCurrent() {
+    return this.#buffer.removeWhere(entry => entry.view !== this.#currentView);
   }
 
   scheduleCache() {
@@ -229,7 +237,11 @@ export class ReflowableSpine {
     const section = this.#book?.sections[index];
     if (!section) throw new RangeError(`Missing spine section ${index}`);
     let view!: SectionFrame;
-    view = new SectionFrame({ onExpand: () => this.#options.onExpand(view) });
+    view = new SectionFrame({
+      onExpand: () => {
+        if (this.entries.some(entry => entry.view === view)) this.#options.scheduleRender();
+      },
+    });
     this.#options.trackElement.append(view.element);
     try {
       const source = await section.load?.();
@@ -251,7 +263,6 @@ export class ReflowableSpine {
       section.unload?.();
       throw error;
     }
-    view.compact = this.#options.compact();
     return view;
   }
 
@@ -274,9 +285,9 @@ export class ReflowableSpine {
     let doc: Document | undefined;
     try { doc = view.document; } catch { /* The iframe may not have loaded. */ }
     if (doc) this.#options.host.dispatchEvent(new CustomEvent("unload", { detail: { doc } }));
+    if (this.#currentView === view) this.#currentView = undefined;
     view.destroy();
     view.element.remove();
-    this.#options.onDestroyCurrent(view);
   }
 
   #applyStyles(doc: Document, styles?: RendererStyles) {
@@ -292,7 +303,7 @@ export class ReflowableSpine {
   }
 
   #updateBackground() {
-    const view = this.#options.currentView();
+    const view = this.#currentView;
     if (view) this.#options.backgroundElement.style.background = getDocumentBackground(view.document);
   }
 }

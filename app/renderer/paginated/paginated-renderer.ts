@@ -1,31 +1,30 @@
-import type { SpineEntry } from '../shared/spine-buffer'
+import type { SpineEntry } from '../shared/spine-state'
 import { ReflowableSpine } from '../shared/reflowable-spine'
 import {
-    getAnchorTurn,
+    anchorForPosition,
+    animateNumber,
+    createReadingPosition,
+    easeOutQuad,
     getAnchorRect,
-} from '../shared/anchor-location'
-import { NavigationTransaction } from '../shared/navigation-transaction'
+    NavigationTransaction,
+    resolveReadingPosition,
+    setSelectionTarget,
+    uncollapseRange,
+    type NavigationAnchor,
+    type ReadingPosition,
+    type RelocateDetail,
+} from '../shared/navigation'
 import {
     isAtPaginatedBookEdge,
     planPaginatedNavigation,
 } from './paginated-navigation'
 import { paginatedReadingEdge, resolvePaginatedLocation } from './paginated-visible-location'
 import { SectionFrame, type SectionDirection } from '../shared/section-frame'
-import { animateNumber, easeOutQuad } from '../shared/animation'
-import { setSelectionTarget, uncollapseRange } from '../shared/selection'
 import { getPaginatedColumnGeometry } from './paginated-layout'
 import { PaginatedTrack } from './paginated-track'
 import type { Book, Resolved } from '../reader-view.js'
 import type { RendererStyles } from '../renderer'
-import { getLayoutGap, supportsContinuousSpine } from '../shared/flow-geometry'
-import {
-    anchorForPosition,
-    createReadingPosition,
-    resolveReadingPosition,
-type NavigationAnchor,
-    type ReadingPosition,
-    type RelocateDetail,
-} from '../shared/reading-position'
+import { getLayoutGap } from '../shared/flow-geometry'
 
 type PreferredPosition = {
     entry: SpineEntry<SectionFrame>
@@ -89,7 +88,6 @@ export class PaginatedRenderer extends HTMLElement {
     #background!: HTMLElement
     #container!: HTMLElement
     #track!: HTMLElement
-    #view: SectionFrame | null = null
     #spine!: ReflowableSpine
     #navigation = new NavigationTransaction()
     #vertical = false
@@ -195,24 +193,18 @@ export class PaginatedRenderer extends HTMLElement {
             activeEntry: () => this.#entryAtReadingEdge(),
             backgroundElement: this.#background,
             beforeRenderDocument: (doc, index) => this.beforeRenderDocument?.(doc, index),
-            compact: () => this.continuous,
-            continuous: () => this.continuous,
-            currentView: () => this.#view,
+            continuous: () => true,
             host: this,
             layout: () => this.#layoutEntries(),
             layoutFor: direction => this.#beforeRender(direction),
             layoutRevision: () => this.#layoutRevision,
             navigation: this.#navigation,
             onClear: () => this.#pageOrigin = 0,
-            onDestroyCurrent: view => {
-                if (this.#view === view) this.#view = null
-            },
-            onExpand: view => this.#onViewExpand(view),
             restoreViewport: offset => this.#restoreViewport(offset),
             scheduleRender: () => this.#scheduleRender(),
             trackElement: this.#track,
             track: new PaginatedTrack(() => this.size),
-            viewportOffset: () => this.#container[this.scrollProp],
+            viewportOffset: () => this.start,
             viewport: () => {
                 const { start, end } = this.#spine.viewportRange(this.start, this.end)
                 return {
@@ -297,20 +289,21 @@ export class PaginatedRenderer extends HTMLElement {
         this.#bookDir = book.dir
         this.#spine.open(book)
     }
-    #onViewExpand(view: SectionFrame) {
-        if (!this.#spine.entries.some(entry => entry.view === view)) return
-        this.#scheduleRender()
-    }
     #layoutEntries() {
-        if (!this.#spine.entries.length || !this.continuous) return
-        for (const { view } of this.#spine.entries)
-            view.compact = true
+        if (!this.#spine.entries.length) return
         const layout = this.#spine.layout()
         for (const { entry, physicalStart } of layout.placements) {
             const { style } = entry.view.element
             style.position = 'absolute'
-            style.left = this.#vertical ? '0' : `${physicalStart}px`
-            style.top = this.#vertical ? `${physicalStart}px` : '0'
+            if (this.#vertical) {
+                style.left = '0'
+                style.right = 'auto'
+                style.top = `${physicalStart}px`
+            } else {
+                style.left = this.reversed ? 'auto' : `${physicalStart}px`
+                style.right = this.reversed ? `${physicalStart}px` : 'auto'
+                style.top = '0'
+            }
         }
         const side = this.#vertical ? 'height' : 'width'
         const otherSide = this.#vertical ? 'width' : 'height'
@@ -357,7 +350,7 @@ export class PaginatedRenderer extends HTMLElement {
         this.#pageSize = pageSize
         this.#turnSize = columnStep
         this.#edgeTurns = Math.max(1, Math.round(pageSize / this.#turnSize))
-        this.setAttribute('dir', rtl ? 'rtl' : 'ltr')
+        this.setAttribute('dir', this.reversed ? 'rtl' : 'ltr')
 
         return { kind: 'columns' as const,
             height: vertical ? pageSize : height,
@@ -366,7 +359,8 @@ export class PaginatedRenderer extends HTMLElement {
             columnWidth, columnCount: divisor, columnStep }
     }
     render() {
-        if (!this.#view) return
+        const view = this.#spine.currentView
+        if (!view) return
         if (!this.#navigation.beginReflow()) return
         const entry = this.#entryForView()
         const anchor = entry
@@ -376,25 +370,13 @@ export class PaginatedRenderer extends HTMLElement {
             this.#spine.track.reset()
             this.#trackLayoutInvalid = false
         }
-        if (!this.continuous && this.#spine.entries.length > 1)
-            this.#spine.removeOtherThan(this.#view)
         for (const { view } of this.#spine.entries) {
-            view.setCompact(this.continuous, false)
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
             }), false)
         }
-        if (!this.continuous) {
-            const { style } = this.#view.element
-            style.removeProperty('position')
-            style.removeProperty('left')
-            style.removeProperty('top')
-            this.#track.style.width = '100%'
-            this.#track.style.height = '100%'
-        } else {
-            this.#layoutEntries()
-        }
+        this.#layoutEntries()
         // Clear overflow accidentally retained on the inactive axis.
         this.#container[this.#vertical ? 'scrollLeft' : 'scrollTop'] = 0
         void this.#scrollToAnchor(anchor, 'anchor', entry).catch(error => {
@@ -423,8 +405,8 @@ export class PaginatedRenderer extends HTMLElement {
     get element() {
         return this
     }
-    get continuous() {
-        return supportsContinuousSpine(this.#bookDir, this.#rtl, this.#vertical)
+    get reversed() {
+        return !this.#vertical && (this.#rtl || this.#bookDir === 'rtl')
     }
     get scrollProp() {
         return this.#vertical ? 'scrollTop' as const : 'scrollLeft' as const
@@ -445,8 +427,7 @@ export class PaginatedRenderer extends HTMLElement {
         return this.#edgeTurns
     }
     get viewSize() {
-        if (this.continuous) return this.#spine.physicalExtent
-        return this.#view?.element.getBoundingClientRect()[this.sideProp] ?? 0
+        return this.#spine.physicalExtent
     }
     get start() {
         return Math.abs(this.#container[this.scrollProp])
@@ -467,9 +448,8 @@ export class PaginatedRenderer extends HTMLElement {
         const element = this.#container
         const { scrollProp } = this
         const [offset, a, b] = this.#scrollBounds ?? [this.start, this.turnSize, this.turnSize]
-        const rtl = this.#rtl
-        const min = rtl ? offset - b : offset - a
-        const max = rtl ? offset + a : offset + b
+        const min = this.reversed ? offset - b : offset - a
+        const max = this.reversed ? offset + a : offset + b
         element[scrollProp] = Math.max(min, Math.min(max,
             element[scrollProp] + delta))
     }
@@ -480,7 +460,7 @@ export class PaginatedRenderer extends HTMLElement {
                 ?? [this.start, this.turnSize, this.turnSize]
             const min = Math.abs(offset) - backward
             const max = Math.abs(offset) + forward
-            const projected = velocity * (this.#rtl ? -this.turnSize : this.turnSize)
+            const projected = velocity * (this.reversed ? -this.turnSize : this.turnSize)
             const target = Math.max(min, Math.min(max,
                 this.start + (isNaN(projected) ? 0 : projected)))
             const turn = Math.round((target - this.#pageOrigin) / this.turnSize)
@@ -502,14 +482,13 @@ export class PaginatedRenderer extends HTMLElement {
                 console.warn('Failed to snap reader page.', error))
     }
     // allows one to process rects as if they were LTR and horizontal
-    #getRectMapper(view: SectionFrame | null = this.#view) {
+    #getRectMapper(view: SectionFrame | null = this.#spine.currentView) {
         return (rect: DOMRect) => view?.mapRect(rect) ?? rect
     }
-    #entryForView(view: SectionFrame | null = this.#view) {
+    #entryForView(view: SectionFrame | null = this.#spine.currentView) {
         return this.#spine.entryForView(view)
     }
     #entryAtReadingEdge() {
-        if (!this.continuous) return this.#entryForView()
         const firstOffset = this.#entryOffset(this.#spine.first)
         const edge = paginatedReadingEdge(this.start, firstOffset)
         return this.#spine.entries.find(entry =>
@@ -519,16 +498,13 @@ export class PaginatedRenderer extends HTMLElement {
     #entryOffset(entry = this.#entryForView()) {
         return this.#spine.entryOffset(entry)
     }
-    #restoreViewport(offset: number) {
-        this.#container[this.scrollProp] = offset
-        if (this.#scrollBounds) this.#scrollBounds[0] = offset
+    #toPhysicalOffset(logicalOffset: number) {
+        return this.reversed ? -logicalOffset : logicalOffset
     }
-    async #scrollToRect(rect: DOMRect, reason: string | null, entry = this.#entryForView()) {
-        if (!entry) return false
-        const offset = this.#getRectMapper(entry.view)(rect).left
-        return this.#scrollToTurn(this.continuous
-            ? getAnchorTurn(this.#entryOffset(entry), offset, this.turnSize)
-            : Math.floor(offset / this.turnSize) + (this.#rtl ? -this.edgeTurns : this.edgeTurns), reason)
+    #restoreViewport(offset: number) {
+        const physicalOffset = this.#toPhysicalOffset(offset)
+        this.#container[this.scrollProp] = physicalOffset
+        if (this.#scrollBounds) this.#scrollBounds[0] = physicalOffset
     }
     async #scrollTo(offset: number, reason: string | null, smooth = false,
         preferred?: PreferredPosition) {
@@ -545,22 +521,17 @@ export class PaginatedRenderer extends HTMLElement {
             ]
             if (reason === null) return true
             const location = resolvePaginatedLocation({
-                continuous: this.continuous,
                 current: this.#entryForView(),
                 end: this.end,
-                edgeTurns: this.edgeTurns,
                 entryOffset: entry => this.#entryOffset(entry),
                 findAt: value => this.#spine.findAt(value),
-                rtl: this.#rtl,
-                page: this.turn,
-                pages: this.turns,
                 start: this.start,
                 viewportSize: this.size,
             })
             if (!location) return false
 
             const entry = preferred?.entry ?? location.entry
-            const preferredRange = preferred?.range ?? (preferred && this.continuous
+            const preferredRange = preferred?.range ?? (preferred
                 ? preferred.entry.view.visibleRange(
                     Math.max(0, this.start - this.#entryOffset(preferred.entry)),
                     Math.min(preferred.entry.view.extent,
@@ -577,14 +548,14 @@ export class PaginatedRenderer extends HTMLElement {
             const size = preferred
                 ? Math.min(1, this.size / entry.view.extent)
                 : location.size
-            this.#view = entry.view
+            this.#spine.activate(entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
                 this.#targetAnchor = position.range ?? position.fraction
 
             const detail: RelocateDetail = { ...position, reason, size }
             this.dispatchEvent(new CustomEvent('relocate', { detail }))
-            if (this.continuous) this.#spine.scheduleCache()
+            this.#spine.scheduleCache()
             return true
         }
 
@@ -610,8 +581,7 @@ export class PaginatedRenderer extends HTMLElement {
     }
     async #scrollToTurn(turn: number, reason: string | null, smooth = false) {
         const logicalOffset = this.#pageOrigin + this.turnSize * turn
-        const offset = this.#rtl ? -logicalOffset : logicalOffset
-        return this.#scrollTo(offset, reason, smooth)
+        return this.#scrollTo(this.#toPhysicalOffset(logicalOffset), reason, smooth)
     }
     async scrollToAnchor(anchor: number, select = false) {
         await this.#enqueueNavigation(() => this.#scrollToAnchor(
@@ -625,25 +595,17 @@ export class PaginatedRenderer extends HTMLElement {
         // if anchor is an element or a range
         if (rect) {
             const mapped = this.#getRectMapper(entry.view)(rect)
-            if (this.continuous) {
-                return this.#projectTarget(entry, mapped.left, reason, anchor)
-            }
-            return this.#scrollToRect(rect, reason, entry)
+            return this.#projectTarget(entry, mapped.left, reason, anchor)
         }
         if (typeof anchor !== 'number') return false
         // if anchor is a fraction
-        if (this.continuous) {
-            const localOffset = anchor * Math.max(0, entry.view.extent - 1)
-            const landed = await this.#projectTarget(entry, localOffset, reason)
-            if (landed && reason === 'navigation' && anchor === 0) {
-                const heading = entry.view.document.querySelector('h1, h2, h3, h4, h5, h6')
-                if (heading) this.#emphasizeTarget(heading)
-            }
-            return landed
+        const localOffset = anchor * Math.max(0, entry.view.extent - 1)
+        const landed = await this.#projectTarget(entry, localOffset, reason)
+        if (landed && reason === 'navigation' && anchor === 0) {
+            const heading = entry.view.document.querySelector('h1, h2, h3, h4, h5, h6')
+            if (heading) this.#emphasizeTarget(heading)
         }
-        const contentTurns = this.turns - this.edgeTurns * 2
-        const turn = Math.round(anchor * (contentTurns - 1))
-        return this.#scrollToTurn(turn + this.edgeTurns, reason)
+        return landed
     }
     #targetRange(anchor: NavigationAnchor) {
         if (typeof anchor === 'number') return undefined
@@ -682,7 +644,7 @@ export class PaginatedRenderer extends HTMLElement {
         const max = Math.max(0, this.viewSize - this.size)
         const offset = Math.max(0, Math.min(max, column - middle))
         this.#pageOrigin = ((offset % this.turnSize) + this.turnSize) % this.turnSize
-        return this.#scrollTo(offset, reason, false, preferred)
+        return this.#scrollTo(this.#toPhysicalOffset(offset), reason, false, preferred)
     }
     #navigationState() {
         return {
@@ -696,14 +658,15 @@ export class PaginatedRenderer extends HTMLElement {
     async #goTo({ index, anchor, select = false }: Resolved,
         revision = this.#navigationRevision,
         reason: string | null = select ? 'selection' : 'navigation') {
-        const hasFocus = this.#view?.document?.hasFocus()
-        const entry = await this.#spine.activate(index)
+        const hasFocus = this.#spine.currentView?.document?.hasFocus()
+        const entry = await this.#spine.prepare(index)
         if (this.#destroyed || revision !== this.#navigationRevision) return false
-        this.#view = entry.view
+        this.#spine.activate(entry)
         const resolvedAnchor = typeof anchor === 'function'
             ? anchor(entry.view.document) : anchor
         const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
-        if (landed !== false && hasFocus) this.#view?.document?.defaultView?.focus()
+        if (landed !== false && hasFocus)
+            this.#spine.currentView?.document?.defaultView?.focus()
         return landed !== false
     }
     #enqueueNavigation<T>(task: (revision: number) => T | Promise<T>,
@@ -738,9 +701,7 @@ export class PaginatedRenderer extends HTMLElement {
             this.#entryForView()?.index ?? this.#position?.index ?? -1, dir)
     }
     async #crossCacheWindow(dir: -1 | 1, reason: string | null = 'page') {
-        const boundary = this.continuous
-            ? (dir < 0 ? this.#spine.first : this.#spine.last)?.index
-            : this.#entryForView()?.index ?? this.#position?.index
+        const boundary = (dir < 0 ? this.#spine.first : this.#spine.last)?.index
         if (boundary == null) return false
         const index = this.#spine.adjacent(boundary, dir)
         if (index == null) return false
@@ -751,7 +712,7 @@ export class PaginatedRenderer extends HTMLElement {
         }, this.#navigationRevision, reason)
     }
     async #turnPage(dir: -1 | 1, turns = 1) {
-        if (!this.#view) return
+        if (!this.#spine.currentView) return
         return this.#enqueueNavigation(async () => {
             let remaining = Math.max(1, turns)
             while (remaining > 0) {

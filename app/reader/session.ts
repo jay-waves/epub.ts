@@ -8,13 +8,10 @@ export function createBookSession() {
     bookKey: "",
     document: null as PlatformDocument | null,
     dirty: false,
-    href: "",
     tocItem: null as TocItem | null,
     tocIntent: null as TocItem | null,
     progress: 0,
-    sectionIndex: 0,
     restoring: false,
-    tocItems: [] as TocItem[],
   };
 }
 

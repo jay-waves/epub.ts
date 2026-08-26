@@ -6,18 +6,33 @@
 
 const MiB = 1024 * 1024
 
+type CacheEntry = {
+    url: string
+    bytes: number
+    parents: Set<string>
+    pins: number
+    used: number
+}
+
+type ResourceCacheOptions = {
+    maxBytes?: number
+    targetBytes?: number
+}
+
 export class ResourceCache {
-    #entries = new Map()
-    #children = new Map()
+    #entries = new Map<string, CacheEntry>()
+    #children = new Map<string, Set<string>>()
     #totalBytes = 0
     #clock = 0
+    readonly maxBytes: number
+    readonly targetBytes: number
 
-    constructor({ maxBytes = 64 * MiB, targetBytes = 48 * MiB } = {}) {
+    constructor({ maxBytes = 64 * MiB, targetBytes = 48 * MiB }: ResourceCacheOptions = {}) {
         this.maxBytes = maxBytes
         this.targetBytes = targetBytes
     }
 
-    get(href, parent) {
+    get(href: string, parent?: string) {
         const entry = this.#entries.get(href)
         if (!entry) return null
         entry.used = ++this.#clock
@@ -25,14 +40,14 @@ export class ResourceCache {
         return entry.url
     }
 
-    add(href, blob, parent) {
+    add(href: string, blob: Blob, parent?: string) {
         const existing = this.get(href, parent)
         if (existing) return existing
 
         const entry = {
             url: URL.createObjectURL(blob),
             bytes: blob.size,
-            parents: new Set(),
+            parents: new Set<string>(),
             pins: 0,
             used: ++this.#clock,
         }
@@ -42,7 +57,7 @@ export class ResourceCache {
         return entry.url
     }
 
-    link(parent, child) {
+    link(parent: string, child: string) {
         if (!parent || parent === child) return
         const entry = this.#entries.get(child)
         if (!entry || entry.parents.has(parent)) return
@@ -53,7 +68,7 @@ export class ResourceCache {
         else this.#children.set(parent, new Set([child]))
     }
 
-    pin(href) {
+    pin(href: string) {
         const entry = this.#entries.get(href)
         if (!entry) return
         entry.pins++
@@ -61,7 +76,7 @@ export class ResourceCache {
         this.#trim()
     }
 
-    release(href) {
+    release(href: string) {
         const entry = this.#entries.get(href)
         if (!entry) return
         entry.pins = Math.max(0, entry.pins - 1)
@@ -69,7 +84,7 @@ export class ResourceCache {
         this.#trim()
     }
 
-    discardParent(parent) {
+    discardParent(parent: string) {
         const children = this.#children.get(parent)
         if (!children) return
         for (const child of children) this.#entries.get(child)?.parents.delete(parent)
@@ -95,7 +110,7 @@ export class ResourceCache {
     }
 
     #oldestUnreferencedEntry() {
-        let candidate = null
+        let candidate: string | null = null
         let oldest = Infinity
         for (const [href, entry] of this.#entries) {
             if (entry.pins || entry.parents.size || entry.used >= oldest) continue
@@ -105,7 +120,7 @@ export class ResourceCache {
         return candidate
     }
 
-    #delete(href) {
+    #delete(href: string) {
         const entry = this.#entries.get(href)
         if (!entry) return
 

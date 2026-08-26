@@ -1,5 +1,34 @@
 import * as CFI from './cfi.js'
 import { ResourceCache } from './resource-cache.js'
+import type { Book, BookSection, Resolved, TocItem } from '../renderer/reader-view.js'
+
+type LoadText = (path: string) => Promise<string | null> | string | null
+type LoadBlob = (path: string) => Promise<Blob | null> | Blob | null
+type Sha1 = (value: string) => Promise<Uint8Array>
+type EPUBSource = {
+    loadText: LoadText
+    loadBlob: LoadBlob
+    getSize: (path: string) => number
+    sha1?: Sha1
+    destroy?: () => void | Promise<void>
+}
+type ManifestItem = {
+    href: string
+    id: string
+    mediaType: string
+    properties?: string[]
+    mediaOverlay?: string | null
+}
+type SpineItem = {
+    idref: string
+    id?: string | null
+    linear?: string | null
+    properties?: string[]
+}
+type GuideItem = { label: string | null; type: string[]; href: string }
+type NavItem = TocItem & { type?: string[]; subitems?: NavItem[] | null }
+type LooseRecord = Record<string, any>
+type ReplaceCallback = (...args: any[]) => string | Promise<string | null>
 
 const NS = {
     CONTAINER: 'urn:oasis:names:tc:opendocument:xmlns:container',
@@ -55,59 +84,56 @@ const ONIX5 = {
 }
 
 // convert to camel case
-const camel = x => x.toLowerCase().replace(/[-:](.)/g, (_, g) => g.toUpperCase())
+const camel = (value: string) => value.toLowerCase()
+    .replace(/[-:](.)/g, (_, char: string) => char.toUpperCase())
 
 // strip and collapse ASCII whitespace
 // https://infra.spec.whatwg.org/#strip-and-collapse-ascii-whitespace
-const normalizeWhitespace = str => str ? str
+const normalizeWhitespace = (value?: string | null) => value ? value
     .replace(/[\t\n\f\r ]+/g, ' ')
     .replace(/^[\t\n\f\r ]+/, '')
     .replace(/[\t\n\f\r ]+$/, '') : ''
 
-const filterAttribute = (attr, value, isList) => isList
-    ? el => el.getAttribute(attr)?.split(/\s/)?.includes(value)
-    : typeof value === 'function'
-        ? el => value(el.getAttribute(attr))
-        : el => el.getAttribute(attr) === value
+const hasAttributeValue = (name: string, value: string) => (element: Element) =>
+    element.getAttribute(name) === value
 
-const getAttributes = (...xs) => el =>
-    el ? Object.fromEntries(xs.map(x => [camel(x), el.getAttribute(x)])) : null
+const getElementText = (element?: Node | null) => normalizeWhitespace(element?.textContent)
 
-const getElementText = el => normalizeWhitespace(el?.textContent)
-
-const childGetter = (doc, ns) => {
+const childGetter = (doc: Document, namespace: string) => {
     // ignore the namespace if it doesn't appear in document at all
-    const useNS = doc.lookupNamespaceURI(null) === ns || doc.lookupPrefix(ns)
-    const f = useNS
-        ? (el, name) => el => el.namespaceURI === ns && el.localName === name
-        : (el, name) => el => el.localName === name
+    const useNS = doc.lookupNamespaceURI(null) === namespace || !!doc.lookupPrefix(namespace)
+    const matches = (name: string) => useNS
+        ? (element: Element) => element.namespaceURI === namespace && element.localName === name
+        : (element: Element) => element.localName === name
     return {
-        $: (el, name) => [...el.children].find(f(el, name)),
-        $$: (el, name) => [...el.children].filter(f(el, name)),
+        $: (element: Element, name: string) => [...element.children].find(matches(name)),
+        $$: (element: Element, name: string) => [...element.children].filter(matches(name)),
         $$$: useNS
-            ? (el, name) => [...el.getElementsByTagNameNS(ns, name)]
-            : (el, name) => [...el.getElementsByTagName(name)],
+            ? (element: Document | Element, name: string) =>
+                [...element.getElementsByTagNameNS(namespace, name)]
+            : (element: Document | Element, name: string) =>
+                [...element.getElementsByTagName(name)],
     }
 }
 
-const resolveURL = (url, relativeTo) => {
+const resolveURL = (url: string, relativeTo: string) => {
     try {
-        if (relativeTo.includes(':')) return new URL(url, relativeTo)
+        if (relativeTo.includes(':')) return new URL(url, relativeTo).href
         // the base needs to be a valid URL, so set a base URL and then remove it
         const root = 'https://invalid.invalid/'
         const obj = new URL(url, root + relativeTo)
         obj.search = ''
         return decodeURI(obj.href.replace(root, ''))
-    } catch(e) {
-        console.warn(e)
+    } catch(error) {
+        console.warn(error)
         return url
     }
 }
 
-const isExternal = uri => /^(?!blob)\w+:/i.test(uri)
+const isExternal = (uri: string) => /^(?!blob)\w+:/i.test(uri)
 
 // like `path.relative()` in Node.js
-const pathRelative = (from, to) => {
+const pathRelative = (from: string, to: string) => {
     if (!from) return to
     const as = from.replace(/\/$/, '').split('/')
     const bs = to.replace(/\/$/, '').split('/')
@@ -115,17 +141,17 @@ const pathRelative = (from, to) => {
     return i < 0 ? '' : Array(as.length - i).fill('..').concat(bs.slice(i)).join('/')
 }
 
-const pathDirname = str => str.slice(0, str.lastIndexOf('/') + 1)
+const pathDirname = (value: string) => value.slice(0, value.lastIndexOf('/') + 1)
 
-const replaceAsync = async (str, regex, f) => {
-    const matches = []
-    str.replace(regex, (...args) => (matches.push(args), null))
-    const results = await Promise.all(matches.map(args => f(...args)))
+const replaceAsync = async (value: string, regex: RegExp, replace: ReplaceCallback) => {
+    const matches: any[][] = []
+    value.replace(regex, (...args: any[]) => (matches.push(args), ''))
+    const results = await Promise.all(matches.map(args => replace(...args)))
     let index = 0
-    return str.replace(regex, () => results[index++])
+    return value.replace(regex, () => results[index++] ?? '')
 }
 
-const tidy = obj => {
+const tidy = (obj: LooseRecord): any => {
     for (const [key, val] of Object.entries(obj))
         if (val == null) delete obj[key]
         else if (Array.isArray(val)) {
@@ -144,7 +170,7 @@ const tidy = obj => {
 }
 
 // https://www.w3.org/TR/epub/#sec-prefix-attr
-const getPrefixes = doc => {
+const getPrefixes = (doc: Document) => {
     const map = new Map(Object.entries(PREFIX))
     const value = doc.documentElement.getAttributeNS(NS.EPUB, 'prefix')
         || doc.documentElement.getAttribute('prefix')
@@ -155,7 +181,7 @@ const getPrefixes = doc => {
 
 // https://www.w3.org/TR/epub-rs/#sec-property-values
 // but ignoring the case where the prefix is omitted
-const getPropertyURL = (value, prefixes) => {
+const getPropertyURL = (value: string | null, prefixes: Map<string | null, string>) => {
     if (!value) return null
     const [a, b] = value.split(':')
     const prefix = b ? a : null
@@ -164,19 +190,21 @@ const getPropertyURL = (value, prefixes) => {
     return baseURL ? baseURL + reference : null
 }
 
-const getMetadata = opf => {
+const getMetadata = (opf: Document) => {
     const { $ } = childGetter(opf, NS.OPF)
     const $metadata = $(opf.documentElement, 'metadata')
+    if (!$metadata) return { metadata: {}, rendition: {} }
 
     // first pass: convert to JS objects
-    const els = Object.groupBy($metadata.children, el =>
+    const els = Object.groupBy([...$metadata.children], el =>
         el.namespaceURI === NS.DC ? 'dc'
         : el.namespaceURI === NS.OPF && el.localName === 'meta' ?
-            (el.hasAttribute('name') ? 'legacyMeta' : 'meta') : '')
+            (el.hasAttribute('name') ? 'legacyMeta' : 'meta') : '') as
+        Record<string, Element[] | undefined>
     const baseLang = $metadata.getAttribute('xml:lang')
         ?? opf.documentElement.getAttribute('xml:lang') ?? 'und'
     const prefixes = getPrefixes(opf)
-    const parse = el => {
+    const parse = (el: Element): LooseRecord => {
         const property = el.getAttribute('property')
         const scheme = el.getAttribute('scheme')
         return {
@@ -186,27 +214,31 @@ const getMetadata = opf => {
             value: getElementText(el),
             props: getProperties(el),
             // `opf:` attributes from EPUB 2 & EPUB 3.1 (removed in EPUB 3.2)
-            attrs: Object.fromEntries(Array.from(el.attributes)
+            attrs: Object.fromEntries([...el.attributes]
                 .filter(attr => attr.namespaceURI === NS.OPF)
                 .map(attr => [attr.localName, attr.value])),
         }
     }
     const refines = Map.groupBy(els.meta ?? [], el => el.getAttribute('refines'))
-    const getProperties = el => {
+    const getProperties = (el?: Element | null): Record<string, LooseRecord[]> | null => {
         const els = refines.get(el ? '#' + el.getAttribute('id') : null)
         if (!els) return null
-        return Object.groupBy(els.map(parse), x => x.property)
+        return Object.groupBy(els.map(parse), x => String(x.property)) as
+            Record<string, LooseRecord[]>
     }
-    const dc = Object.fromEntries(Object.entries(Object.groupBy(els.dc, el => el.localName))
-        .map(([name, els]) => [name, els.map(parse)]))
+    const dcGroups = Object.groupBy(els.dc ?? [], el => el.localName)
+    const dc: Record<string, LooseRecord[]> = Object.fromEntries(
+        Object.entries(dcGroups).flatMap(([name, elements]) =>
+            elements ? [[name, elements.map(parse)]] : []))
     const properties = getProperties() ?? {}
     const legacyMeta = Object.fromEntries(els.legacyMeta?.map(el =>
         [el.getAttribute('name'), el.getAttribute('content')]) ?? [])
 
     // second pass: map to webpub
-    const one = x => x?.[0]?.value
-    const prop = (x, p) => one(x?.props?.[p])
-    const makeLanguageMap = x => {
+    const one = (items?: LooseRecord[]) => items?.[0]?.value
+    const prop = (item: LooseRecord | undefined, property: string) => one(item?.props?.[property])
+    const makeLanguageMap = (item?: LooseRecord | null): any => {
+        const x = item
         if (!x) return null
         const alts = x.props?.['alternate-script'] ?? []
         const altRep = x.attrs['alt-rep']
@@ -216,20 +248,21 @@ const getMetadata = opf => {
         for (const y of alts) map[y.lang] ??= y.value
         return map
     }
-    const makeContributor = x => x ? ({
+    const makeContributor = (x: LooseRecord): LooseRecord => ({
         name: makeLanguageMap(x),
         sortAs: makeLanguageMap(x.props?.['file-as']?.[0]) ?? x.attrs['file-as'],
-        role: x.props?.role?.filter(x => x.scheme === PREFIX.marc + 'relators')
-            ?.map(x => x.value) ?? [x.attrs.role],
+        role: x.props?.role?.filter((role: LooseRecord) =>
+            role.scheme === PREFIX.marc + 'relators')
+            ?.map((role: LooseRecord) => role.value) ?? [x.attrs.role],
         code: prop(x, 'term') ?? x.attrs.term,
         scheme: prop(x, 'authority') ?? x.attrs.authority,
-    }) : null
-    const makeCollection = x => ({
+    })
+    const makeCollection = (x: LooseRecord) => ({
         name: makeLanguageMap(x),
         // NOTE: webpub requires number but EPUB allows values like "2.2.1"
         position: one(x.props?.['group-position']),
     })
-    const makeAltIdentifier = x => {
+    const makeAltIdentifier = (x: LooseRecord): any => {
         const { value } = x
         if (/^urn:/i.test(value)) return value
         if (/^doi:/i.test(value)) return `urn:${value}`
@@ -244,7 +277,7 @@ const getMetadata = opf => {
             return { scheme, value }
         }
         if (type.scheme === PREFIX.onix + 'codelist5') {
-            const nid = ONIX5[type.value]
+            const nid = ONIX5[type.value as keyof typeof ONIX5]
             if (nid) return `urn:${nid}:${value}`
         }
         return value
@@ -253,7 +286,7 @@ const getMetadata = opf => {
         x => prop(x, 'collection-type') === 'series' ? 'series' : 'collection')
     const mainTitle = dc.title?.find(x => prop(x, 'title-type') === 'main') ?? dc.title?.[0]
     const identifier = getIdentifier(opf)
-    const metadata = {
+    const metadata: LooseRecord = {
         identifier,
         title: makeLanguageMap(mainTitle),
         sortAs: makeLanguageMap(mainTitle?.props?.['file-as']?.[0])
@@ -282,19 +315,23 @@ const getMetadata = opf => {
         rights: one(dc.rights), // NOTE: not in webpub schema
         pageBreakSource: one(properties['pageBreakSource']), // NOTE: not in webpub schema
     }
-    const remapContributor = defaultKey => x => {
-        const keys = new Set(x.role?.map(role => RELATORS[role] ?? defaultKey))
+    const remapContributor = (defaultKey: string) => (x: LooseRecord) => {
+        const keys = new Set<string>(x.role?.map((role: string) =>
+            RELATORS[role as keyof typeof RELATORS] ?? defaultKey))
         return [keys.size ? keys : [defaultKey], x]
     }
-    for (const [keys, val] of [].concat(
+    const contributors: Array<[Iterable<string>, LooseRecord]> = [
         dc.creator?.map(makeContributor)?.map(remapContributor('author')) ?? [],
-        dc.contributor?.map(makeContributor)?.map(remapContributor('contributor')) ?? []))
+        dc.contributor?.map(makeContributor)?.map(remapContributor('contributor')) ?? [],
+    ]
+        .flat() as Array<[Iterable<string>, LooseRecord]>
+    for (const [keys, val] of contributors)
         for (const key of keys)
             if (metadata[key]) metadata[key].push(val)
             else metadata[key] = [val]
     tidy(metadata)
 
-    const rendition = {}
+    const rendition: LooseRecord = {}
     for (const [key, val] of Object.entries(properties)) {
         if (key.startsWith(PREFIX.rendition))
             rendition[camel(key.replace(PREFIX.rendition, ''))] = one(val)
@@ -302,55 +339,61 @@ const getMetadata = opf => {
     return { metadata, rendition }
 }
 
-const parseNav = (doc, resolve = f => f) => {
+const parseNav = (doc: Document, resolve: (href: string) => string = href => href) => {
     const { $, $$, $$$ } = childGetter(doc, NS.XHTML)
-    const resolveHref = href => href ? decodeURI(resolve(href)) : null
-    const parseLI = getType => $li => {
+    const resolveHref = (href?: string | null) => href ? decodeURI(resolve(href)) : undefined
+    const parseLI = (getType = false) => ($li: Element): NavItem => {
         const $a = $($li, 'a') ?? $($li, 'span')
         const $ol = $($li, 'ol')
         const href = resolveHref($a?.getAttribute('href'))
         const label = getElementText($a) || $a?.getAttribute('title')
         // TODO: get and concat alt/title texts in content
-        const result = { label, href, subitems: parseOL($ol) }
+        const result: NavItem = { label: label || undefined, href, subitems: parseOL($ol) }
         if (getType) result.type = $a?.getAttributeNS(NS.EPUB, 'type')?.split(/\s/)
         return result
     }
-    const parseOL = ($ol, getType) => $ol ? $$($ol, 'li').map(parseLI(getType)) : null
-    const parseNav = ($nav, getType) => parseOL($($nav, 'ol'), getType)
+    const parseOL = ($ol?: Element, getType = false): NavItem[] | undefined =>
+        $ol ? $$($ol, 'li').map(parseLI(getType)) : undefined
+    const parseNavElement = ($nav: Element, getType = false) =>
+        parseOL($($nav, 'ol'), getType)
 
     const $$nav = $$$(doc, 'nav')
-    let toc = null, pageList = null, landmarks = null, others = []
+    let toc: NavItem[] | undefined
+    let pageList: NavItem[] | undefined
+    let landmarks: NavItem[] | undefined
+    const others: Array<{ label: string; type: string[]; list?: NavItem[] }> = []
     for (const $nav of $$nav) {
         const type = $nav.getAttributeNS(NS.EPUB, 'type')?.split(/\s/) ?? []
-        if (type.includes('toc')) toc ??= parseNav($nav)
-        else if (type.includes('page-list')) pageList ??= parseNav($nav)
-        else if (type.includes('landmarks')) landmarks ??= parseNav($nav, true)
+        if (type.includes('toc')) toc ??= parseNavElement($nav)
+        else if (type.includes('page-list')) pageList ??= parseNavElement($nav)
+        else if (type.includes('landmarks')) landmarks ??= parseNavElement($nav, true)
         else others.push({
             label: getElementText($nav.firstElementChild), type,
-            list: parseNav($nav),
+            list: parseNavElement($nav),
         })
     }
     return { toc, pageList, landmarks, others }
 }
 
-const parseNCX = (doc, resolve = f => f) => {
+const parseNCX = (doc: Document, resolve: (href: string) => string = href => href) => {
     const { $, $$ } = childGetter(doc, NS.NCX)
-    const resolveHref = href => href ? decodeURI(resolve(href)) : null
-    const parseItem = el => {
+    const resolveHref = (href: string | null) => href ? decodeURI(resolve(href)) : undefined
+    const parseItem = (el: Element): NavItem => {
         const $label = $(el, 'navLabel')
         const $content = $(el, 'content')
         const label = getElementText($label)
-        const href = resolveHref($content.getAttribute('src'))
+        const href = resolveHref($content?.getAttribute('src') ?? null)
         if (el.localName === 'navPoint') {
             const els = $$(el, 'navPoint')
-            return { label, href, subitems: els.length ? els.map(parseItem) : null }
+            return { label: label || undefined, href,
+                subitems: els.length ? els.map(parseItem) : undefined }
         }
-        return { label, href }
+        return { label: label || undefined, href }
     }
-    const parseList = (el, itemName) => $$(el, itemName).map(parseItem)
-    const getSingle = (container, itemName) => {
+    const parseList = (el: Element, itemName: string) => $$(el, itemName).map(parseItem)
+    const getSingle = (container: string, itemName: string) => {
         const $container = $(doc.documentElement, container)
-        return $container ? parseList($container, itemName) : null
+        return $container ? parseList($container, itemName) : undefined
     }
     return {
         toc: getSingle('navMap', 'navPoint'),
@@ -364,7 +407,7 @@ const parseNCX = (doc, resolve = f => f) => {
 
 const isUUID = /([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})/
 
-const getUUID = opf => {
+const getUUID = (opf: Document) => {
     for (const el of opf.getElementsByTagNameNS(NS.DC, 'identifier')) {
         const [id] = getElementText(el).split(':').slice(-1)
         if (isUUID.test(id)) return id
@@ -372,25 +415,30 @@ const getUUID = opf => {
     return ''
 }
 
-const getIdentifier = opf => getElementText(
-    opf.getElementById(opf.documentElement.getAttribute('unique-identifier'))
+const getIdentifier = (opf: Document) => getElementText(
+    opf.getElementById(opf.documentElement.getAttribute('unique-identifier') ?? '')
     ?? opf.getElementsByTagNameNS(NS.DC, 'identifier')[0])
 
 // https://www.w3.org/publishing/epub32/epub-ocf.html#sec-resource-obfuscation
-const deobfuscate = async (key, length, blob) => {
+const deobfuscate = async (key: Uint8Array, length: number, blob: Blob) => {
     const array = new Uint8Array(await blob.slice(0, length).arrayBuffer())
     length = Math.min(length, array.length)
-    for (var i = 0; i < length; i++) array[i] = array[i] ^ key[i % key.length]
+    for (let i = 0; i < length; i++) array[i] ^= key[i % key.length]
     return new Blob([array, blob.slice(length)], { type: blob.type })
 }
 
-const WebCryptoSHA1 = async str => {
-    const data = new TextEncoder().encode(str)
+const WebCryptoSHA1: Sha1 = async value => {
+    const data = new TextEncoder().encode(value)
     const buffer = await globalThis.crypto.subtle.digest('SHA-1', data)
     return new Uint8Array(buffer)
 }
 
-const deobfuscators = (sha1 = WebCryptoSHA1) => ({
+type EncryptionAlgorithm = {
+    key: (opf: Document) => Uint8Array | Promise<Uint8Array>
+    decode: (key: Uint8Array, blob: Blob) => Promise<Blob>
+}
+
+const deobfuscators = (sha1: Sha1 = WebCryptoSHA1): Record<string, EncryptionAlgorithm> => ({
     'http://www.idpf.org/2008/embedding': {
         key: opf => sha1(getIdentifier(opf)
             // eslint-disable-next-line no-control-regex
@@ -408,13 +456,11 @@ const deobfuscators = (sha1 = WebCryptoSHA1) => ({
 })
 
 class Encryption {
-    #uris = new Map()
-    #decoders = new Map()
-    #algorithms
-    constructor(algorithms) {
-        this.#algorithms = algorithms
+    #uris = new Map<string, string>()
+    #decoders = new Map<string, (blob: Blob) => Blob | Promise<Blob>>()
+    constructor(private readonly algorithms: Record<string, EncryptionAlgorithm>) {
     }
-    async init(encryption, opf) {
+    async init(encryption: Document | null, opf: Document) {
         if (!encryption) return
         const data = Array.from(
             encryption.getElementsByTagNameNS(NS.ENC, 'EncryptedData'), el => ({
@@ -424,8 +470,9 @@ class Encryption {
                     ?.getAttribute('URI'),
             }))
         for (const { algorithm, uri } of data) {
+            if (!algorithm || !uri) continue
             if (!this.#decoders.has(algorithm)) {
-                const algo = this.#algorithms[algorithm]
+                const algo = this.algorithms[algorithm]
                 if (!algo) {
                     console.warn('Unknown encryption algorithm')
                     continue
@@ -436,32 +483,59 @@ class Encryption {
             this.#uris.set(uri, algorithm)
         }
     }
-    getDecoder(uri) {
-        return this.#decoders.get(this.#uris.get(uri)) ?? (x => x)
+    getDecoder(uri: string) {
+        const algorithm = this.#uris.get(uri)
+        return algorithm ? this.#decoders.get(algorithm) ?? ((blob: Blob) => blob)
+            : (blob: Blob) => blob
     }
 }
 
 class Resources {
-    constructor({ opf, resolveHref }) {
-        this.opf = opf
+    readonly manifest: ManifestItem[]
+    readonly manifestById: Map<string, ManifestItem>
+    readonly manifestByHref: Map<string, ManifestItem>
+    readonly spine: SpineItem[]
+    readonly pageProgressionDirection: string | null
+    readonly navPath?: string
+    readonly ncxPath?: string
+    readonly guide?: GuideItem[]
+    readonly cover?: ManifestItem
+    readonly cfis: string[]
+
+    constructor(
+        readonly opf: Document,
+        resolveHref: (href: string) => string,
+    ) {
         const { $, $$, $$$ } = childGetter(opf, NS.OPF)
 
         const $manifest = $(opf.documentElement, 'manifest')
         const $spine = $(opf.documentElement, 'spine')
+        if (!$manifest || !$spine) throw new Error('Package document has no manifest or spine')
         const $$itemref = $$($spine, 'itemref')
 
-        this.manifest = $$($manifest, 'item')
-            .map(getAttributes('href', 'id', 'media-type', 'properties', 'media-overlay'))
-            .map(item => {
-                item.href = resolveHref(item.href)
-                item.properties = item.properties?.split(/\s/)
-                return item
-            })
+        this.manifest = $$($manifest, 'item').flatMap(element => {
+            const href = element.getAttribute('href')
+            const id = element.getAttribute('id')
+            const mediaType = element.getAttribute('media-type')
+            if (!href || !id || !mediaType) return []
+            return [{
+                href: resolveHref(href), id, mediaType,
+                properties: element.getAttribute('properties')?.split(/\s/),
+                mediaOverlay: element.getAttribute('media-overlay'),
+            }]
+        })
         this.manifestById = new Map(this.manifest.map(item => [item.id, item]))
         this.manifestByHref = new Map(this.manifest.map(item => [item.href, item]))
-        this.spine = $$itemref
-            .map(getAttributes('idref', 'id', 'linear', 'properties'))
-            .map(item => (item.properties = item.properties?.split(/\s/), item))
+        this.spine = $$itemref.flatMap(element => {
+            const idref = element.getAttribute('idref')
+            if (!idref) return []
+            return [{
+                idref,
+                id: element.getAttribute('id'),
+                linear: element.getAttribute('linear'),
+                properties: element.getAttribute('properties')?.split(/\s/),
+            }]
+        })
         this.pageProgressionDirection = $spine
             .getAttribute('page-progression-direction')
 
@@ -471,67 +545,81 @@ class Resources {
 
         const $guide = $(opf.documentElement, 'guide')
         if ($guide) this.guide = $$($guide, 'reference')
-            .map(getAttributes('type', 'title', 'href'))
-            .map(({ type, title, href }) => ({
-                label: title,
-                type: type.split(/\s/),
-                href: resolveHref(href),
-            }))
+            .flatMap(element => {
+                const type = element.getAttribute('type')
+                const href = element.getAttribute('href')
+                return type && href ? [{
+                    label: element.getAttribute('title'),
+                    type: type.split(/\s/),
+                    href: resolveHref(href),
+                }] : []
+            })
 
         this.cover = this.getItemByProperty('cover-image')
             // EPUB 2 compat
             ?? this.getItemByID($$$(opf, 'meta')
-                .find(filterAttribute('name', 'cover'))
+                .find(hasAttributeValue('name', 'cover'))
                 ?.getAttribute('content'))
             ?? this.getItemByHref(this.guide
                 ?.find(ref => ref.type.includes('cover'))?.href)
 
         this.cfis = CFI.fromElements($$itemref)
     }
-    getItemByID(id) {
-        return this.manifestById.get(id)
+    getItemByID(id?: string | null) {
+        return id ? this.manifestById.get(id) : undefined
     }
-    getItemByHref(href) {
-        return this.manifestByHref.get(href)
+    getItemByHref(href?: string) {
+        return href ? this.manifestByHref.get(href) : undefined
     }
-    getItemByProperty(prop) {
+    getItemByProperty(prop: string) {
         return this.manifest.find(item => item.properties?.includes(prop))
     }
-    resolveCFI(cfi, filter) {
+    resolveCFI(cfi: string, filter?: (node: Node) => number): Resolved {
         const parts = CFI.parse(cfi)
-        const top = (parts.parent ?? parts).shift()
+        const path = Array.isArray(parts) ? parts : parts.parent
+        const top = path[0]
+        if (!top) return { index: -1 }
         let $itemref = CFI.toElement(this.opf, top)
         // make sure it's an idref; if not, try again without the ID assertion
         // mainly because Epub.js used to generate wrong ID assertions
         // https://github.com/futurepress/epub.js/issues/1236
         if ($itemref && $itemref.nodeName !== 'idref') {
-            top.at(-1).id = null
+            const last = top.at(-1)
+            if (last) last.id = null
             $itemref = CFI.toElement(this.opf, top)
         }
         const idref = $itemref?.getAttribute('idref')
         const index = this.spine.findIndex(item => item.idref === idref)
-        const anchor = doc => CFI.toRange(doc, parts, filter)
+        const anchor = (doc: Document) => CFI.toRange(doc, parts, filter)
         return { index, anchor }
     }
 }
 
 class Loader {
     #cache = new ResourceCache()
-    #pending = new Map()
+    #pending = new Map<string, Promise<string | null>>()
     #destroyed = false
-    eventTarget = new EventTarget()
-    constructor({ loadText, loadBlob, resources }) {
-        this.loadText = loadText
-        this.loadBlob = loadBlob
-        this.manifest = resources.manifest
+    readonly eventTarget = new EventTarget()
+    readonly manifestByHref: Map<string, ManifestItem>
+    readonly assets: ManifestItem[]
+    constructor(
+        private readonly loadText: LoadText,
+        private readonly loadBlob: LoadBlob,
+        resources: Resources,
+    ) {
         this.manifestByHref = resources.manifestByHref
         this.assets = resources.manifest
         // needed only when replacing in (X)HTML w/o parsing (see below)
         //.filter(({ mediaType }) => ![MIME.XHTML, MIME.HTML].includes(mediaType))
     }
-    async createURL(href, data, type, parent) {
+    async createURL(
+        href: string,
+        data: BlobPart | Promise<BlobPart>,
+        type: string,
+        parent?: string,
+    ): Promise<string | null> {
         if (!data) return ''
-        const detail = { data, type }
+        const detail: { data: BlobPart | Promise<BlobPart>; type: string } = { data, type }
         Object.defineProperty(detail, 'name', { value: href }) // readonly
         const event = new CustomEvent('data', { detail })
         this.eventTarget.dispatchEvent(event)
@@ -541,7 +629,7 @@ class Loader {
         return this.#cache.add(href, new Blob([newData], { type: newType }), parent)
     }
     // load manifest item, recursively loading all resources as needed
-    async loadItem(item, parents = []) {
+    async loadItem(item?: ManifestItem, parents: string[] = []): Promise<string | null> {
         if (!item) return null
         const { href, mediaType } = item
 
@@ -565,7 +653,7 @@ class Loader {
             pending = shouldReplace
                 ? this.loadReplaced(item, parents)
                 : Promise.resolve().then(() => this.loadBlob(href))
-                    .then(blob => this.createURL(href, blob, mediaType))
+                    .then(blob => blob ? this.createURL(href, blob, mediaType) : null)
             this.#pending.set(href, pending)
         }
 
@@ -580,23 +668,18 @@ class Loader {
             if (this.#pending.get(href) === pending) this.#pending.delete(href)
         }
     }
-    async loadHref(href, base, parents = []) {
+    async loadHref(href: string, base: string, parents: string[] = []): Promise<string> {
         if (isExternal(href)) return href
         const path = resolveURL(href, base)
         if (parents.includes(path)) return 'data:,'
         const item = this.manifestByHref.get(path)
         if (!item) return href
-        return this.loadItem(item, parents.concat(base))
+        return await this.loadItem(item, [...parents, base]) ?? ''
     }
-    async loadReplaced(item, parents = []) {
+    async loadReplaced(item: ManifestItem, parents: string[] = []) {
         const { href, mediaType } = item
         const parent = parents.at(-1)
-        let str = ''
-        try {
-            str = await this.loadText(href)
-        } catch (e) {
-            return this.createURL(href, Promise.reject(e), mediaType, parent)
-        }
+        const str = await this.loadText(href)
         if (!str) return null
 
         // note that one can also just use `replaceString` for everything:
@@ -610,13 +693,15 @@ class Loader {
 
         // parse and replace in HTML
         if ([MIME.XHTML, MIME.HTML, MIME.SVG].includes(mediaType)) {
-            let doc = new DOMParser().parseFromString(str, mediaType)
+            let doc = new DOMParser().parseFromString(str,
+                mediaType as DOMParserSupportedType)
             // change to HTML if it's not valid XHTML
             if (mediaType === MIME.XHTML && (doc.querySelector('parsererror')
             || !doc.documentElement?.namespaceURI)) {
-                console.warn(doc.querySelector('parsererror')?.innerText ?? 'Invalid XHTML')
+                console.warn(doc.querySelector('parsererror')?.textContent ?? 'Invalid XHTML')
                 item.mediaType = MIME.HTML
-                doc = new DOMParser().parseFromString(str, item.mediaType)
+                doc = new DOMParser().parseFromString(str,
+                    item.mediaType as DOMParserSupportedType)
             }
             doc.querySelectorAll('script').forEach(el => el.remove())
             for (const image of doc.querySelectorAll('img'))
@@ -638,8 +723,11 @@ class Loader {
                 }
             }
             // replace hrefs (excluding anchors)
-            const replace = async (el, attr) => el.setAttribute(attr,
-                await this.loadHref(el.getAttribute(attr), href, parents))
+            const replace = async (el: Element, attr: string) => {
+                const value = el.getAttribute(attr)
+                if (value != null) el.setAttribute(attr,
+                    await this.loadHref(value, href, parents))
+            }
             await Promise.all([
                 ...Array.from(doc.querySelectorAll('link[href]'), el => replace(el, 'href')),
                 ...Array.from(doc.querySelectorAll('[src]'), el => replace(el, 'src')),
@@ -647,9 +735,9 @@ class Loader {
                 ...Array.from(doc.querySelectorAll('object[data]'), el => replace(el, 'data')),
                 ...Array.from(doc.querySelectorAll('[*|href]:not([href])'), async el =>
                     el.setAttributeNS(NS.XLINK, 'href', await this.loadHref(
-                        el.getAttributeNS(NS.XLINK, 'href'), href, parents))),
+                        el.getAttributeNS(NS.XLINK, 'href') ?? '', href, parents))),
                 ...Array.from(doc.querySelectorAll('[srcset]'), async el =>
-                    el.setAttribute('srcset', await replaceAsync(el.getAttribute('srcset'),
+                    el.setAttribute('srcset', await replaceAsync(el.getAttribute('srcset') ?? '',
                         /(\s*)(.+?)\s*((?:\s[\d.]+[wx])+\s*(?:,|$)|,\s+|$)/g,
                         (_, p1, p2, p3) => this.loadHref(p2, href, parents)
                             .then(p2 => `${p1}${p2}${p3}`)))),
@@ -659,7 +747,7 @@ class Loader {
                 }),
                 ...Array.from(doc.querySelectorAll('[style]'), async el =>
                     el.setAttribute('style',
-                        await this.replaceCSS(el.getAttribute('style'), href, parents))),
+                        await this.replaceCSS(el.getAttribute('style') ?? '', href, parents))),
             ])
             // TODO: replace inline scripts? probably not worth the trouble
             const result = new XMLSerializer().serializeToString(doc)
@@ -671,7 +759,7 @@ class Loader {
             : await this.replaceString(str, href, parents)
         return this.createURL(href, result, mediaType, parent)
     }
-    async replaceCSS(str, href, parents = []) {
+    async replaceCSS(str: string, href: string, parents: string[] = []) {
         const replacedUrls = await replaceAsync(str,
             /url\(\s*["']?([^'"\n]*?)\s*["']?\s*\)/gi,
             (_, url) => this.loadHref(url, href, parents)
@@ -683,8 +771,8 @@ class Loader {
                 .then(url => `@import "${url}"`))
     }
     // find & replace all possible relative paths for all assets without parsing
-    replaceString(str, href, parents = []) {
-        const assetMap = new Map()
+    replaceString(str: string, href: string, parents: string[] = []) {
+        const assetMap = new Map<string, ManifestItem>()
         const urls = this.assets.map(asset => {
             // do not replace references to the file itself
             if (asset.href === href) return
@@ -696,19 +784,19 @@ class Loader {
             const set = new Set([relative, relativeEnc, rootRelative, rootRelativeEnc])
             for (const url of set) assetMap.set(url, asset)
             return Array.from(set)
-        }).flat().filter(x => x)
+        }).flat().filter((url): url is string => !!url)
         if (!urls.length) return str
         const regex = new RegExp(urls.map(RegExp.escape).join('|'), 'g')
         return replaceAsync(str, regex, async match =>
             this.loadItem(assetMap.get(match.replace(/^\//, '')),
                 parents.concat(href)))
     }
-    async loadSection(item) {
+    async loadSection(item: ManifestItem) {
         const url = await this.loadItem(item)
         if (url) this.#cache.pin(item.href)
         return url
     }
-    unloadSection(item) {
+    unloadSection(item?: ManifestItem) {
         if (item) this.#cache.release(item.href)
     }
     destroy() {
@@ -717,7 +805,7 @@ class Loader {
     }
 }
 
-const getHTMLFragment = (doc, id) => {
+const getHTMLFragment = (doc: Document, id = '') => {
     let decoded = id
     try { decoded = decodeURIComponent(id) } catch {}
     return doc.getElementById(decoded)
@@ -725,7 +813,7 @@ const getHTMLFragment = (doc, id) => {
         ?? doc.querySelector(`[name="${CSS.escape(decoded)}"]`)
 }
 
-const getPageSpread = properties => {
+const getPageSpread = (properties: string[]) => {
     for (const p of properties) {
         if (p === 'page-spread-left' || p === 'rendition:page-spread-left')
             return 'left'
@@ -735,7 +823,7 @@ const getPageSpread = properties => {
     }
 }
 
-const getDisplayOptions = doc => {
+const getDisplayOptions = (doc: Document | null) => {
     if (!doc) return null
     return {
         fixedLayout: getElementText(doc.querySelector('option[name="fixed-layout"]')),
@@ -743,34 +831,50 @@ const getDisplayOptions = doc => {
     }
 }
 
-export class EPUB {
-    parser = new DOMParser()
-    #loader
-    #encryption
-    #destroySource
-    constructor({ loadText, loadBlob, getSize, sha1, destroy }) {
-        this.loadText = loadText
-        this.loadBlob = loadBlob
+export class EPUB implements Book {
+    readonly parser = new DOMParser()
+    readonly loadText: (path: string) => Promise<string | null>
+    readonly loadBlob: (path: string) => Promise<Blob | null>
+    readonly getSize: (path: string) => number
+    sections: BookSection[] = []
+    toc?: TocItem[]
+    pageList?: TocItem[]
+    landmarks?: Array<{ href?: string; type: string[] }>
+    metadata?: LooseRecord
+    rendition: LooseRecord = {}
+    dir?: string
+    transformTarget?: EventTarget
+    resources!: Resources
+    #loader?: Loader
+    readonly #encryption: Encryption
+    readonly #destroySource?: () => void | Promise<void>
+    constructor({ loadText, loadBlob, getSize, sha1, destroy }: EPUBSource) {
+        this.loadText = async path => await loadText(path)
+        this.loadBlob = async path => await loadBlob(path)
         this.getSize = getSize
         this.#destroySource = destroy
         this.#encryption = new Encryption(deobfuscators(sha1))
     }
-    async #loadXML(uri) {
+    async #loadXML(uri: string) {
         const str = await this.loadText(uri)
         if (!str) return null
-        const doc = this.parser.parseFromString(str, MIME.XML)
-        if (doc.querySelector('parsererror'))
+        const doc = this.parser.parseFromString(str, MIME.XML as DOMParserSupportedType)
+        const parseError = doc.querySelector('parsererror')
+        if (parseError)
             throw new Error(`XML parsing error: ${uri}
-${doc.querySelector('parsererror').innerText}`)
+${parseError.textContent}`)
         return doc
     }
     async init() {
         const $container = await this.#loadXML('META-INF/container.xml')
         if (!$container) throw new Error('Failed to load container file')
 
-        const opfs = Array.from(
-            $container.getElementsByTagNameNS(NS.CONTAINER, 'rootfile'),
-            getAttributes('full-path', 'media-type'))
+        const opfs = [...$container.getElementsByTagNameNS(NS.CONTAINER, 'rootfile')]
+            .flatMap(element => {
+                const fullPath = element.getAttribute('full-path')
+                const mediaType = element.getAttribute('media-type')
+                return fullPath && mediaType ? [{ fullPath, mediaType }] : []
+            })
             .filter(file => file.mediaType === 'application/oebps-package+xml')
 
         if (!opfs.length) throw new Error('No package document defined in container')
@@ -781,50 +885,55 @@ ${doc.querySelector('parsererror').innerText}`)
         const $encryption = await this.#loadXML('META-INF/encryption.xml')
         await this.#encryption.init($encryption, opf)
 
-        this.resources = new Resources({
-            opf,
-            resolveHref: url => resolveURL(url, opfPath),
-        })
-        this.#loader = new Loader({
-            loadText: this.loadText,
-            loadBlob: uri => Promise.resolve(this.loadBlob(uri))
-                .then(this.#encryption.getDecoder(uri)),
-            resources: this.resources,
-        })
-        this.transformTarget = this.#loader.eventTarget
-        this.sections = this.resources.spine.map((spineItem, index) => {
+        this.resources = new Resources(opf, url => resolveURL(url, opfPath))
+        const loader = new Loader(
+            this.loadText,
+            async uri => {
+                const blob = await this.loadBlob(uri)
+                return blob ? this.#encryption.getDecoder(uri)(blob) : null
+            },
+            this.resources,
+        )
+        this.#loader = loader
+        this.transformTarget = loader.eventTarget
+        this.sections = this.resources.spine.flatMap((spineItem, index): BookSection[] => {
             const { idref, linear, properties = [] } = spineItem
             const item = this.resources.getItemByID(idref)
             if (!item) {
                 console.warn(`Could not find item with ID "${idref}" in manifest`)
-                return null
+                return []
             }
-            return {
+            return [{
                 id: item.href,
-                load: () => this.#loader.loadSection(item),
-                unload: () => this.#loader.unloadSection(item),
+                load: () => loader.loadSection(item),
+                unload: () => loader.unloadSection(item),
                 createDocument: () => this.loadDocument(item),
                 size: this.getSize(item.href),
                 cfi: this.resources.cfis[index],
-                linear,
+                linear: linear ?? undefined,
                 pageSpread: getPageSpread(properties),
                 resolveHref: href => resolveURL(href, item.href),
-            }
-        }).filter(s => s)
+            }]
+        })
 
         const { navPath, ncxPath } = this.resources
         if (navPath) try {
-            const resolve = url => resolveURL(url, navPath)
-            const nav = parseNav(await this.#loadXML(navPath), resolve)
+            const resolve = (url: string) => resolveURL(url, navPath)
+            const doc = await this.#loadXML(navPath)
+            if (!doc) throw new Error(`Failed to load navigation document: ${navPath}`)
+            const nav = parseNav(doc, resolve)
             this.toc = nav.toc
             this.pageList = nav.pageList
-            this.landmarks = nav.landmarks
+            this.landmarks = nav.landmarks?.flatMap(item =>
+                item.type ? [{ href: item.href, type: item.type }] : [])
         } catch(e) {
             console.warn(e)
         }
         if (!this.toc && ncxPath) try {
-            const resolve = url => resolveURL(url, ncxPath)
-            const ncx = parseNCX(await this.#loadXML(ncxPath), resolve)
+            const resolve = (url: string) => resolveURL(url, ncxPath)
+            const doc = await this.#loadXML(ncxPath)
+            if (!doc) throw new Error(`Failed to load NCX document: ${ncxPath}`)
+            const ncx = parseNCX(doc, resolve)
             this.toc = ncx.toc
             this.pageList = ncx.pageList
         } catch(e) {
@@ -835,7 +944,7 @@ ${doc.querySelector('parsererror').innerText}`)
         const { metadata, rendition } = getMetadata(opf)
         this.metadata = metadata
         this.rendition = rendition
-        this.dir = this.resources.pageProgressionDirection
+        this.dir = this.resources.pageProgressionDirection ?? undefined
         const displayOptions = getDisplayOptions(
             await this.#loadXML('META-INF/com.apple.ibooks.display-options.xml')
             ?? await this.#loadXML('META-INF/com.kobobooks.display-options.xml'))
@@ -843,39 +952,41 @@ ${doc.querySelector('parsererror').innerText}`)
             if (displayOptions.fixedLayout === 'true')
                 this.rendition.layout ??= 'pre-paginated'
             if (displayOptions.openToSpread === 'false') this.sections
-                .find(section => section.linear !== 'no').pageSpread ??=
-                    this.dir === 'rtl' ? 'left' : 'right'
+                .find(section => section.linear !== 'no')!.pageSpread ??=
+                this.dir === 'rtl' ? 'left' : 'right'
         }
         return this
     }
-    async loadDocument(item) {
+    async loadDocument(item: ManifestItem) {
         const str = await this.loadText(item.href)
-        let doc = this.parser.parseFromString(str, item.mediaType)
+        if (str == null) throw new Error(`Failed to load resource: ${item.href}`)
+        let doc = this.parser.parseFromString(str, item.mediaType as DOMParserSupportedType)
         if (item.mediaType === MIME.XHTML && (doc.querySelector('parsererror')
         || !doc.documentElement?.namespaceURI)) {
             item.mediaType = MIME.HTML
-            doc = this.parser.parseFromString(str, item.mediaType)
+            doc = this.parser.parseFromString(str, item.mediaType as DOMParserSupportedType)
         }
         return doc
     }
-    resolveCFI(cfi, filter) {
+    resolveCFI(cfi: string, filter?: (node: Node) => number) {
         return this.resources.resolveCFI(cfi, filter)
     }
-    resolveHref(href) {
+    resolveHref(href: string): Resolved | null {
         const [path, hash] = href.split('#')
         const item = this.resources.getItemByHref(decodeURI(path))
         if (!item) return null
         const index = this.resources.spine.findIndex(({ idref }) => idref === item.id)
-        const anchor = hash ? doc => getHTMLFragment(doc, hash) : () => 0
+        const anchor = hash ? (doc: Document) => getHTMLFragment(doc, hash) : () => 0
         return { index, anchor }
     }
-    splitTOCHref(href) {
-        return href?.split('#') ?? []
+    splitTOCHref(href?: string): [string, string?] {
+        const [path = '', hash] = href?.split('#') ?? []
+        return [path, hash]
     }
-    getTOCFragment(doc, id) {
+    getTOCFragment(doc: Document, id?: string) {
         return getHTMLFragment(doc, id)
     }
-    isExternal(uri) {
+    isExternal(uri: string) {
         return isExternal(uri)
     }
     async destroy() {

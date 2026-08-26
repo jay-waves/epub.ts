@@ -1,10 +1,10 @@
-import type { SpineEntry } from "../shared/spine-buffer";
 import type {
   AppliedSpineChange,
+  SpineEntry,
   SpineTrack,
   SpineTrackLayout,
   SpineTrackView,
-} from "../shared/spine-track";
+} from "../shared/spine-state";
 
 export class PaginatedTrack<View extends SpineTrackView> implements SpineTrack<View> {
   #leadingRemainder = 0;

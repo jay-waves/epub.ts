@@ -6,7 +6,7 @@ import {
   clampFraction,
   createReadingPosition,
   resolveReadingPosition,
-} from "../app/renderer/shared/reading-position.ts";
+} from "../app/renderer/shared/navigation.ts";
 
 test("normalizes every reading position to a section fraction", () => {
   assert.equal(clampFraction(-0.5), 0);

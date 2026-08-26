@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { animateNumber } from "../app/renderer/shared/animation.ts";
+import { animateNumber } from "../app/renderer/shared/navigation.ts";
 import { ScrollCoordinator } from "../app/renderer/scrolled/scroll-coordinator.ts";
 
 type FrameCallback = (time: number) => void;

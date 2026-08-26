@@ -1,28 +1,28 @@
 import { ReflowableSpine } from '../shared/reflowable-spine'
 import {
+    anchorForPosition,
+    animateNumber,
+    createReadingPosition,
+    easeOutQuad,
     getAnchorRect,
     getFractionTarget,
     getRectTarget,
-} from '../shared/anchor-location'
-import { NavigationTransaction } from '../shared/navigation-transaction'
+    NavigationTransaction,
+    setSelectionTarget,
+    uncollapseRange,
+    type NavigationAnchor,
+    type ReadingPosition,
+    type RelocateDetail,
+} from '../shared/navigation'
 import { isAtScrolledBookEdge, planScrolledNavigation } from './scrolled-navigation'
 import { resolveScrolledLocation, scrolledReadingEdge } from './scrolled-visible-location'
 import { ScrollCoordinator } from './scroll-coordinator'
 import { ScrolledTrack } from './scrolled-track'
 import { SectionFrame, type SectionDirection } from '../shared/section-frame'
-import { animateNumber, easeOutQuad } from '../shared/animation'
-import { setSelectionTarget, uncollapseRange } from '../shared/selection'
 import type { Book, Resolved } from '../reader-view.js'
 import type { RendererStyles } from '../renderer'
 import { getLayoutGap, supportsContinuousSpine } from '../shared/flow-geometry'
 import type { ScrolledSectionLayout } from '../shared/section-frame'
-import {
-    anchorForPosition,
-    createReadingPosition,
-    type NavigationAnchor,
-    type ReadingPosition,
-    type RelocateDetail,
-} from '../shared/reading-position'
 
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
 export class ScrolledRenderer extends HTMLElement {
@@ -41,7 +41,6 @@ export class ScrolledRenderer extends HTMLElement {
     #background!: HTMLElement
     #container!: HTMLElement
     #track!: HTMLElement
-    #view: SectionFrame | null = null
     #spine!: ReflowableSpine
     #navigation = new NavigationTransaction()
     #vertical = false
@@ -115,17 +114,11 @@ export class ScrolledRenderer extends HTMLElement {
             activeEntry: () => this.#entryAtReadingEdge(),
             backgroundElement: this.#background,
             beforeRenderDocument: (doc, index) => this.beforeRenderDocument?.(doc, index),
-            compact: () => false,
             continuous: () => this.continuous,
-            currentView: () => this.#view,
             host: this,
             layout: () => this.#layoutEntries(),
             layoutFor: direction => this.#beforeRender(direction),
             navigation: this.#navigation,
-            onDestroyCurrent: view => {
-                if (this.#view === view) this.#view = null
-            },
-            onExpand: view => this.#onViewExpand(view),
             restoreViewport: offset => this.#restoreViewport(offset),
             scheduleRender: () => this.#scheduleRender(),
             trackElement: this.#track,
@@ -177,14 +170,8 @@ export class ScrolledRenderer extends HTMLElement {
         this.#bookDir = book.dir
         this.#spine.open(book)
     }
-    #onViewExpand(view: SectionFrame) {
-        if (!this.#spine.entries.some(entry => entry.view === view)) return
-        this.#scheduleRender()
-    }
     #layoutEntries() {
         if (!this.#spine.entries.length || !this.continuous) return
-        for (const { view } of this.#spine.entries)
-            view.compact = false
         const layout = this.#spine.layout()
         for (const { entry, physicalStart } of layout.placements) {
             const { style } = entry.view.element
@@ -224,7 +211,8 @@ export class ScrolledRenderer extends HTMLElement {
             gap: baseGap, columnWidth: maxInlineSize }
     }
     render() {
-        if (!this.#view) return
+        const view = this.#spine.currentView
+        if (!view) return
         // A viewport resize may race the final idle scroll sample in exactly
         // the same way as section content expansion.
         this.#scrolledViewport.flush()
@@ -234,16 +222,15 @@ export class ScrolledRenderer extends HTMLElement {
             ? anchorForPosition(this.#position, entry.index, entry.view.document)
             : 0
         if (!this.continuous && this.#spine.entries.length > 1)
-            this.#spine.removeOtherThan(this.#view)
+            this.#spine.removeOtherThanCurrent()
         for (const { view } of this.#spine.entries) {
-            view.setCompact(false, false)
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
             }), false)
         }
         if (!this.continuous) {
-            const { style } = this.#view.element
+            const { style } = view.element
             style.removeProperty('position')
             style.removeProperty('left')
             style.removeProperty('top')
@@ -289,7 +276,7 @@ export class ScrolledRenderer extends HTMLElement {
         // near the cache tail remain reachable. It is not logical book content
         // and must not affect page-turn boundaries or progress calculations.
         if (this.continuous) return this.#spine.contentExtent
-        return this.#view?.element.getBoundingClientRect()[this.sideProp] ?? 0
+        return this.#spine.currentView?.element.getBoundingClientRect()[this.sideProp] ?? 0
     }
     get start() {
         return Math.abs(this.#container[this.scrollProp])
@@ -310,10 +297,10 @@ export class ScrolledRenderer extends HTMLElement {
         element[scrollProp] += delta
     }
     // allows one to process rects as if they were LTR and horizontal
-    #getRectMapper(view: SectionFrame | null = this.#view) {
+    #getRectMapper(view: SectionFrame | null = this.#spine.currentView) {
         return (rect: DOMRect) => view?.mapRect(rect) ?? rect
     }
-    #entryForView(view: SectionFrame | null = this.#view) {
+    #entryForView(view: SectionFrame | null = this.#spine.currentView) {
         return this.#spine.entryForView(view)
     }
     #entryAtReadingEdge() {
@@ -374,7 +361,7 @@ export class ScrolledRenderer extends HTMLElement {
                 this.#scrolledViewport.cancel(true)
                 this.#justAnchored = true
             }
-            this.#view = entry.view
+            this.#spine.activate(entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
                 this.#targetAnchor = position.range ?? position.fraction
@@ -458,14 +445,15 @@ export class ScrolledRenderer extends HTMLElement {
     async #goTo({ index, anchor, select = false }: Resolved,
         revision = this.#navigationRevision,
         reason = select ? 'selection' : 'navigation') {
-        const hasFocus = this.#view?.document?.hasFocus()
-        const entry = await this.#spine.activate(index)
+        const hasFocus = this.#spine.currentView?.document?.hasFocus()
+        const entry = await this.#spine.prepare(index)
         if (this.#destroyed || revision !== this.#navigationRevision) return false
-        this.#view = entry.view
+        this.#spine.activate(entry)
         const resolvedAnchor = typeof anchor === 'function'
             ? anchor(entry.view.document) : anchor
         const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
-        if (landed !== false && hasFocus) this.#view?.document?.defaultView?.focus()
+        if (landed !== false && hasFocus)
+            this.#spine.currentView?.document?.defaultView?.focus()
         return landed !== false
     }
     #enqueueNavigation<T>(task: (revision: number) => T | Promise<T>,
@@ -514,7 +502,7 @@ export class ScrolledRenderer extends HTMLElement {
         }, this.#navigationRevision, reason)
     }
     async #turnPage(dir: -1 | 1, distance?: number) {
-        if (!this.#view) return
+        if (!this.#spine.currentView) return
         return this.#enqueueNavigation(async () => {
             const action = planScrolledNavigation(this.#navigationState(), dir, distance)
             if (action.kind === 'scroll') {

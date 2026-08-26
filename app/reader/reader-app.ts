@@ -188,9 +188,9 @@ function ensureViewerInput() {
 
 function emitTocUpdate() {
   emitViewerEvent(VIEWER_EVENTS.tocUpdate, {
-    currentHref: session.href,
+    currentHref: session.tocItem?.href ?? "",
     currentItem: session.tocItem,
-    items: session.tocItems,
+    items: getView()?.book?.toc ?? [],
   });
 }
 
@@ -239,15 +239,10 @@ function wireReaderEvents(reader: Reader) {
   const listenerOptions = { signal };
 
   view.addEventListener("load", () => {
-    if (!signal.aborted) {
-      void renderState.revealAfterPaint();
-    }
+    void renderState.revealAfterPaint();
   }, listenerOptions);
   view.addEventListener("relocate", (event) => {
-    const detail = reader.navigation?.location(event.detail);
-    if (!detail) return;
-    const sectionIndex = detail.index;
-    session.sectionIndex = sectionIndex;
+    const detail = reader.navigation.location(event.detail);
 
     let currentItem: typeof session.tocItem;
     if (detail.reason === "navigation" && session.tocIntent) {
@@ -261,16 +256,14 @@ function wireReaderEvents(reader: Reader) {
       session.tocIntent = null;
       currentItem = detail.tocItem ?? null;
     }
-    const currentHref = currentItem?.href ?? "";
-    if (currentItem !== session.tocItem || currentHref !== session.href) {
+    if (currentItem !== session.tocItem) {
       session.tocItem = currentItem;
-      session.href = currentHref;
       emitTocUpdate();
     }
     session.progress = detail.fraction;
     emitViewerEvent(VIEWER_EVENTS.progressUpdate, {
       fraction: session.progress,
-      index: sectionIndex,
+      index: detail.index,
     });
     queuePositionSave(detail);
   }, listenerOptions);
@@ -533,7 +526,6 @@ async function replaceBook(platformDocument: PlatformDocument) {
     await applyReaderSettings(savedPosition?.settings);
 
     emitBookInfoUpdate();
-    session.tocItems = view.book?.toc ?? [];
     emitTocUpdate();
     await restoreAnnotations(reader, bookKey);
     reader.signal.throwIfAborted();
