@@ -153,9 +153,11 @@ export class ReaderView extends HTMLElement {
         this.#contents.delete(detail.doc)
         this.#emit('unload', detail)
     }
-    async addAnnotation(annotation, remove) {
+    async addAnnotation(annotation, remove, target) {
         const { value } = annotation
-        const resolved = this.navigation.resolve(value)
+        const resolved = target
+            ? { index: target.index, anchor: () => target.range }
+            : this.navigation.resolve(value)
         if (!resolved) return
         const { index, anchor } = resolved
         const obj = this.#getOverlay(index)

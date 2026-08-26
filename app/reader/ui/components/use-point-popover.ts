@@ -32,7 +32,7 @@ export function usePointPopover({
     };
     popover.addEventListener("toggle", handleToggle);
     return () => popover.removeEventListener("toggle", handleToggle);
-  });
+  }, [open]);
 
   useLayoutEffect(() => {
     const popover = popoverRef.current;
@@ -43,15 +43,29 @@ export function usePointPopover({
     }
 
     if (!popover.matches(":popover-open")) popover.showPopover();
-    const { height, width } = popover.getBoundingClientRect();
-    const maxLeft = Math.max(VIEWPORT_GUTTER, window.innerWidth - width - VIEWPORT_GUTTER);
-    const below = y + gap;
-    const top = below + height <= window.innerHeight - VIEWPORT_GUTTER
-      ? below
-      : Math.max(VIEWPORT_GUTTER, y - gap - height);
-    popover.style.left = `${Math.min(Math.max(VIEWPORT_GUTTER, x), maxLeft)}px`;
-    popover.style.top = `${top}px`;
-  });
+
+    const position = () => {
+      const { height, width } = popover.getBoundingClientRect();
+      const maxLeft = Math.max(VIEWPORT_GUTTER, window.innerWidth - width - VIEWPORT_GUTTER);
+      const below = y + gap;
+      const top = below + height <= window.innerHeight - VIEWPORT_GUTTER
+        ? below
+        : Math.max(VIEWPORT_GUTTER, y - gap - height);
+      const leftValue = `${Math.min(Math.max(VIEWPORT_GUTTER, x), maxLeft)}px`;
+      const topValue = `${top}px`;
+      if (popover.style.left !== leftValue) popover.style.left = leftValue;
+      if (popover.style.top !== topValue) popover.style.top = topValue;
+    };
+
+    position();
+    const resizeObserver = new ResizeObserver(position);
+    resizeObserver.observe(popover);
+    window.addEventListener("resize", position);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", position);
+    };
+  }, [gap, open, x, y]);
 
   return {
     popoverStyle: { left: x, top: y } satisfies CSSProperties,

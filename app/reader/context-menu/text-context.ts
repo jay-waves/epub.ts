@@ -6,12 +6,14 @@ import { createTranslation } from "./translation";
 type TextContextRequest = {
   canDelete: boolean;
   canHighlight: boolean;
+  context?: unknown;
   point: { x: number; y: number };
   text: string;
 };
 
 export type TextContextActionDetail = {
   action: ContentContextAction;
+  context?: unknown;
   point: TextContextRequest["point"];
   text: string;
 };
@@ -70,7 +72,7 @@ export function createTextContext(options: TextContextOptions) {
         break;
     }
     events.dispatchEvent(new CustomEvent<TextContextActionDetail>("action", {
-      detail: { action, point: request.point, text: request.text },
+      detail: { action, context: request.context, point: request.point, text: request.text },
     }));
   };
 

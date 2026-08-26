@@ -36,12 +36,7 @@ const THEME_HIGHLIGHT_COLOR = "var(--reader-annotation-color, #f4c430)";
 
 export function createAnnotations(options: AnnotationOptions) {
   const viewerEvents = new AbortController();
-  let activeContext: AnnotationContext | null = null;
   const pendingWrites = new Set<Promise<unknown>>();
-  const textContext = createTextContext({
-    getTranslationTargetLanguage: options.getTranslationTargetLanguage,
-    openExternal: options.openExternal,
-  });
   const run = (task: Promise<unknown>, message: string) => {
     void task.catch((error) => console.warn(message, error));
   };
@@ -51,16 +46,10 @@ export function createAnnotations(options: AnnotationOptions) {
     return task;
   };
 
-  listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
-    run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
-  }, { signal: viewerEvents.signal });
-  listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
-    run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
-  }, { signal: viewerEvents.signal });
-  textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail>) => {
-    const context = activeContext;
+  const handleTextContextAction = (detail: TextContextActionDetail) => {
+    const context = detail.context as AnnotationContext | undefined;
     if (!context) return;
-    const { action, point } = event.detail;
+    const { action, point } = detail;
     if (action === "copy" || action === "lookup" || action === "translate") {
       options.getNavigation()?.clearSelection();
     } else if (action === "highlight" && context.selection) {
@@ -70,11 +59,22 @@ export function createAnnotations(options: AnnotationOptions) {
     } else if (action === "delete" && context.highlight) {
       run(track(deleteHighlight(context.highlight)), "Failed to delete highlight.");
     }
-  }) as EventListener, { signal: viewerEvents.signal });
-  textContext.events.addEventListener("close", () => { activeContext = null; }, {
-    signal: viewerEvents.signal,
-  });
+  };
 
+  const textContext = createTextContext({
+    getTranslationTargetLanguage: options.getTranslationTargetLanguage,
+    openExternal: options.openExternal,
+  });
+  textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail>) => {
+    handleTextContextAction(event.detail);
+  }) as EventListener, { signal: viewerEvents.signal });
+
+  listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
+    run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
+  }, { signal: viewerEvents.signal });
+  listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
+    run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
+  }, { signal: viewerEvents.signal });
   const getContents = () => options.getView()?.renderer?.getContents?.() ?? [];
 
   const findContentByIndex = (index: number) => getContents().find((item) => item.index === index);
@@ -147,10 +147,10 @@ export function createAnnotations(options: AnnotationOptions) {
       return;
     }
     const context = { highlight, selection };
-    activeContext = context;
     textContext.open({
       canDelete: hasHighlight,
       canHighlight: hasSelection,
+      context,
       point: { x: pageX, y: pageY },
       text: highlight ? getAnnotationText(highlight) : selection!.text,
     });
@@ -280,14 +280,17 @@ export function createAnnotations(options: AnnotationOptions) {
     emitViewerEvent(VIEWER_EVENTS.unsavedChange);
   };
 
-  const persistHighlight = async (highlight: ReaderAnnotation) => {
+  const persistHighlight = async (highlight: ReaderAnnotation, selection?: TextSelection) => {
     const view = options.getView();
     const bookKey = options.getBookKey();
     if (!view || !bookKey) return false;
 
     const annotation = { ...highlight, updatedAt: Date.now() };
     markUnsaved();
-    await view.addAnnotation?.(annotation);
+    await view.addAnnotation?.(annotation, false, selection && {
+      index: selection.index,
+      range: selection.range,
+    });
     await annotationRepository.put(bookKey, annotation);
     return true;
   };
@@ -359,7 +362,7 @@ export function createAnnotations(options: AnnotationOptions) {
       updatedAt: createdAt,
     };
 
-    await persistHighlight(annotation);
+    await persistHighlight(annotation, selection);
     options.getNavigation()?.clearSelection();
     textContext.close();
     return annotation;
@@ -402,7 +405,7 @@ export function createAnnotations(options: AnnotationOptions) {
           updatedAt: createdAt,
         };
 
-    if (!existing) await persistHighlight(annotation);
+    if (!existing) await persistHighlight(annotation, context.selection);
     options.getNavigation()?.clearSelection();
     openAnnotationPopover(annotation, point);
     textContext.close();

@@ -133,7 +133,11 @@ export interface ReaderView<Item extends Annotation = Annotation> extends HTMLEl
   removeDecoration: (index: number, key: string) => void;
   destroy: () => void;
   open: (book: Book, navigation: ViewNavigation) => Promise<void>;
-  addAnnotation?: (annotation: Item, remove?: boolean) => Promise<{ index: number; label: string } | undefined>;
+  addAnnotation?: (
+    annotation: Item,
+    remove?: boolean,
+    target?: { index: number; range: Range },
+  ) => Promise<{ index: number; label: string } | undefined>;
   deleteAnnotation?: (annotation: Item) => Promise<{ index: number; label: string } | undefined>;
   showAnnotation?: (annotation: Item) => Promise<void>;
 }
