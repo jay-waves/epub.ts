@@ -89,7 +89,8 @@ console.log(`[epub.ts] v${__EPUB_TS_VERSION__} · built ${__EPUB_TS_BUILD_TIME__
 if (advancedSettings.logStatus()) {
   console.log(
     "[epub.ts] Configure with epub.settings.setSerifFont(...), setSansFont(...), setMonoFont(...), "
-      + "epub.settings.setTextAlignment('auto' | 'start' | 'justify'), or epub.settings.reset().",
+      + "epub.settings.setTextAlignment('auto' | 'start' | 'justify'), "
+      + "setTranslationTargetLanguage(...), or epub.settings.reset().",
   );
 }
 
@@ -165,8 +166,8 @@ const annotationState = createAnnotations({
   getNavigation,
   getProgress: () => session.progress,
   getView,
+  getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
   openExternal: platform.openExternal,
-  translationModelPolicy: platform.translationModelPolicy,
 });
 
 function ensureViewerInput() {

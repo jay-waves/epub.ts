@@ -18,9 +18,12 @@ async function copyReaderMedia(element: Element) {
 
 export function openMediaContext(element: Element, x: number, y: number) {
   contextMenuStore.getState().openMenu({
+    canAnnotate: false,
     canCopy: true,
     canDelete: false,
     canHighlight: false,
+    canLookUp: false,
+    canTranslate: false,
     kind: "media",
     x,
     y,

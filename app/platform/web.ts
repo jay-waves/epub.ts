@@ -10,7 +10,6 @@ function getWebAssetUrl(filename: string) {
 
 export const platform: ViewerPlatform = {
   readerProfile: createWebReaderProfile(getWebAssetUrl),
-  translationModelPolicy: "external-fallback",
   loadInitialDocument: () => undefined,
   ...browserLocalDocumentCapabilities,
   openExternal,

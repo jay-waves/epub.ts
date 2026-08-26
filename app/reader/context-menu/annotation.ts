@@ -14,8 +14,8 @@ type AnnotationOptions = {
   getNavigation: () => Navigation | null;
   getProgress: () => number;
   getView: () => ReaderView | null;
+  getTranslationTargetLanguage: () => string;
   openExternal: (url: string) => void;
-  translationModelPolicy: "allow-download" | "external-fallback";
 };
 
 type TextSelection = {
@@ -39,8 +39,8 @@ export function createAnnotations(options: AnnotationOptions) {
   let activeContext: AnnotationContext | null = null;
   const pendingWrites = new Set<Promise<unknown>>();
   const textContext = createTextContext({
+    getTranslationTargetLanguage: options.getTranslationTargetLanguage,
     openExternal: options.openExternal,
-    translationModelPolicy: options.translationModelPolicy,
   });
   const run = (task: Promise<unknown>, message: string) => {
     void task.catch((error) => console.warn(message, error));
@@ -61,7 +61,7 @@ export function createAnnotations(options: AnnotationOptions) {
     const context = activeContext;
     if (!context) return;
     const { action, point } = event.detail;
-    if (action === "copy" || action === "translate") {
+    if (action === "copy" || action === "lookup" || action === "translate") {
       options.getNavigation()?.clearSelection();
     } else if (action === "highlight" && context.selection) {
       run(track(highlightSelectedText(context.selection)), "Failed to save highlight.");

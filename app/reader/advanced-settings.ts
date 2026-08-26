@@ -4,16 +4,19 @@ import type { TypographyFonts, TypographyTextAlignment } from "../typography/mod
 export type AdvancedReaderSettings = {
   fonts: TypographyFonts;
   textAlignment: TypographyTextAlignment;
+  translationTargetLanguage: string;
 };
 
 type EpubSettingsApi = {
   readonly fonts: TypographyFonts;
   readonly textAlignment: TypographyTextAlignment;
+  readonly translationTargetLanguage: string;
   reset(): Promise<void>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
   setSerifFont(fontFamily: string): Promise<void>;
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
+  setTranslationTargetLanguage(language: string): Promise<void>;
 };
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
@@ -23,10 +26,10 @@ export function createAdvancedSettingsController(
 ) {
   let value = loadSettings();
 
-  const commit = async (nextValue: AdvancedReaderSettings) => {
+  const commit = async (nextValue: AdvancedReaderSettings, apply = true) => {
     value = nextValue;
     persistSettings(value);
-    await onChange(value);
+    if (apply) await onChange(value);
   };
   const setFont = async (role: keyof TypographyFonts, fontFamily: string) => {
     const nextFont = normalizeFontFamily(fontFamily, DEFAULT_TYPOGRAPHY_FONTS[role]);
@@ -43,6 +46,9 @@ export function createAdvancedSettingsController(
     get textAlignment() {
       return value.textAlignment;
     },
+    get translationTargetLanguage() {
+      return value.translationTargetLanguage;
+    },
     setSerifFont: (fontFamily) => setFont("serif", fontFamily),
     setSansFont: (fontFamily) => setFont("sans", fontFamily),
     setMonoFont: (fontFamily) => setFont("mono", fontFamily),
@@ -53,6 +59,14 @@ export function createAdvancedSettingsController(
       if (textAlignment === value.textAlignment) return;
       await commit({ ...value, textAlignment });
       console.log(`[epub.ts] Text alignment changed to "${textAlignment}". Default: "auto".`);
+    },
+    async setTranslationTargetLanguage(language) {
+      const translationTargetLanguage = normalizeLanguageTag(language);
+      if (translationTargetLanguage === value.translationTargetLanguage) return;
+      await commit({ ...value, translationTargetLanguage }, false);
+      console.log(
+        `[epub.ts] Translation target language changed to "${translationTargetLanguage}". Browser default: "${getBrowserLanguage()}".`,
+      );
     },
     async reset() {
       if (!Object.keys(getSettingsOverrides(value)).length) return;
@@ -99,11 +113,21 @@ function getSettingsOverrides(settings: AdvancedReaderSettings) {
   if (settings.textAlignment !== "auto") {
     overrides.textAlignment = { current: settings.textAlignment, default: "auto" };
   }
+  if (settings.translationTargetLanguage !== getBrowserLanguage()) {
+    overrides.translationTargetLanguage = {
+      current: settings.translationTargetLanguage,
+      default: getBrowserLanguage(),
+    };
+  }
   return overrides;
 }
 
 function getDefaults(): AdvancedReaderSettings {
-  return { fonts: { ...DEFAULT_TYPOGRAPHY_FONTS }, textAlignment: "auto" };
+  return {
+    fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },
+    textAlignment: "auto",
+    translationTargetLanguage: getBrowserLanguage(),
+  };
 }
 
 function loadSettings(): AdvancedReaderSettings {
@@ -112,6 +136,7 @@ function loadSettings(): AdvancedReaderSettings {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as {
       fonts?: Partial<TypographyFonts>;
       textAlignment?: unknown;
+      translationTargetLanguage?: unknown;
     } | null;
     if (!saved) return defaults;
     return {
@@ -121,6 +146,10 @@ function loadSettings(): AdvancedReaderSettings {
         mono: normalizeFontFamily(saved.fonts?.mono, defaults.fonts.mono),
       },
       textAlignment: isTextAlignment(saved.textAlignment) ? saved.textAlignment : "auto",
+      translationTargetLanguage: normalizeLanguageTag(
+        saved.translationTargetLanguage,
+        defaults.translationTargetLanguage,
+      ),
     };
   } catch (error) {
     console.warn("[epub.ts] Could not read advanced settings; defaults are active.", error);
@@ -138,6 +167,21 @@ function persistSettings(settings: AdvancedReaderSettings) {
 
 function isTextAlignment(value: unknown): value is TypographyTextAlignment {
   return value === "auto" || value === "start" || value === "justify";
+}
+
+function getBrowserLanguage() {
+  return normalizeLanguageTag(navigator.languages[0] ?? navigator.language, "en");
+}
+
+function normalizeLanguageTag(value: unknown, fallback?: string) {
+  const language = typeof value === "string" ? value.trim().replaceAll("_", "-") : "";
+  try {
+    if (language) return Intl.getCanonicalLocales(language)[0] ?? fallback ?? "en";
+  } catch {
+    // Report invalid console input below; ignore invalid persisted values.
+  }
+  if (fallback) return fallback;
+  throw new TypeError("language must be a valid BCP 47 language tag, such as 'en' or 'zh-CN'.");
 }
 
 function normalizeFontFamily(value: unknown, fallback: string) {

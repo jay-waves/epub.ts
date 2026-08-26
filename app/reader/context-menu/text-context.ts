@@ -17,15 +17,26 @@ export type TextContextActionDetail = {
 };
 
 type TextContextOptions = {
+  getTranslationTargetLanguage: () => string;
   openExternal: (url: string) => void;
-  translationModelPolicy: "allow-download" | "external-fallback";
 };
+
+function getLookupTerm(text: string) {
+  const term = text.trim();
+  return term.length <= 100
+    && /^[\p{L}\p{M}\p{N}]+(?:['’.-][\p{L}\p{M}\p{N}]+)*$/u.test(term)
+    ? term
+    : null;
+}
+
+function wiktionaryUrl(term: string) {
+  return `https://en.wiktionary.org/wiki/${encodeURIComponent(term)}`;
+}
 
 /** Generic text actions over plain text and viewport coordinates. */
 export function createTextContext(options: TextContextOptions) {
   const translation = createTranslation({
-    modelPolicy: options.translationModelPolicy,
-    openExternal: options.openExternal,
+    getTargetLanguage: options.getTranslationTargetLanguage,
   });
   const events = new EventTarget();
   let current: TextContextRequest | null = null;
@@ -49,6 +60,11 @@ export function createTextContext(options: TextContextOptions) {
       case "copy":
         run(navigator.clipboard.writeText(request.text), "Failed to copy reader text.");
         break;
+      case "lookup": {
+        const term = getLookupTerm(request.text);
+        if (term) options.openExternal(wiktionaryUrl(term));
+        break;
+      }
       case "translate":
         void translation.translate({ sourceText: request.text, ...request.point });
         break;
@@ -73,10 +89,14 @@ export function createTextContext(options: TextContextOptions) {
     },
     open(request: TextContextRequest) {
       current = request;
+      const canLookUp = request.canHighlight && Boolean(getLookupTerm(request.text));
       contextMenuStore.getState().openMenu({
+        canAnnotate: true,
         canCopy: true,
         canDelete: request.canDelete,
         canHighlight: request.canHighlight,
+        canLookUp,
+        canTranslate: true,
         kind: "text",
         ...request.point,
       }, handleAction, clear);

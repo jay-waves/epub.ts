@@ -10,6 +10,7 @@ export const VIEWER_EVENTS = {
   annotationSave: "reader:annotation-save",
   unsavedChange: "reader:unsaved-change",
   translationClose: "reader:translation-close",
+  translationDownload: "reader:translation-download",
   translationOpen: "reader:translation-open",
   translationUpdate: "reader:translation-update",
   dockAction: "reader:dock-action",
@@ -36,7 +37,7 @@ export const VIEWER_EVENTS = {
   welcomeOpen: "reader:welcome-open",
 } as const;
 
-type TranslationStatus = "error" | "loading" | "success";
+type TranslationStatus = "downloadable" | "error" | "loading" | "success";
 
 export type TranslationDetail = {
   message?: string;
@@ -128,6 +129,7 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.annotationSave]: { note: string; value: string };
   [VIEWER_EVENTS.unsavedChange]: void;
   [VIEWER_EVENTS.translationClose]: void;
+  [VIEWER_EVENTS.translationDownload]: void;
   [VIEWER_EVENTS.translationOpen]: TranslationDetail;
   [VIEWER_EVENTS.translationUpdate]: TranslationDetail;
   [VIEWER_EVENTS.dockAction]: DockAction;

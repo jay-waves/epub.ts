@@ -45,7 +45,6 @@ export const platform: ViewerPlatform = {
   // This module is imported alongside the web and launcher platforms. Keep
   // module initialization safe even when Chrome extension APIs are absent.
   readerProfile: createBundledReaderProfile(getChromeAssetUrl),
-  translationModelPolicy: "allow-download",
   loadInitialDocument() {
     const rawSourceUrl = getInitialSourceUrl();
     if (!rawSourceUrl) return undefined;

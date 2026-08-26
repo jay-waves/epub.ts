@@ -40,7 +40,6 @@ export interface ReaderProfile {
 
 export interface ViewerPlatform {
   readonly readerProfile: ReaderProfile;
-  readonly translationModelPolicy: "allow-download" | "external-fallback";
   loadInitialDocument(): Promise<PlatformDocument> | undefined;
   openLocalDocument(file: File): PlatformDocument;
   pickLocalDocument?(): Promise<PlatformDocument | undefined>;

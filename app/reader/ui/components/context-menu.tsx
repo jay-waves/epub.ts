@@ -1,4 +1,4 @@
-import { Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react";
+import { BookOpen, Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { usePointPopover } from "./use-point-popover";
@@ -7,9 +7,10 @@ import { contextMenuStore } from "../../context-menu/context-menu-store";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
-  { action: "translate", enabledBy: "canCopy", icon: Languages, label: "Translate" },
   { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
-  { action: "annotate", enabledBy: "canCopy", icon: MessageSquareText, label: "Annotate" },
+  { action: "annotate", enabledBy: "canAnnotate", icon: MessageSquareText, label: "Add Note" },
+  { action: "translate", enabledBy: "canTranslate", icon: Languages, label: "Translate" },
+  { action: "lookup", enabledBy: "canLookUp", icon: BookOpen, label: "Look Up" },
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
 ] as const;
 
@@ -24,7 +25,7 @@ export function ContentContextMenu() {
   });
 
   if (!state.open) return null;
-  const visibleItems = state.kind === "media" ? menuItems.slice(0, 1) : menuItems;
+  const visibleItems = menuItems.filter((item) => state[item.enabledBy]);
 
   return (
     <div
@@ -37,7 +38,6 @@ export function ContentContextMenu() {
         {visibleItems.map((item) => (
           <ContextMenuItem
             {...item}
-            disabled={!state[item.enabledBy]}
             key={item.action}
             onSelect={state.select}
           />
@@ -49,14 +49,12 @@ export function ContentContextMenu() {
 function ContextMenuItem({
   action,
   destructive = false,
-  disabled,
   icon: Icon,
   label,
   onSelect,
 }: {
   action: ContentContextAction;
   destructive?: boolean;
-  disabled: boolean;
   icon: LucideIcon;
   label: string;
   onSelect: (action: ContentContextAction) => void;
@@ -65,7 +63,6 @@ function ContextMenuItem({
     <button
       className={`reader-context-menu-item${destructive ? " is-destructive" : ""}`}
       data-action={action}
-      disabled={disabled}
       role="menuitem"
       type="button"
       onClick={() => onSelect(action)}

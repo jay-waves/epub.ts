@@ -445,10 +445,6 @@
     color: var(--reader-danger-hover-fg);
   }
 
-  .reader-context-menu-item:disabled {
-    @apply pointer-events-none opacity-40;
-  }
-
   .reader-text-popover {
     @apply fixed w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border p-1.5;
     inset: auto;
@@ -526,6 +522,18 @@
   .reader-text-popover-result {
     background-color: var(--reader-field-bg);
     color: var(--reader-control-strong-fg);
+  }
+
+  .reader-text-popover-download {
+    @apply w-full rounded-md px-2 py-2 text-left text-xs font-medium leading-5 outline-none transition-colors duration-100;
+    background-color: var(--reader-field-bg);
+    color: var(--reader-control-strong-fg);
+  }
+
+  .reader-text-popover-download:hover,
+  .reader-text-popover-download:focus-visible {
+    background-color: var(--reader-control-hover-bg);
+    color: var(--reader-control-hover-fg);
   }
 
   .reader-text-popover-message {

@@ -1,12 +1,21 @@
 import { createStore } from "zustand/vanilla";
 
 
-export type ContentContextAction = "annotate" | "copy" | "delete" | "highlight" | "translate";
+export type ContentContextAction =
+  | "annotate"
+  | "copy"
+  | "delete"
+  | "highlight"
+  | "lookup"
+  | "translate";
 
 export type ContentContextMenu = {
+  canAnnotate: boolean;
   canCopy: boolean;
   canDelete: boolean;
   canHighlight: boolean;
+  canLookUp: boolean;
+  canTranslate: boolean;
   kind: "media" | "text";
   x: number;
   y: number;
@@ -24,9 +33,12 @@ type ContextMenuState = ContentContextMenu & {
 };
 
 const closedMenu: ContentContextMenu = {
+  canAnnotate: false,
   canCopy: false,
   canDelete: false,
   canHighlight: false,
+  canLookUp: false,
+  canTranslate: false,
   kind: "text",
   x: 0,
   y: 0,

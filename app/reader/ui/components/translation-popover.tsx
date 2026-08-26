@@ -15,7 +15,7 @@ const closedState: TranslationState = {
   open: false,
   sourceText: "",
   status: "loading",
-  targetLanguage: "zh",
+  targetLanguage: navigator.languages[0] ?? navigator.language ?? "en",
   x: 0,
   y: 0,
 };
@@ -42,6 +42,10 @@ export function TranslationPopover() {
 
   const translatedText = state.translatedText?.trim() ?? "";
   const canCopy = state.status === "success" && Boolean(translatedText);
+  const targetLanguageName = getLanguageName(state.targetLanguage);
+  const translationDirection = state.sourceLanguage
+    ? `${getLanguageName(state.sourceLanguage)} → ${targetLanguageName}`
+    : targetLanguageName;
 
   if (!state.open) return null;
   return (
@@ -57,7 +61,7 @@ export function TranslationPopover() {
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">
           <Languages size={16} aria-hidden="true" />
-          <span>Translate to Chinese</span>
+          <span>Translate to {targetLanguageName}</span>
         </div>
         <div className="reader-text-popover-actions">
           <button
@@ -87,6 +91,14 @@ export function TranslationPopover() {
         <p className="reader-text-popover-source">{state.sourceText}</p>
         {state.status === "success" ? (
           <p className="reader-text-popover-result">{translatedText}</p>
+        ) : state.status === "downloadable" ? (
+          <button
+            className="reader-text-popover-download"
+            type="button"
+            onClick={() => emitViewerEvent(VIEWER_EVENTS.translationDownload)}
+          >
+            {translationDirection}: {state.message ?? "Download this language model and translate."}
+          </button>
         ) : (
           <p className={`reader-text-popover-message${state.status === "error" ? " is-error" : ""}`}>
             {state.message ?? "Translating..."}
@@ -96,4 +108,13 @@ export function TranslationPopover() {
       </div>
     </section>
   );
+}
+
+function getLanguageName(language: string) {
+  try {
+    const displayNames = new Intl.DisplayNames([navigator.language], { type: "language" });
+    return displayNames.of(language) ?? language;
+  } catch {
+    return language;
+  }
 }

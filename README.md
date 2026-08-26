@@ -121,44 +121,46 @@ commands.
 
 Supports Chrome/Edge 129+, Firefox 147+, and Safari/iOS Safari 26+. Modern Web APIs are used directly, without polyfills or fallbacks for older releases. See the Browserslist in `package.json` for canonical build targets.
 
-剪贴板和本地文件功能需要安全上下文及用户授权。内置翻译不可用时不影响阅读，Web 版可转到外部翻译服务。
+剪贴板和本地文件功能需要安全上下文及用户授权。翻译仅在本地进行，并要求浏览器支持内置 Translator API。
 
-Clipboard and local-file features require a secure context and user permission. Built-in translation is optional; the web build can use an external service instead.
+Clipboard and local-file features require a secure context and user permission. Translation is local-only and requires browser support for the built-in Translator API.
 
-### 高级排版配置 / Advanced typography settings
+### 高级配置 / Advanced settings
 
 低频配置通过开发者工具 Console 中的 `epub.settings` 调整，并保存在浏览器 `localStorage`：
 
 ```js
 epub.settings.fonts
 epub.settings.textAlignment
+epub.settings.translationTargetLanguage
 
 await epub.settings.setSerifFont("Noto Serif, serif")
 await epub.settings.setSansFont("Noto Sans, system-ui, sans-serif")
 await epub.settings.setMonoFont("Fira Code, ui-monospace, monospace")
 await epub.settings.setTextAlignment("justify") // "auto" | "start" | "justify"
+await epub.settings.setTranslationTargetLanguage("ja") // BCP 47 language tag
 await epub.settings.reset()
 ```
 
-字体名称仅引用浏览器可用的本地字体，不会下载或安装字体。`auto` 按文档语言选择对齐方式；`reset()` 清除全部高级覆盖并恢复默认值。应用每次启动时会在 Console 输出当前配置和命令提示。
+字体名称仅引用浏览器可用的本地字体，不会下载或安装字体。`auto` 按文档语言选择对齐方式。翻译目标语言默认取浏览器首选语言；未安装的翻译方向必须在翻译弹窗中点击确认后才会下载。`reset()` 清除全部高级覆盖并恢复默认值。应用每次启动时会在 Console 输出当前配置和命令提示。
 
 ### 应用形态 / Application variants
 
 主要跨端差异：
 
-| 形态 | 运行环境 | 打开本地 EPUB | 保存 | 翻译 |
-| --- | --- | --- | --- | --- |
-| 插件 | Chrome 129+ | 欢迎页可手动选择或拖入文件；也会重定向已打开的 `file://*.epub` 标签 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 | 内置翻译模型可按需下载 |
-| Web | Chrome/Edge 129+、Firefox 147+、Safari/iOS 26+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 | 未安装内置翻译模型时转到 Google 翻译 |
-| 桌面 | Chrome/Edge 129+、Firefox 147+ 或 Safari 26+ | 无参数启动显示欢迎页；也支持系统文件关联 | 文件关联由本地服务写回；欢迎页选择沿用浏览器保存能力 | 内置翻译模型可按需下载 |
+| 形态 | 运行环境 | 打开本地 EPUB | 保存 |
+| --- | --- | --- | --- |
+| 插件 | Chrome 129+ | 欢迎页可手动选择或拖入文件；也会重定向已打开的 `file://*.epub` 标签 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 |
+| Web | Chrome/Edge 129+、Firefox 147+、Safari/iOS 26+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 |
+| 桌面 | Chrome/Edge 129+、Firefox 147+ 或 Safari 26+ | 无参数启动显示欢迎页；也支持系统文件关联 | 文件关联由本地服务写回；欢迎页选择沿用浏览器保存能力 |
 
 Key differences between platforms:
 
-| Application | Runtime | Opening local EPUBs | Saving | Translation |
-| --- | --- | --- | --- | --- |
-| Extension | Chrome 129+ | The welcome screen accepts selected or dropped files and redirects opened `file://*.epub` tabs | Saves a complete EPUB through a file picker and reuses approved file handles | Built-in translation models may be downloaded on demand |
-| Web | Chrome/Edge 129+, Firefox 147+, Safari/iOS 26+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies | Translation falls back to Google Translate when no built-in model is installed |
-| Desktop | Chrome/Edge 129+, Firefox 147+, or Safari 26+ | Shows the welcome screen without arguments and also supports OS file associations | Associated files use local-service write-back; welcome-screen files use browser saving | Built-in translation models may be downloaded on demand |
+| Application | Runtime | Opening local EPUBs | Saving |
+| --- | --- | --- | --- |
+| Extension | Chrome 129+ | The welcome screen accepts selected or dropped files and redirects opened `file://*.epub` tabs | Saves a complete EPUB through a file picker and reuses approved file handles |
+| Web | Chrome/Edge 129+, Firefox 147+, Safari/iOS 26+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies |
+| Desktop | Chrome/Edge 129+, Firefox 147+, or Safari 26+ | Shows the welcome screen without arguments and also supports OS file associations | Associated files use local-service write-back; welcome-screen files use browser saving |
 
 ### EPUB 内容兼容 / EPUB content compatibility
 

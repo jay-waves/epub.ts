@@ -16,9 +16,15 @@ type TranslationLanguagePair = {
 
 type LanguageDetectorConstructor = {
   availability(): Promise<BuiltInAiAvailability>;
-  create(options?: { monitor?: (monitor: BuiltInAiMonitor) => void }): Promise<{
+  create(options?: {
+    monitor?: (monitor: BuiltInAiMonitor) => void;
+    signal?: AbortSignal;
+  }): Promise<{
     destroy?(): void;
-    detect(text: string): Promise<Array<{ confidence: number; detectedLanguage: string }>>;
+    detect(
+      text: string,
+      options?: { signal?: AbortSignal },
+    ): Promise<Array<{ confidence: number; detectedLanguage: string }>>;
   }>;
 };
 
@@ -26,10 +32,11 @@ type TranslatorConstructor = {
   availability(options: TranslationLanguagePair): Promise<BuiltInAiAvailability>;
   create(options: TranslationLanguagePair & {
     monitor?: (monitor: BuiltInAiMonitor) => void;
+    signal?: AbortSignal;
   }): Promise<{
     destroy?(): void;
     ready?: Promise<void>;
-    translate(text: string): Promise<string>;
+    translate(text: string, options?: { signal?: AbortSignal }): Promise<string>;
   }>;
 };
 
@@ -48,21 +55,62 @@ type TranslationRequest = {
   y: number;
 };
 
-const targetLanguage = "zh";
+const operationTimeoutMs = 3 * 60 * 1000;
 
-class ModelUnavailableError extends Error {}
+class ModelTimeoutError extends Error {}
 
-function googleTranslateUrl(text: string) {
-  const query = new URLSearchParams({ sl: "auto", tl: "zh-CN", text, op: "translate" });
-  return `https://translate.google.com/?${query}`;
+function withTimeout<Result>(
+  promise: Promise<Result>,
+  controller: AbortController,
+  message: string,
+) {
+  return new Promise<Result>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new ModelTimeoutError(message));
+      controller.abort();
+    }, operationTimeoutMs);
+    promise.then(
+      (result) => {
+        window.clearTimeout(timeout);
+        resolve(result);
+      },
+      (error) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+function baseLanguage(language: string) {
+  try {
+    return new Intl.Locale(language).language;
+  } catch {
+    return language.toLowerCase().split("-")[0];
+  }
+}
+
+function translationModelLanguage(language: string) {
+  try {
+    const locale = new Intl.Locale(language);
+    if (locale.language === "zh") {
+      return locale.script === "Hant" || ["HK", "MO", "TW"].includes(locale.region ?? "")
+        ? "zh-Hant"
+        : "zh";
+    }
+    return locale.language;
+  } catch {
+    return baseLanguage(language);
+  }
 }
 
 export function createTranslation(options: {
-  modelPolicy: "allow-download" | "external-fallback";
-  openExternal: (url: string) => void;
+  getTargetLanguage: () => string;
 }) {
   const builtInAi = globalThis as BuiltInAiGlobals;
   let activeResource: TranslationResource | null = null;
+  let activeController: AbortController | null = null;
+  let pendingDownload: (() => void) | null = null;
   let runId = 0;
 
   const release = (resource = activeResource) => {
@@ -77,15 +125,15 @@ export function createTranslation(options: {
 
   const cancel = () => {
     ++runId;
+    activeController?.abort();
+    activeController = null;
+    pendingDownload = null;
     release();
   };
 
   const ensureUsable = (availability: BuiltInAiAvailability, modelName: string) => {
     if (availability === "unavailable") {
-      throw new ModelUnavailableError(`${modelName} is not available in this browser.`);
-    }
-    if (options.modelPolicy === "external-fallback" && availability !== "available") {
-      throw new ModelUnavailableError(`${modelName} is not installed.`);
+      throw new Error(`${modelName} is not available in this browser.`);
     }
   };
 
@@ -108,26 +156,45 @@ export function createTranslation(options: {
     }
   };
 
-  const detectLanguage = async (text: string, currentRunId: number) => {
+  const detectLanguage = async (
+    text: string,
+    currentRunId: number,
+    controller: AbortController,
+  ) => {
     const { LanguageDetector } = builtInAi;
     if (!LanguageDetector) {
-      throw new ModelUnavailableError("Built-in language detection is not available in this browser.");
+      throw new Error("Built-in language detection is not available in this browser.");
     }
 
     const availability = await LanguageDetector.availability();
     ensureUsable(availability, "The built-in language model");
     const results = await useResource(
-      LanguageDetector.create(),
+      withTimeout(
+        LanguageDetector.create({ signal: controller.signal }),
+        controller,
+        "Language detection took too long.",
+      ),
       currentRunId,
-      (detector) => detector.detect(text),
+      (detector) => withTimeout(
+        detector.detect(text, { signal: controller.signal }),
+        controller,
+        "Language detection took too long.",
+      ),
     );
     const [result] = results ?? [];
     return result?.confidence && result.confidence >= 0.45 ? result.detectedLanguage : "en";
   };
 
-  const translate = async ({ sourceText, x, y }: TranslationRequest) => {
+  const translate = async (
+    { sourceText, x, y }: TranslationRequest,
+    knownSourceLanguage?: string,
+    downloadApproved = false,
+  ) => {
     cancel();
     const currentRunId = runId;
+    const controller = new AbortController();
+    activeController = controller;
+    const targetLanguage = translationModelLanguage(options.getTargetLanguage());
     const baseDetail = {
       sourceText,
       status: "loading" as const,
@@ -136,23 +203,26 @@ export function createTranslation(options: {
       y,
     };
 
-    emitViewerEvent(VIEWER_EVENTS.translationOpen, {
+    emitViewerEvent(knownSourceLanguage
+      ? VIEWER_EVENTS.translationUpdate
+      : VIEWER_EVENTS.translationOpen, {
       ...baseDetail,
-      message: "Translating to Chinese...",
+      message: "Translating...",
     });
 
     try {
       const { Translator } = builtInAi;
       if (!Translator) {
-        throw new ModelUnavailableError("Built-in translation is not available in this browser.");
+        throw new Error("Built-in translation is not available in this browser.");
       }
 
-      const sourceLanguage = await detectLanguage(sourceText, currentRunId);
+      const sourceLanguage = knownSourceLanguage
+        ?? await detectLanguage(sourceText, currentRunId, controller);
       if (currentRunId !== runId) return;
-      if (sourceLanguage === targetLanguage || sourceLanguage.toLowerCase().startsWith("zh")) {
+      if (baseLanguage(sourceLanguage) === baseLanguage(targetLanguage)) {
         emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
           ...baseDetail,
-          message: "Selected text is already Chinese.",
+          message: "Selected text is already in the target language.",
           sourceLanguage,
           status: "success",
           translatedText: sourceText,
@@ -161,29 +231,62 @@ export function createTranslation(options: {
       }
 
       const languagePair = { sourceLanguage, targetLanguage };
-      const availability = await Translator.availability(languagePair);
-      if (currentRunId !== runId) return;
-      ensureUsable(availability, "The built-in translation model");
+      if (!downloadApproved) {
+        const availability = await Translator.availability(languagePair);
+        if (currentRunId !== runId) return;
+        ensureUsable(availability, "The built-in translation model");
+        if (availability !== "available") {
+          pendingDownload = () => {
+            void translate({ sourceText, x, y }, sourceLanguage, true);
+          };
+          emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+            ...baseDetail,
+            message: availability === "downloading"
+              ? "This language model is still downloading. Click to continue."
+              : "This language direction is not installed. Click to download and translate.",
+            sourceLanguage,
+            status: "downloadable",
+          });
+          return;
+        }
+      }
 
       const translatedText = await useResource(
-        Translator.create({
-          ...languagePair,
-          monitor(monitor) {
-            monitor.addEventListener("downloadprogress", (event) => {
-              if (currentRunId !== runId) return;
-              emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
-                ...baseDetail,
-                message: "Downloading the built-in translation model...",
-                progress: event.loaded,
-                sourceLanguage,
+        withTimeout(
+          Translator.create({
+            ...languagePair,
+            signal: controller.signal,
+            monitor(monitor) {
+              monitor.addEventListener("downloadprogress", (event) => {
+                if (currentRunId !== runId) return;
+                emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+                  ...baseDetail,
+                  message: event.loaded >= 1
+                    ? "Installing the built-in translation model..."
+                    : "Downloading the built-in translation model...",
+                  progress: event.loaded,
+                  sourceLanguage,
+                });
               });
-            });
-          },
-        }),
+            },
+          }),
+          controller,
+          "The built-in translation model took too long to become ready.",
+        ),
         currentRunId,
         async (translator) => {
-          await translator.ready;
-          return translator.translate(sourceText);
+          if (translator.ready) {
+            await withTimeout(
+              translator.ready,
+              controller,
+              "The built-in translation model took too long to become ready.",
+            );
+          }
+          return withTimeout(
+            translator.translate(sourceText, { signal: controller.signal }),
+            controller,
+            "Translation took too long.",
+          );
         },
       );
       if (currentRunId !== runId || translatedText == null) return;
@@ -196,26 +299,29 @@ export function createTranslation(options: {
       });
     } catch (error) {
       if (currentRunId !== runId) return;
-      if (error instanceof ModelUnavailableError) {
-        options.openExternal(googleTranslateUrl(sourceText));
-        emitViewerEvent(VIEWER_EVENTS.translationClose);
-        return;
-      }
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
         message: error instanceof Error ? error.message : "Translation failed.",
         status: "error",
       });
+    } finally {
+      if (activeController === controller) activeController = null;
     }
   };
 
   const stopListening = listenViewerEvent(VIEWER_EVENTS.translationClose, cancel);
+  const stopDownloadListening = listenViewerEvent(VIEWER_EVENTS.translationDownload, () => {
+    const download = pendingDownload;
+    pendingDownload = null;
+    download?.();
+  });
 
   return {
     cancel,
     destroy: () => {
       cancel();
       stopListening();
+      stopDownloadListening();
     },
     translate,
   };

@@ -152,7 +152,6 @@ function getViewerAssetUrl(filename: string) {
 
 export const platform: ViewerPlatform = {
   readerProfile: createBundledReaderProfile(getViewerAssetUrl),
-  translationModelPolicy: "allow-download",
   loadInitialDocument: () => launcher?.openDocument(),
   ...browserLocalDocumentCapabilities,
   openExternal,
