@@ -7,10 +7,10 @@ import { contextMenuStore } from "../../context-menu/context-menu-store";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
-  { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
-  { action: "annotate", enabledBy: "canAnnotate", icon: MessageSquareText, label: "Add Note" },
   { action: "translate", enabledBy: "canTranslate", icon: Languages, label: "Translate" },
   { action: "lookup", enabledBy: "canLookUp", icon: BookOpen, label: "Look Up" },
+  { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
+  { action: "annotate", enabledBy: "canAnnotate", icon: MessageSquareText, label: "Add Note" },
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
 ] as const;
 

@@ -325,10 +325,12 @@ export class PaginatedRenderer extends HTMLElement {
         const size = vertical ? height : width
 
         const style = getComputedStyle(this.#top)
+        const spreadWidth = this.getBoundingClientRect().width
+        const responsiveColumnCount = spreadWidth >= 2400 ? 3
+            : spreadWidth >= 1360 ? 2 : 1
         const maxColumnCount = Math.min(
             parseInt(style.getPropertyValue('--_max-column-count-spread')),
-            this.getBoundingClientRect().width >= 2000 ? 3
-                : this.getBoundingClientRect().width >= 1500 ? 2 : 1,
+            responsiveColumnCount,
         )
         const maxInlineSize = parseFloat(style.getPropertyValue(
             maxColumnCount > 1 ? '--_max-column-inline-size' : '--_max-inline-size'))
