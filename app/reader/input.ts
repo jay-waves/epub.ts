@@ -1,9 +1,9 @@
-import { DragGesture } from "@use-gesture/vanilla";
 import { WheelGestures } from "wheel-gestures";
 import type { ReaderView, StepDirection } from "./model";
 import type { Navigation } from "./navigation";
 import { observeRenderedContent } from "./rendered-content";
 import { KineticScroller } from "./kinetic-scroller";
+import { PointerMotion } from "./pointer-motion";
 import type { ReaderCommand } from "./events";
 import {
   claimReaderPointer,
@@ -19,7 +19,6 @@ const WHEEL_SCROLL_GAIN = 1.4;
 const WHEEL_SWIPE_AXIS_RATIO = 1.35;
 const WHEEL_SWIPE_MIN_DISTANCE = 42;
 const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
-const WHEEL_SWIPE_SUPPRESS_SCROLL_MS = 1200;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_EDGE_RATIO = 0.22;
@@ -37,10 +36,6 @@ function isEditableTarget(target: EventTarget | null) {
   return element.isContentEditable || Boolean(element.closest(
     "input, select, textarea, button, summary, audio, video, a[href], [role='slider'], [contenteditable]:not([contenteditable='false'])",
   ));
-}
-
-function isInteractiveTarget(event: { target: EventTarget | null }) {
-  return resolveReaderPointerIntent(event.target) !== "content";
 }
 
 function getKeyboardScrollDistance() {
@@ -67,18 +62,15 @@ export function createViewerInput(options: ViewerInputOptions) {
     stopDocuments: () => void;
     stopShellDrag: () => void;
   }>();
-  let suppressWheelScrollUntil = 0;
   let wheelBoundaryConsumed = false;
-  let wheelBoundaryDirection = 0;
-  let wheelBoundaryInFlight = false;
+  let wheelBoundaryDirection: number | null = null;
   let progressPrefix = "";
   const activeWheelTargets = new Set<Document>();
   const dispatchStep = (direction: StepDirection) => options.dispatchCommand(STEP_COMMANDS[direction]);
 
   const clearWheelBoundary = () => {
-    if (wheelBoundaryDirection) options.onChapterBoundary(wheelBoundaryDirection, false);
-    wheelBoundaryDirection = 0;
-    wheelBoundaryInFlight = false;
+    if (wheelBoundaryDirection !== null) options.onChapterBoundary(wheelBoundaryDirection, false);
+    wheelBoundaryDirection = null;
     if (!activeWheelTargets.size) wheelBoundaryConsumed = false;
   };
 
@@ -87,19 +79,12 @@ export function createViewerInput(options: ViewerInputOptions) {
     wheelBoundaryConsumed = true;
     wheelBoundaryDirection = direction;
     options.onChapterBoundary(direction, true);
-    wheelBoundaryInFlight = true;
     const navigation = options.getNavigation();
     const crossing = direction < 0 ? navigation?.prev(distance) : navigation?.next(distance);
     void Promise.resolve(crossing)
       .catch((error) => console.warn("Failed to cross reader chapter boundary.", error))
       .finally(clearWheelBoundary);
   };
-
-  const suppressWheelScroll = () => {
-    suppressWheelScrollUntil = performance.now() + WHEEL_SWIPE_SUPPRESS_SCROLL_MS;
-  };
-
-  const isWheelScrollSuppressed = () => performance.now() < suppressWheelScrollUntil;
 
   const getSectionScrollMetrics = () => {
     const renderer = options.getView()?.renderer;
@@ -118,7 +103,6 @@ export function createViewerInput(options: ViewerInputOptions) {
   };
 
   const signalScrollEdge = (direction: number) => {
-    if (isWheelScrollSuppressed()) return;
     if (options.getFlow() === "scrolled") options.onScrollEdge(direction);
   };
 
@@ -293,155 +277,148 @@ export function createViewerInput(options: ViewerInputOptions) {
     options.dispatchCommand(command);
   };
 
-  const edgeDirection = (sourceDocument: Document, clientX: number): StepDirection | null => {
-    const frame = sourceDocument.defaultView?.frameElement;
-    const frameLeft = frame?.nodeType === Node.ELEMENT_NODE
-      ? (frame as Element).getBoundingClientRect().left
-      : 0;
-    const rect = options.getView()?.getBoundingClientRect();
-    if (!rect?.width) return null;
-    const x = frameLeft + clientX - rect.left;
-    if (x <= rect.width * TOUCH_EDGE_RATIO) return "left";
-    if (x >= rect.width * (1 - TOUCH_EDGE_RATIO)) return "right";
-    return null;
-  };
-
-  const isCenterTap = (sourceDocument: Document, clientX: number, clientY: number) => {
+  const readerPoint = (sourceDocument: Document, clientX: number, clientY: number) => {
     const frame = sourceDocument.defaultView?.frameElement;
     const frameRect = frame?.nodeType === Node.ELEMENT_NODE
       ? (frame as Element).getBoundingClientRect()
       : null;
     const viewRect = options.getView()?.getBoundingClientRect();
-    if (!viewRect?.width || !viewRect.height) return false;
-    const x = (frameRect?.left ?? 0) + clientX - viewRect.left;
-    const y = (frameRect?.top ?? 0) + clientY - viewRect.top;
-    return x >= viewRect.width * TOUCH_CENTER_INSET_RATIO
-      && x <= viewRect.width * (1 - TOUCH_CENTER_INSET_RATIO)
-      && y >= viewRect.height * TOUCH_CENTER_INSET_RATIO
-      && y <= viewRect.height * (1 - TOUCH_CENTER_INSET_RATIO);
+    if (!viewRect?.width || !viewRect.height) return null;
+    return {
+      height: viewRect.height,
+      width: viewRect.width,
+      x: (frameRect?.left ?? 0) + clientX - viewRect.left,
+      y: (frameRect?.top ?? 0) + clientY - viewRect.top,
+    };
   };
 
-  const bindDragGesture = (target: EventTarget, sourceDocument: Document) => {
-    let longPressTimer: number | undefined;
-    let active = false;
-    let selecting = false;
-    let gestureAxis: "horizontal" | "vertical" | null = null;
-    let suppressSyntheticClickUntil = 0;
-    const clearLongPress = () => {
-      if (longPressTimer !== undefined) window.clearTimeout(longPressTimer);
-      longPressTimer = undefined;
+  const tapRegion = (sourceDocument: Document, clientX: number, clientY: number) => {
+    const point = readerPoint(sourceDocument, clientX, clientY);
+    if (!point) return null;
+    if (point.x <= point.width * TOUCH_EDGE_RATIO) return "left" as const;
+    if (point.x >= point.width * (1 - TOUCH_EDGE_RATIO)) return "right" as const;
+    if (point.x >= point.width * TOUCH_CENTER_INSET_RATIO
+      && point.x <= point.width * (1 - TOUCH_CENTER_INSET_RATIO)
+      && point.y >= point.height * TOUCH_CENTER_INSET_RATIO
+      && point.y <= point.height * (1 - TOUCH_CENTER_INSET_RATIO)) return "center" as const;
+    return null;
+  };
+
+  const bindPointerInput = (target: EventTarget, sourceDocument: Document) => {
+    type PointerSession = {
+      claimEvent: PointerEvent;
+      longPressTimer?: number;
+      motion: PointerMotion;
+      selecting: boolean;
+    };
+    const targetWindow = sourceDocument.defaultView ?? window;
+    let session: PointerSession | null = null;
+    const clearLongPress = (current: PointerSession) => {
+      if (current.longPressTimer !== undefined) window.clearTimeout(current.longPressTimer);
+      current.longPressTimer = undefined;
     };
     const handleMouseClick = (event: Event) => {
       const click = event as MouseEvent;
-      if (!eventBelongsToReader(click) || isInteractiveTarget(click)) return;
-      if (performance.now() < suppressSyntheticClickUntil) return;
-      const direction = edgeDirection(sourceDocument, click.clientX);
-      if (!direction) return;
+      if (!eventBelongsToReader(click) || resolveReaderPointerIntent(click.target) !== "content") return;
+      if ("pointerType" in click && (click as PointerEvent).pointerType !== "mouse") return;
+      const region = tapRegion(sourceDocument, click.clientX, click.clientY);
+      if (region !== "left" && region !== "right") return;
 
       const selection = sourceDocument.defaultView?.getSelection();
       if (selection && !selection.isCollapsed) return;
       consumeReaderEvent(click, "stop");
-      dispatchStep(direction);
+      dispatchStep(region);
     };
-    target.addEventListener("click", handleMouseClick, { capture: true });
-    const drag = new DragGesture<PointerEvent>(target, (state) => {
-      const event = state.event;
-      const starting = state.first;
-      const ending = state.last;
-      if (starting) {
-        if (state.canceled) return;
-        active = false;
-        selecting = false;
-        gestureAxis = null;
-        // Touch PointerEvents do not consistently expose mouse button state in
-        // mobile browsers/WebViews. Only enforce the left-button contract for
-        // an actual mouse; touch and pen input are identified by pointerType.
-        if (!eventBelongsToReader(event) || !event.isPrimary
-          || (event.pointerType === "mouse" && event.button !== 0)) {
-          state.cancel();
-          return;
-        }
-        const intent = claimReaderPointer(event);
-        // A higher-priority owner still needs the browser's original pointer
-        // sequence so it can receive its synthesized click.
-        if (intent !== "content") return;
-        active = true;
-        inertia.stop();
-        if (event.pointerType === "touch") {
-          longPressTimer = window.setTimeout(() => {
-            if (!state.intentional) selecting = true;
-          }, TOUCH_LONG_PRESS_DELAY_MS);
-        }
-      }
 
-      if (!active) {
-        if (ending) consumeReaderPointerClaim(event);
-        return;
+    const removeWindowListeners = () => {
+      targetWindow.removeEventListener("pointermove", handlePointerMove, { capture: true });
+      targetWindow.removeEventListener("pointerup", handlePointerEnd, { capture: true });
+      targetWindow.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!eventBelongsToReader(event) || !event.isPrimary || event.pointerType === "mouse") return;
+      if (resolveReaderPointerIntent(event.target) !== "content") return;
+      if (session) return;
+      claimReaderPointer(event, "content");
+      const current: PointerSession = {
+        claimEvent: event,
+        motion: new PointerMotion(event.clientX, event.clientY, event.timeStamp, {
+          axisRatio: TOUCH_AXIS_RATIO,
+          threshold: TOUCH_PAN_THRESHOLD_PX,
+        }),
+        selecting: false,
+      };
+      session = current;
+      inertia.stop();
+      if (event.pointerType === "touch") {
+        current.longPressTimer = window.setTimeout(() => {
+          if (session === current && !current.motion.moved) current.selecting = true;
+        }, TOUCH_LONG_PRESS_DELAY_MS);
       }
-      if (state.intentional) clearLongPress();
-      if (selecting) {
-        if (ending) {
-          active = false;
-          clearLongPress();
-          consumeReaderPointerClaim(event);
-        }
-        return;
-      }
-      if (ending) {
-        active = false;
-        clearLongPress();
-        if (event.pointerType === "touch") suppressSyntheticClickUntil = performance.now() + 500;
-        const intent = consumeReaderPointerClaim(event);
-        if (intent && intent !== "content") return;
-        if (state.canceled || event.type === "pointercancel") return;
-        if (state.tap) {
-          const selection = sourceDocument.defaultView?.getSelection();
-          if (selection && !selection.isCollapsed) return;
-          if (event.pointerType !== "mouse" && isCenterTap(sourceDocument, event.clientX, event.clientY)) {
-            consumeReaderEvent(event, "stop");
-            options.dispatchCommand("toggle-dock");
-          }
-        } else if (event.pointerType !== "mouse"
-          && (options.getFlow() === "paginated" ? gestureAxis === "horizontal" : gestureAxis === "vertical")) {
-          const velocityX = -state.direction[0] * state.velocity[0];
-          const velocityY = -state.direction[1] * state.velocity[1];
-          if (options.getFlow() === "paginated") options.getView()?.renderer?.settle?.(velocityX, velocityY);
-          else inertia.start(velocityY);
-        }
-        return;
-      }
-      if (!state.intentional || event.pointerType === "mouse") return;
-
-      if (!gestureAxis) {
-        const [movementX, movementY] = state.movement;
-        if (Math.abs(movementX) >= Math.abs(movementY) * TOUCH_AXIS_RATIO) gestureAxis = "horizontal";
-        else if (Math.abs(movementY) >= Math.abs(movementX) * TOUCH_AXIS_RATIO) gestureAxis = "vertical";
-        else return;
-      }
-
+      targetWindow.addEventListener("pointermove", handlePointerMove, { capture: true, passive: false });
+      targetWindow.addEventListener("pointerup", handlePointerEnd, { capture: true });
+      targetWindow.addEventListener("pointercancel", handlePointerEnd, { capture: true });
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      const current = session;
+      if (!current || event.pointerId !== current.claimEvent.pointerId) return;
+      const movement = current.motion.move(event.clientX, event.clientY, event.timeStamp);
+      if (current.motion.moved) clearLongPress(current);
+      if (current.selecting) return;
       const expectedAxis = options.getFlow() === "paginated" ? "horizontal" : "vertical";
-      if (gestureAxis !== expectedAxis) return;
-
+      if (movement.axis !== expectedAxis) return;
       consumeReaderEvent(event, "stop");
-      const dx = -state.delta[0];
-      const dy = -state.delta[1];
+      const dx = -movement.deltaX;
+      const dy = -movement.deltaY;
       if (options.getFlow() === "scrolled") options.getNavigation()?.scrollBy(dy);
       else options.getView()?.renderer?.panBy?.(dx, dy);
-    }, {
-      eventOptions: { capture: true, passive: false },
-      filterTaps: true,
-      // use-gesture otherwise requires `buttons === 1` before it starts a drag.
-      // Some touch implementations report 0, so accept the pointer here and
-      // apply the mouse-only button check above.
-      pointer: { buttons: -1, capture: false, keys: false },
-      threshold: TOUCH_PAN_THRESHOLD_PX,
-      triggerAllEvents: true,
-      window: sourceDocument.defaultView ?? window,
-    });
+    };
+    const handlePointerEnd = (event: PointerEvent) => {
+      const current = session;
+      if (!current || event.pointerId !== current.claimEvent.pointerId) return;
+      session = null;
+      removeWindowListeners();
+      clearLongPress(current);
+      consumeReaderPointerClaim(current.claimEvent);
+      if (current.selecting) return;
+
+      const flow = options.getFlow();
+      const expectedAxis = flow === "paginated" ? "horizontal" : "vertical";
+      if (event.type === "pointercancel") {
+        if (flow === "paginated" && current.motion.axis === expectedAxis) {
+          options.getView()?.renderer?.settle?.(0, 0);
+        }
+        return;
+      }
+      if (current.motion.isTap(event.clientX, event.clientY)) {
+        const selection = sourceDocument.defaultView?.getSelection();
+        if (selection && !selection.isCollapsed) return;
+        const region = tapRegion(sourceDocument, event.clientX, event.clientY);
+        if (!region) return;
+        consumeReaderEvent(event, "stop");
+        if (region === "center") options.dispatchCommand("toggle-dock");
+        else dispatchStep(region);
+        return;
+      }
+      if (current.motion.axis !== expectedAxis) return;
+      const [pointerVelocityX, pointerVelocityY] = current.motion.velocity(event.timeStamp);
+      const velocityX = -pointerVelocityX;
+      const velocityY = -pointerVelocityY;
+      if (flow === "paginated") options.getView()?.renderer?.settle?.(velocityX, velocityY);
+      else inertia.start(velocityY);
+    };
+
+    target.addEventListener("click", handleMouseClick, { capture: true });
+    target.addEventListener("pointerdown", handlePointerDown as EventListener, { capture: true });
     return () => {
-      clearLongPress();
+      if (session) {
+        clearLongPress(session);
+        consumeReaderPointerClaim(session.claimEvent);
+        session = null;
+      }
+      removeWindowListeners();
       target.removeEventListener("click", handleMouseClick, { capture: true });
-      drag.destroy();
+      target.removeEventListener("pointerdown", handlePointerDown as EventListener, { capture: true });
     };
   };
 
@@ -453,12 +430,12 @@ export function createViewerInput(options: ViewerInputOptions) {
         inertia.stop();
         activeWheelTargets.add(targetDocument);
         swipeConsumed = false;
-        if (!wheelBoundaryInFlight) wheelBoundaryConsumed = false;
+        if (wheelBoundaryDirection === null) wheelBoundaryConsumed = false;
       }
       if (state.isEnding || state.isMomentumCancel) {
         activeWheelTargets.delete(targetDocument);
         swipeConsumed = false;
-        if (!activeWheelTargets.size && !wheelBoundaryInFlight) {
+        if (!activeWheelTargets.size && wheelBoundaryDirection === null) {
           wheelBoundaryConsumed = false;
         }
         if (state.isMomentumCancel) inertia.stop();
@@ -481,13 +458,16 @@ export function createViewerInput(options: ViewerInputOptions) {
           && Math.abs(velocityX) >= WHEEL_SWIPE_MIN_VELOCITY;
         if (isHorizontalSwipe) {
           swipeConsumed = true;
-          suppressWheelScroll();
-          dispatchStep(movementX < 0 ? "left" : "right");
+          // wheel-gestures reverses the native X/Y signs by default. Restore
+          // the browser's effective wheel direction here, just as deltaX and
+          // deltaY above do, so OS natural-scrolling preferences are honored.
+          const nativeMovementX = -movementX;
+          dispatchStep(nativeMovementX < 0 ? "left" : "right");
           return;
         }
       }
 
-      if (options.getFlow() !== "scrolled" || isWheelScrollSuppressed() || isHorizontal) return;
+      if (swipeConsumed || options.getFlow() !== "scrolled" || isHorizontal) return;
       const rawDelta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
       const delta = rawDelta * WHEEL_SCROLL_GAIN;
       const direction = Math.sign(delta);
@@ -569,13 +549,13 @@ export function createViewerInput(options: ViewerInputOptions) {
       targetDocument.head?.append(touchStyle);
     }
     targetDocument.addEventListener("keydown", handleKeyDown);
-    const stopDrag = targetDocument === document
+    const stopPointer = targetDocument === document
       ? () => {}
-      : bindDragGesture(targetDocument, targetDocument);
+      : bindPointerInput(targetDocument, targetDocument);
     const stopWheel = bindWheelGesture(targetDocument);
     const stopSideButtons = bindSideButtonNavigation(targetDocument);
     inputTargets.set(targetDocument, () => {
-      stopDrag();
+      stopPointer();
       stopWheel();
       stopSideButtons();
       targetDocument.removeEventListener("keydown", handleKeyDown);
@@ -592,7 +572,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (bindings.has(view)) return;
     const previousTouchAction = view.style.touchAction;
     view.style.touchAction = "pinch-zoom";
-    const stopShellDrag = bindDragGesture(view, document);
+    const stopShellDrag = bindPointerInput(view, document);
     const stopDocuments = observeRenderedContent(view, ({ doc }, signal) => {
       bindInputTarget(doc);
       signal.addEventListener("abort", () => unbindInputTarget(doc), { once: true });
