@@ -8,6 +8,7 @@ type TextContextRequest = {
   canHighlight: boolean;
   context?: unknown;
   point: { x: number; y: number };
+  sourceLanguage?: string;
   text: string;
 };
 
@@ -68,7 +69,10 @@ export function createTextContext(options: TextContextOptions) {
         break;
       }
       case "translate":
-        void translation.translate({ sourceText: request.text, ...request.point });
+        void translation.translate(
+          { sourceText: request.text, ...request.point },
+          request.sourceLanguage,
+        );
         break;
     }
     events.dispatchEvent(new CustomEvent<TextContextActionDetail>("action", {

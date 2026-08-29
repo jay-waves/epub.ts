@@ -33,15 +33,15 @@ type TranslatorConstructor = {
   create(options: TranslationLanguagePair & {
     monitor?: (monitor: BuiltInAiMonitor) => void;
     signal?: AbortSignal;
-  }): Promise<{
-    destroy?(): void;
-    ready?: Promise<void>;
-    translate(text: string, options?: { signal?: AbortSignal }): Promise<string>;
-  }>;
+  }): Promise<TranslatorSession>;
 };
 
 type TranslationResource = {
   destroy?: () => void;
+};
+
+type TranslatorSession = TranslationResource & {
+  translate(text: string, options?: { signal?: AbortSignal }): Promise<string>;
 };
 
 type BuiltInAiGlobals = typeof globalThis & {
@@ -55,20 +55,45 @@ type TranslationRequest = {
   y: number;
 };
 
-const operationTimeoutMs = 3 * 60 * 1000;
+const operationTimeoutMs = 60 * 1000;
+const availabilityTimeoutMs = 5 * 1000;
+const downloadConsentStorageKey = "epub.ts:translation-download-consent";
 
 class ModelTimeoutError extends Error {}
+
+function hasDownloadConsent(languagePairKey: string) {
+  try {
+    const entries = JSON.parse(localStorage.getItem(downloadConsentStorageKey) ?? "[]") as unknown;
+    return Array.isArray(entries) && entries.includes(languagePairKey);
+  } catch {
+    return false;
+  }
+}
+
+function grantDownloadConsent(languagePairKey: string) {
+  try {
+    const entries = JSON.parse(localStorage.getItem(downloadConsentStorageKey) ?? "[]") as unknown;
+    const approved = new Set(Array.isArray(entries)
+      ? entries.filter((entry): entry is string => typeof entry === "string")
+      : []);
+    approved.add(languagePairKey);
+    localStorage.setItem(downloadConsentStorageKey, JSON.stringify([...approved]));
+  } catch (error) {
+    console.warn("Could not save translation model consent.", error);
+  }
+}
 
 function withTimeout<Result>(
   promise: Promise<Result>,
   controller: AbortController,
   message: string,
+  timeoutMs = operationTimeoutMs,
 ) {
   return new Promise<Result>((resolve, reject) => {
     const timeout = window.setTimeout(() => {
       reject(new ModelTimeoutError(message));
       controller.abort();
-    }, operationTimeoutMs);
+    }, timeoutMs);
     promise.then(
       (result) => {
         window.clearTimeout(timeout);
@@ -96,11 +121,22 @@ function translationModelLanguage(language: string) {
     if (locale.language === "zh") {
       return locale.script === "Hant" || ["HK", "MO", "TW"].includes(locale.region ?? "")
         ? "zh-Hant"
-        : "zh";
+        : "zh-Hans";
     }
-    return locale.language;
+    return locale.baseName;
   } catch {
     return baseLanguage(language);
+  }
+}
+
+function isSameTranslationLanguage(sourceLanguage: string, targetLanguage: string) {
+  if (sourceLanguage === targetLanguage) return true;
+  try {
+    const source = new Intl.Locale(sourceLanguage).maximize();
+    const target = new Intl.Locale(targetLanguage).maximize();
+    return source.language === target.language && source.script === target.script;
+  } catch {
+    return baseLanguage(sourceLanguage) === baseLanguage(targetLanguage);
   }
 }
 
@@ -112,6 +148,10 @@ export function createTranslation(options: {
   let activeController: AbortController | null = null;
   let pendingDownload: (() => void) | null = null;
   let runId = 0;
+  let cachedTranslator: {
+    languagePairKey: string;
+    session: TranslatorSession;
+  } | null = null;
 
   const release = (resource = activeResource) => {
     if (!resource) return;
@@ -166,7 +206,12 @@ export function createTranslation(options: {
       throw new Error("Built-in language detection is not available in this browser.");
     }
 
-    const availability = await LanguageDetector.availability();
+    const availability = await withTimeout(
+      LanguageDetector.availability(),
+      controller,
+      "The browser did not report language detection availability.",
+      availabilityTimeoutMs,
+    );
     ensureUsable(availability, "The built-in language model");
     const results = await useResource(
       withTimeout(
@@ -182,7 +227,12 @@ export function createTranslation(options: {
       ),
     );
     const [result] = results ?? [];
-    return result?.confidence && result.confidence >= 0.45 ? result.detectedLanguage : "en";
+    if (!result || result.detectedLanguage === "und" || result.confidence < 0.45) {
+      throw new Error(
+        "The source language could not be detected. This EPUB should provide a valid lang attribute.",
+      );
+    }
+    return result.detectedLanguage;
   };
 
   const translate = async (
@@ -207,7 +257,9 @@ export function createTranslation(options: {
       ? VIEWER_EVENTS.translationUpdate
       : VIEWER_EVENTS.translationOpen, {
       ...baseDetail,
-      message: "Translating...",
+      message: downloadApproved
+        ? "Preparing the built-in translation model..."
+        : "Translating...",
     });
 
     try {
@@ -216,10 +268,10 @@ export function createTranslation(options: {
         throw new Error("Built-in translation is not available in this browser.");
       }
 
-      const sourceLanguage = knownSourceLanguage
-        ?? await detectLanguage(sourceText, currentRunId, controller);
+      const sourceLanguage = translationModelLanguage(knownSourceLanguage
+        ?? await detectLanguage(sourceText, currentRunId, controller));
       if (currentRunId !== runId) return;
-      if (baseLanguage(sourceLanguage) === baseLanguage(targetLanguage)) {
+      if (isSameTranslationLanguage(sourceLanguage, targetLanguage)) {
         emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
           ...baseDetail,
           message: "Selected text is already in the target language.",
@@ -231,19 +283,30 @@ export function createTranslation(options: {
       }
 
       const languagePair = { sourceLanguage, targetLanguage };
-      if (!downloadApproved) {
-        const availability = await Translator.availability(languagePair);
+      const languagePairKey = `${sourceLanguage}\u0000${targetLanguage}`;
+      let translator = cachedTranslator?.languagePairKey === languagePairKey
+        ? cachedTranslator.session
+        : undefined;
+      const canDownload = downloadApproved || hasDownloadConsent(languagePairKey);
+      if (!translator && !canDownload) {
+        const availability = await withTimeout(
+          Translator.availability(languagePair),
+          controller,
+          "The browser did not report translation model availability.",
+          availabilityTimeoutMs,
+        );
         if (currentRunId !== runId) return;
         ensureUsable(availability, "The built-in translation model");
         if (availability !== "available") {
           pendingDownload = () => {
+            grantDownloadConsent(languagePairKey);
             void translate({ sourceText, x, y }, sourceLanguage, true);
           };
           emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
             ...baseDetail,
             message: availability === "downloading"
               ? "This language model is still downloading. Click to continue."
-              : "This language direction is not installed. Click to download and translate.",
+              : "This language direction is not ready for this site. Click to prepare and translate.",
             sourceLanguage,
             status: "downloadable",
           });
@@ -251,20 +314,25 @@ export function createTranslation(options: {
         }
       }
 
-      const translatedText = await useResource(
-        withTimeout(
+      if (!translator) {
+        emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+          ...baseDetail,
+          message: "Preparing the built-in translation model...",
+          sourceLanguage,
+        });
+        translator = await withTimeout(
           Translator.create({
             ...languagePair,
             signal: controller.signal,
             monitor(monitor) {
-              monitor.addEventListener("downloadprogress", (event) => {
+              monitor.addEventListener("downloadprogress", ({ loaded }) => {
                 if (currentRunId !== runId) return;
                 emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
                   ...baseDetail,
-                  message: event.loaded >= 1
-                    ? "Installing the built-in translation model..."
+                  message: loaded >= 1
+                    ? "Preparing the built-in translation model..."
                     : "Downloading the built-in translation model...",
-                  progress: event.loaded,
+                  progress: Math.max(0, Math.min(1, loaded)),
                   sourceLanguage,
                 });
               });
@@ -272,24 +340,28 @@ export function createTranslation(options: {
           }),
           controller,
           "The built-in translation model took too long to become ready.",
-        ),
-        currentRunId,
-        async (translator) => {
-          if (translator.ready) {
-            await withTimeout(
-              translator.ready,
-              controller,
-              "The built-in translation model took too long to become ready.",
-            );
-          }
-          return withTimeout(
-            translator.translate(sourceText, { signal: controller.signal }),
-            controller,
-            "Translation took too long.",
-          );
-        },
+        );
+        if (currentRunId !== runId) {
+          release(translator);
+          return;
+        }
+        release(cachedTranslator?.session);
+        cachedTranslator = { languagePairKey, session: translator };
+        grantDownloadConsent(languagePairKey);
+      }
+
+      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+        ...baseDetail,
+        message: "Translating...",
+        sourceLanguage,
+      });
+
+      const translatedText = await withTimeout(
+        translator.translate(sourceText, { signal: controller.signal }),
+        controller,
+        "Translation took too long.",
       );
-      if (currentRunId !== runId || translatedText == null) return;
+      if (currentRunId !== runId) return;
 
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
@@ -320,6 +392,8 @@ export function createTranslation(options: {
     cancel,
     destroy: () => {
       cancel();
+      release(cachedTranslator?.session);
+      cachedTranslator = null;
       stopListening();
       stopDownloadListening();
     },

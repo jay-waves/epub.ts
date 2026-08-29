@@ -121,9 +121,9 @@ commands.
 
 Supports Chrome/Edge 129+, Firefox 147+, and Safari/iOS Safari 26+. Modern Web APIs are used directly, without polyfills or fallbacks for older releases. See the Browserslist in `package.json` for canonical build targets.
 
-剪贴板和本地文件功能需要安全上下文及用户授权。翻译仅在本地进行，并要求浏览器支持内置 Translator API。
+剪贴板和本地文件功能需要安全上下文及用户授权。翻译仅在本地进行，并要求浏览器支持内置 Translator API；Microsoft Edge 需要 148 或更高版本。
 
-Clipboard and local-file features require a secure context and user permission. Translation is local-only and requires browser support for the built-in Translator API.
+Clipboard and local-file features require a secure context and user permission. Translation is local-only and requires browser support for the built-in Translator API; Microsoft Edge 148 or later is required.
 
 ### 高级配置 / Advanced settings
 
@@ -144,23 +144,27 @@ await epub.settings.reset()
 
 字体名称仅引用浏览器可用的本地字体，不会下载或安装字体。`auto` 按文档语言选择对齐方式。翻译目标语言默认取浏览器首选语言；未安装的翻译方向必须在翻译弹窗中点击确认后才会下载。`reset()` 清除全部高级覆盖并恢复默认值。应用每次启动时会在 Console 输出当前配置和命令提示。
 
+翻译使用 [BCP 47](https://www.rfc-editor.org/info/bcp47) 标签；简体中文为 `zh-Hans`，繁体中文为 `zh-Hant`。可参考 [Edge 官方语言列表](https://github.com/MicrosoftEdge/Demos/blob/main/built-in-ai/static/translator-api.js) 或使用 [Edge Built-in AI Playground](https://microsoftedge.github.io/Demos/built-in-ai/) 检查模型。阅读器优先采用 EPUB 的 `lang`，缺失时才调用 Language Detector。
+
+Translation uses [BCP 47](https://www.rfc-editor.org/info/bcp47) tags: `zh-Hans` for Simplified Chinese and `zh-Hant` for Traditional Chinese. Consult the [official Edge language list](https://github.com/MicrosoftEdge/Demos/blob/main/built-in-ai/static/translator-api.js) or check the model in the [Edge Built-in AI Playground](https://microsoftedge.github.io/Demos/built-in-ai/). The reader prefers the EPUB `lang` value and invokes the Language Detector only when it is missing.
+
 ### 应用形态 / Application variants
 
 主要跨端差异：
 
-| 形态 | 运行环境 | 打开本地 EPUB | 保存 |
-| --- | --- | --- | --- |
-| 插件 | Chrome 129+ | 欢迎页可手动选择或拖入文件；也会重定向已打开的 `file://*.epub` 标签 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 |
-| Web | Chrome/Edge 129+、Firefox 147+、Safari/iOS 26+ | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 |
-| 桌面 | Chrome/Edge 129+、Firefox 147+ 或 Safari 26+ | 无参数启动显示欢迎页；也支持系统文件关联 | 文件关联由本地服务写回；欢迎页选择沿用浏览器保存能力 |
+| 形态 | 打开本地 EPUB | 保存 |
+| --- | --- | --- |
+| 插件 | 欢迎页可手动选择或拖入文件；也会重定向已打开的 `file://*.epub` 标签 | 通过文件选择器保存完整 EPUB，并复用已授权的文件句柄 |
+| Web | 手动选择或拖入文件，不支持双击关联 | 文件选择器打开的文件可直接保存；拖入的文件保存为下载副本 |
+| 桌面 | 无参数启动显示欢迎页；也支持系统文件关联 | 文件关联由本地服务写回；欢迎页选择沿用浏览器保存能力 |
 
 Key differences between platforms:
 
-| Application | Runtime | Opening local EPUBs | Saving |
-| --- | --- | --- | --- |
-| Extension | Chrome 129+ | The welcome screen accepts selected or dropped files and redirects opened `file://*.epub` tabs | Saves a complete EPUB through a file picker and reuses approved file handles |
-| Web | Chrome/Edge 129+, Firefox 147+, Safari/iOS 26+ | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies |
-| Desktop | Chrome/Edge 129+, Firefox 147+, or Safari 26+ | Shows the welcome screen without arguments and also supports OS file associations | Associated files use local-service write-back; welcome-screen files use browser saving |
+| Application | Opening local EPUBs | Saving |
+| --- | --- | --- |
+| Extension | The welcome screen accepts selected or dropped files and redirects opened `file://*.epub` tabs | Saves a complete EPUB through a file picker and reuses approved file handles |
+| Web | Files must be selected or dropped; OS double-click association is unavailable | Picker-opened files can be saved directly; dropped files are saved as downloaded copies |
+| Desktop | Shows the welcome screen without arguments and also supports OS file associations | Associated files use local-service write-back; welcome-screen files use browser saving |
 
 ### EPUB 内容兼容 / EPUB content compatibility
 

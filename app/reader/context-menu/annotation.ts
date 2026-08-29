@@ -152,11 +152,21 @@ export function createAnnotations(options: AnnotationOptions) {
       canHighlight: hasSelection,
       context,
       point: { x: pageX, y: pageY },
+      sourceLanguage: getRangeLanguage(selection?.range),
       text: highlight ? getAnnotationText(highlight) : selection!.text,
     });
   };
 
   const getAnnotationText = (highlight: ReaderAnnotation) => highlight.text?.trim() || highlight.value;
+
+  const getRangeLanguage = (range: Range | undefined) => {
+    if (!range) return undefined;
+    const node = range.startContainer;
+    const element = node.nodeType === 1 ? node as Element : node.parentElement;
+    return element?.closest("[lang]")?.getAttribute("lang")
+      || node.ownerDocument?.documentElement.lang
+      || undefined;
+  };
 
   const hasAnnotationNote = (highlight: ReaderAnnotation) => Boolean(highlight.note?.trim());
 
