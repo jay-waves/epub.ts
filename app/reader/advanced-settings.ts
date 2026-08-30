@@ -4,17 +4,20 @@ import type { TypographyFonts, TypographyTextAlignment } from "../typography/mod
 export type AdvancedReaderSettings = {
   fonts: TypographyFonts;
   textAlignment: TypographyTextAlignment;
+  translationSourceLanguage: string | null;
   translationTargetLanguage: string;
 };
 
 type EpubSettingsApi = {
   readonly fonts: TypographyFonts;
+  readonly sourceLanguage: string | null;
   readonly textAlignment: TypographyTextAlignment;
   readonly translationTargetLanguage: string;
   reset(): Promise<void>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
   setSerifFont(fontFamily: string): Promise<void>;
+  setSourceLanguage(language: string | null): Promise<void>;
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
   setTranslationTargetLanguage(language: string): Promise<void>;
 };
@@ -43,6 +46,9 @@ export function createAdvancedSettingsController(
     get fonts() {
       return { ...value.fonts };
     },
+    get sourceLanguage() {
+      return value.translationSourceLanguage;
+    },
     get textAlignment() {
       return value.textAlignment;
     },
@@ -52,6 +58,16 @@ export function createAdvancedSettingsController(
     setSerifFont: (fontFamily) => setFont("serif", fontFamily),
     setSansFont: (fontFamily) => setFont("sans", fontFamily),
     setMonoFont: (fontFamily) => setFont("mono", fontFamily),
+    async setSourceLanguage(language) {
+      const translationSourceLanguage = language == null ? null : normalizeLanguageTag(language);
+      if (translationSourceLanguage === value.translationSourceLanguage) return;
+      await commit({ ...value, translationSourceLanguage }, false);
+      console.log(
+        translationSourceLanguage
+          ? `[epub.ts] Translation source language changed to "${translationSourceLanguage}".`
+          : "[epub.ts] Translation source language reset to automatic detection.",
+      );
+    },
     async setTextAlignment(textAlignment) {
       if (!isTextAlignment(textAlignment)) {
         throw new TypeError("textAlignment must be 'auto', 'start', or 'justify'.");
@@ -113,6 +129,12 @@ function getSettingsOverrides(settings: AdvancedReaderSettings) {
   if (settings.textAlignment !== "auto") {
     overrides.textAlignment = { current: settings.textAlignment, default: "auto" };
   }
+  if (settings.translationSourceLanguage) {
+    overrides.translationSourceLanguage = {
+      current: settings.translationSourceLanguage,
+      default: "auto",
+    };
+  }
   if (settings.translationTargetLanguage !== getBrowserLanguage()) {
     overrides.translationTargetLanguage = {
       current: settings.translationTargetLanguage,
@@ -126,6 +148,7 @@ function getDefaults(): AdvancedReaderSettings {
   return {
     fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },
     textAlignment: "auto",
+    translationSourceLanguage: null,
     translationTargetLanguage: getBrowserLanguage(),
   };
 }
@@ -136,6 +159,7 @@ function loadSettings(): AdvancedReaderSettings {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as {
       fonts?: Partial<TypographyFonts>;
       textAlignment?: unknown;
+      translationSourceLanguage?: unknown;
       translationTargetLanguage?: unknown;
     } | null;
     if (!saved) return defaults;
@@ -146,6 +170,7 @@ function loadSettings(): AdvancedReaderSettings {
         mono: normalizeFontFamily(saved.fonts?.mono, defaults.fonts.mono),
       },
       textAlignment: isTextAlignment(saved.textAlignment) ? saved.textAlignment : "auto",
+      translationSourceLanguage: normalizeSavedLanguageTag(saved.translationSourceLanguage),
       translationTargetLanguage: normalizeLanguageTag(
         saved.translationTargetLanguage,
         defaults.translationTargetLanguage,
@@ -176,12 +201,21 @@ function getBrowserLanguage() {
 function normalizeLanguageTag(value: unknown, fallback?: string) {
   const language = typeof value === "string" ? value.trim().replaceAll("_", "-") : "";
   try {
-    if (language) return Intl.getCanonicalLocales(language)[0] ?? fallback ?? "en";
+    if (language) return (Intl.getCanonicalLocales(language)[0] ?? fallback ?? "en").toLowerCase();
   } catch {
     // Report invalid console input below; ignore invalid persisted values.
   }
-  if (fallback) return fallback;
+  if (fallback) return fallback.toLowerCase();
   throw new TypeError("language must be a valid BCP 47 language tag, such as 'en' or 'zh-CN'.");
+}
+
+function normalizeSavedLanguageTag(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    return normalizeLanguageTag(value);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeFontFamily(value: unknown, fallback: string) {

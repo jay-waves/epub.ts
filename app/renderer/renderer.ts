@@ -10,6 +10,7 @@ export interface Renderer {
   atStart?: boolean;
   beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
   cancelNavigation?(): void;
+  capturePosition?(): void;
   end?: number;
   start?: number;
   viewSize?: number;

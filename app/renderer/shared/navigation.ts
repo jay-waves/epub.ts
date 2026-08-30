@@ -26,6 +26,14 @@ export function createReadingPosition(
   return { index, fraction: clampFraction(fraction), ...(range ? { range } : {}) };
 }
 
+/** Reduces a viewport-sized range to the exact point where reading starts. */
+export function readingEdgeRange(range: Range | undefined) {
+  if (!range) return undefined;
+  const edge = range.cloneRange();
+  edge.collapse(true);
+  return edge;
+}
+
 export function rangeBelongsToDocument(range: Range | undefined, doc: Document) {
   if (!range || range.startContainer.ownerDocument !== doc
     || range.endContainer.ownerDocument !== doc) return false;

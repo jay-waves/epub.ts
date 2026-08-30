@@ -1,4 +1,5 @@
 import { Overlay } from './shared/overlay.ts'
+import { readingEdgeRange } from './shared/navigation.ts'
 import { createRenderer, rendererModeForBook } from './renderer-factory.ts'
 
 export class ReaderView extends HTMLElement {
@@ -64,8 +65,9 @@ export class ReaderView extends HTMLElement {
             return
         }
 
-        current.cancelNavigation?.()
+        current.capturePosition?.()
         const target = this.#readingTarget(current)
+        current.cancelNavigation?.()
         const next = await createRenderer(mode)
         if (this.#destroyed) {
             next.destroy()
@@ -113,7 +115,8 @@ export class ReaderView extends HTMLElement {
         if (!location) return
         const { fraction, index, range } = location
         try {
-            const cfi = range && this.navigation.cfi?.(index, range)
+            const readingEdge = readingEdgeRange(range)
+            const cfi = readingEdge && this.navigation.cfi?.(index, readingEdge)
             return cfi ? this.navigation.resolve(cfi) ?? { index, anchor: fraction }
                 : { index, anchor: fraction }
         } catch (error) {

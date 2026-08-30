@@ -215,8 +215,10 @@ export class PaginatedRenderer extends HTMLElement {
                 }
             },
         })
+        // Observe only the external viewport. Observing #container as well
+        // feeds our own paginated reflow back into ResizeObserver; Edge can
+        // oscillate forever near a responsive column-count boundary.
         this.#observer.observe(this)
-        this.#observer.observe(this.#container)
         this.#container.addEventListener('scroll', () =>
             this.dispatchEvent(new Event('scroll')))
 
@@ -276,6 +278,7 @@ export class PaginatedRenderer extends HTMLElement {
             case 'margin':
             case 'max-column-count':
                 this.#top.style.setProperty('--_' + name, value)
+                this.#invalidateViewportGeometry()
                 break
             case 'max-inline-size':
             case 'max-column-inline-size':
@@ -677,6 +680,11 @@ export class PaginatedRenderer extends HTMLElement {
             if (this.#destroyed || revision !== this.#navigationRevision) return
             return task(revision)
         }, () => this.#scheduleRender())
+    }
+    capturePosition() {
+        // Commit the physical offset synchronously before a mode switch aborts
+        // an in-flight page animation.
+        void this.#scrollTo(this.#container[this.scrollProp], 'switch')
     }
     cancelNavigation() {
         this.#navigationRevision += 1

@@ -23,6 +23,7 @@ import {
 import { createView } from "../renderer";
 import { getBookKey } from "../epub/metadata";
 import { createAnnotations } from "./context-menu/annotation";
+import { detectDocumentLanguage } from "./context-menu/document-language";
 import {
   clearMathCache,
   prepareTypography,
@@ -90,7 +91,7 @@ if (advancedSettings.logStatus()) {
   console.log(
     "[epub.ts] Configure with epub.settings.setSerifFont(...), setSansFont(...), setMonoFont(...), "
       + "epub.settings.setTextAlignment('auto' | 'start' | 'justify'), "
-      + "setTranslationTargetLanguage(...), or epub.settings.reset().",
+      + "setSourceLanguage(...), setTranslationTargetLanguage(...), or epub.settings.reset().",
   );
 }
 
@@ -166,6 +167,8 @@ const annotationState = createAnnotations({
   getNavigation,
   getProgress: () => session.progress,
   getView,
+  getTranslationSourceLanguage: () =>
+    advancedSettings.value.translationSourceLanguage ?? undefined,
   getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
   openExternal: platform.openExternal,
 });
@@ -509,6 +512,9 @@ async function replaceBook(platformDocument: PlatformDocument) {
     wireReaderEvents(reader);
     await reader.open(fontsReady);
     reader.signal.throwIfAborted();
+    annotationState.setTranslationSourceLanguage(
+      detectDocumentLanguage(reader.book, reader.signal),
+    );
     const { navigation } = reader;
     emitViewerEvent(VIEWER_EVENTS.documentOpen);
     session.bookKey = await getBookKey(view.book, platformDocument.key);

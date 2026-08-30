@@ -8,7 +8,6 @@ type TextContextRequest = {
   canHighlight: boolean;
   context?: unknown;
   point: { x: number; y: number };
-  sourceLanguage?: string;
   text: string;
 };
 
@@ -20,6 +19,7 @@ export type TextContextActionDetail = {
 };
 
 type TextContextOptions = {
+  getTranslationSourceLanguage: () => string | undefined;
   getTranslationTargetLanguage: () => string;
   openExternal: (url: string) => void;
 };
@@ -39,6 +39,7 @@ function wiktionaryUrl(term: string) {
 /** Generic text actions over plain text and viewport coordinates. */
 export function createTextContext(options: TextContextOptions) {
   const translation = createTranslation({
+    getSourceLanguage: options.getTranslationSourceLanguage,
     getTargetLanguage: options.getTranslationTargetLanguage,
   });
   const events = new EventTarget();
@@ -69,10 +70,7 @@ export function createTextContext(options: TextContextOptions) {
         break;
       }
       case "translate":
-        void translation.translate(
-          { sourceText: request.text, ...request.point },
-          request.sourceLanguage,
-        );
+        void translation.translate({ sourceText: request.text, ...request.point });
         break;
     }
     events.dispatchEvent(new CustomEvent<TextContextActionDetail>("action", {
@@ -107,5 +105,6 @@ export function createTextContext(options: TextContextOptions) {
         ...request.point,
       }, handleAction, clear);
     },
+    setTranslationSourceLanguage: translation.setSourceLanguage,
   };
 }

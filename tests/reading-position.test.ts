@@ -5,6 +5,7 @@ import {
   anchorForPosition,
   clampFraction,
   createReadingPosition,
+  readingEdgeRange,
   resolveReadingPosition,
 } from "../app/renderer/shared/navigation.ts";
 
@@ -47,4 +48,14 @@ test("keeps a measured range when navigation prefers only a fraction", () => {
     index: 6,
     fraction: 0,
   });
+});
+
+test("uses a collapsed clone as the transferable reading edge", () => {
+  let collapsed = false;
+  const clone = { collapse: (toStart: boolean) => collapsed = toStart } as Range;
+  const range = { cloneRange: () => clone } as Range;
+
+  assert.equal(readingEdgeRange(range), clone);
+  assert.equal(collapsed, true);
+  assert.equal(readingEdgeRange(undefined), undefined);
 });

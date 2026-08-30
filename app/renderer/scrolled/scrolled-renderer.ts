@@ -463,6 +463,11 @@ export class ScrolledRenderer extends HTMLElement {
             return task(revision)
         }, () => this.#scheduleRender())
     }
+    capturePosition() {
+        // Commit the physical offset synchronously before a mode switch aborts
+        // an in-flight animation or a pending scroll sample.
+        void this.#scrollTo(this.start, 'switch')
+    }
     cancelNavigation() {
         this.#navigationRevision += 1
         this.#motion?.abort()

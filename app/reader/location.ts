@@ -1,4 +1,5 @@
 import type { TocItem } from "../renderer/reader-view.js";
+import { readingEdgeRange } from "../renderer/shared/navigation";
 
 type Section = {
   linear?: string;
@@ -72,8 +73,7 @@ export class TocIndex {
     // that range treats every heading visible near the bottom as current and
     // eventually selects the last one. Collapse it to the reading edge so the
     // active item is the last heading at or before the viewport start.
-    const readingEdge = range.cloneRange();
-    readingEdge.collapse(true);
+    const readingEdge = readingEdgeRange(range)!;
     for (const [itemIndex, { fragment }] of items.entries()) {
       const element = this.#getFragment?.(doc, fragment);
       if (element && readingEdge.comparePoint(element, 0) > 0) {

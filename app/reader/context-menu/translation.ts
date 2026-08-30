@@ -1,4 +1,5 @@
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
+import { baseLanguage, translationModelLanguage } from "./translation-language";
 
 type BuiltInAiAvailability = "available" | "downloadable" | "downloading" | "unavailable";
 
@@ -12,20 +13,6 @@ type BuiltInAiMonitor = {
 type TranslationLanguagePair = {
   sourceLanguage: string;
   targetLanguage: string;
-};
-
-type LanguageDetectorConstructor = {
-  availability(): Promise<BuiltInAiAvailability>;
-  create(options?: {
-    monitor?: (monitor: BuiltInAiMonitor) => void;
-    signal?: AbortSignal;
-  }): Promise<{
-    destroy?(): void;
-    detect(
-      text: string,
-      options?: { signal?: AbortSignal },
-    ): Promise<Array<{ confidence: number; detectedLanguage: string }>>;
-  }>;
 };
 
 type TranslatorConstructor = {
@@ -45,7 +32,6 @@ type TranslatorSession = TranslationResource & {
 };
 
 type BuiltInAiGlobals = typeof globalThis & {
-  LanguageDetector?: LanguageDetectorConstructor;
   Translator?: TranslatorConstructor;
 };
 
@@ -107,28 +93,6 @@ function withTimeout<Result>(
   });
 }
 
-function baseLanguage(language: string) {
-  try {
-    return new Intl.Locale(language).language;
-  } catch {
-    return language.toLowerCase().split("-")[0];
-  }
-}
-
-function translationModelLanguage(language: string) {
-  try {
-    const locale = new Intl.Locale(language);
-    if (locale.language === "zh") {
-      return locale.script === "Hant" || ["HK", "MO", "TW"].includes(locale.region ?? "")
-        ? "zh-Hant"
-        : "zh-Hans";
-    }
-    return locale.baseName;
-  } catch {
-    return baseLanguage(language);
-  }
-}
-
 function isSameTranslationLanguage(sourceLanguage: string, targetLanguage: string) {
   if (sourceLanguage === targetLanguage) return true;
   try {
@@ -141,10 +105,10 @@ function isSameTranslationLanguage(sourceLanguage: string, targetLanguage: strin
 }
 
 export function createTranslation(options: {
+  getSourceLanguage: () => string | undefined;
   getTargetLanguage: () => string;
 }) {
   const builtInAi = globalThis as BuiltInAiGlobals;
-  let activeResource: TranslationResource | null = null;
   let activeController: AbortController | null = null;
   let pendingDownload: (() => void) | null = null;
   let runId = 0;
@@ -152,10 +116,10 @@ export function createTranslation(options: {
     languagePairKey: string;
     session: TranslatorSession;
   } | null = null;
+  let documentLanguage = Promise.resolve<string | undefined>(undefined);
 
-  const release = (resource = activeResource) => {
+  const release = (resource: TranslationResource | null | undefined) => {
     if (!resource) return;
-    if (activeResource === resource) activeResource = null;
     try {
       resource.destroy?.();
     } catch {
@@ -168,7 +132,6 @@ export function createTranslation(options: {
     activeController?.abort();
     activeController = null;
     pendingDownload = null;
-    release();
   };
 
   const ensureUsable = (availability: BuiltInAiAvailability, modelName: string) => {
@@ -177,67 +140,8 @@ export function createTranslation(options: {
     }
   };
 
-  const useResource = async <Resource extends TranslationResource, Result>(
-    resourcePromise: Promise<Resource>,
-    currentRunId: number,
-    action: (resource: Resource) => Promise<Result>,
-  ) => {
-    const resource = await resourcePromise;
-    if (currentRunId !== runId) {
-      release(resource);
-      return undefined;
-    }
-
-    activeResource = resource;
-    try {
-      return await action(resource);
-    } finally {
-      release(resource);
-    }
-  };
-
-  const detectLanguage = async (
-    text: string,
-    currentRunId: number,
-    controller: AbortController,
-  ) => {
-    const { LanguageDetector } = builtInAi;
-    if (!LanguageDetector) {
-      throw new Error("Built-in language detection is not available in this browser.");
-    }
-
-    const availability = await withTimeout(
-      LanguageDetector.availability(),
-      controller,
-      "The browser did not report language detection availability.",
-      availabilityTimeoutMs,
-    );
-    ensureUsable(availability, "The built-in language model");
-    const results = await useResource(
-      withTimeout(
-        LanguageDetector.create({ signal: controller.signal }),
-        controller,
-        "Language detection took too long.",
-      ),
-      currentRunId,
-      (detector) => withTimeout(
-        detector.detect(text, { signal: controller.signal }),
-        controller,
-        "Language detection took too long.",
-      ),
-    );
-    const [result] = results ?? [];
-    if (!result || result.detectedLanguage === "und" || result.confidence < 0.45) {
-      throw new Error(
-        "The source language could not be detected. This EPUB should provide a valid lang attribute.",
-      );
-    }
-    return result.detectedLanguage;
-  };
-
   const translate = async (
     { sourceText, x, y }: TranslationRequest,
-    knownSourceLanguage?: string,
     downloadApproved = false,
   ) => {
     cancel();
@@ -253,9 +157,7 @@ export function createTranslation(options: {
       y,
     };
 
-    emitViewerEvent(knownSourceLanguage
-      ? VIEWER_EVENTS.translationUpdate
-      : VIEWER_EVENTS.translationOpen, {
+    emitViewerEvent(VIEWER_EVENTS.translationOpen, {
       ...baseDetail,
       message: downloadApproved
         ? "Preparing the built-in translation model..."
@@ -268,8 +170,12 @@ export function createTranslation(options: {
         throw new Error("Built-in translation is not available in this browser.");
       }
 
-      const sourceLanguage = translationModelLanguage(knownSourceLanguage
-        ?? await detectLanguage(sourceText, currentRunId, controller));
+      const detectedLanguage = options.getSourceLanguage() ?? await documentLanguage;
+      const effectiveLanguage = options.getSourceLanguage() ?? detectedLanguage;
+      if (!effectiveLanguage) {
+        throw new Error("The document language could not be detected.");
+      }
+      const sourceLanguage = translationModelLanguage(effectiveLanguage);
       if (currentRunId !== runId) return;
       if (isSameTranslationLanguage(sourceLanguage, targetLanguage)) {
         emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
@@ -300,7 +206,7 @@ export function createTranslation(options: {
         if (availability !== "available") {
           pendingDownload = () => {
             grantDownloadConsent(languagePairKey);
-            void translate({ sourceText, x, y }, sourceLanguage, true);
+            void translate({ sourceText, x, y }, true);
           };
           emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
             ...baseDetail,
@@ -396,6 +302,10 @@ export function createTranslation(options: {
       cachedTranslator = null;
       stopListening();
       stopDownloadListening();
+    },
+    setSourceLanguage(language: string | undefined | Promise<string | undefined>) {
+      cancel();
+      documentLanguage = Promise.resolve(language);
     },
     translate,
   };

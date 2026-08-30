@@ -14,6 +14,7 @@ type AnnotationOptions = {
   getNavigation: () => Navigation | null;
   getProgress: () => number;
   getView: () => ReaderView | null;
+  getTranslationSourceLanguage: () => string | undefined;
   getTranslationTargetLanguage: () => string;
   openExternal: (url: string) => void;
 };
@@ -62,6 +63,7 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const textContext = createTextContext({
+    getTranslationSourceLanguage: options.getTranslationSourceLanguage,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
     openExternal: options.openExternal,
   });
@@ -152,21 +154,11 @@ export function createAnnotations(options: AnnotationOptions) {
       canHighlight: hasSelection,
       context,
       point: { x: pageX, y: pageY },
-      sourceLanguage: getRangeLanguage(selection?.range),
       text: highlight ? getAnnotationText(highlight) : selection!.text,
     });
   };
 
   const getAnnotationText = (highlight: ReaderAnnotation) => highlight.text?.trim() || highlight.value;
-
-  const getRangeLanguage = (range: Range | undefined) => {
-    if (!range) return undefined;
-    const node = range.startContainer;
-    const element = node.nodeType === 1 ? node as Element : node.parentElement;
-    return element?.closest("[lang]")?.getAttribute("lang")
-      || node.ownerDocument?.documentElement.lang
-      || undefined;
-  };
 
   const hasAnnotationNote = (highlight: ReaderAnnotation) => Boolean(highlight.note?.trim());
 
@@ -423,6 +415,7 @@ export function createAnnotations(options: AnnotationOptions) {
 
   const reset = () => {
     annotationRepository.clearMemory();
+    textContext.setTranslationSourceLanguage(undefined);
     textContext.close();
   };
 
@@ -442,5 +435,6 @@ export function createAnnotations(options: AnnotationOptions) {
     openFromAnnotation,
     reset,
     restore,
+    setTranslationSourceLanguage: textContext.setTranslationSourceLanguage,
   };
 }
