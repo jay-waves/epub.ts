@@ -1,4 +1,5 @@
 import { consumeReaderEvent, resolveReaderPointerIntent } from "./interaction-arbiter";
+import { isZoomableImage } from "../typography/enhancers/images";
 
 type MediumZoomFactory = typeof import("medium-zoom").default;
 type MediumZoomInstance = ReturnType<MediumZoomFactory>;
@@ -8,35 +9,24 @@ let readerImageZoom: MediumZoomInstance | null = null;
 let activeZoomProxy: HTMLImageElement | null = null;
 let imageZoomRunId = 0;
 let disposed = false;
-const enhancedDocuments = new WeakSet<Document>();
 const IMAGE_ZOOM_MARGIN = 28;
-const MIN_ZOOMABLE_IMAGE_SIZE = 160;
 const MIN_ZOOMED_IMAGE_LONG_EDGE = 320;
 
-export function enhanceImages(doc: Document, signal: AbortSignal) {
-  if (enhancedDocuments.has(doc)) return;
-  enhancedDocuments.add(doc);
-
+/** Binds zoom behavior after the renderer has laid out and published a section. */
+export function bindImageInteractions(doc: Document, signal: AbortSignal) {
   for (const image of doc.querySelectorAll<HTMLImageElement>("img")) {
-    if (isContentImage(image)) image.classList.add("reader-content-image");
-    if (image.complete) {
-      markZoomableImage(image, signal);
-    } else {
-      image.addEventListener("load", () => markZoomableImage(image, signal), { once: true, signal });
-    }
+    if (image.complete) markZoomableImage(image, signal);
+    else image.addEventListener("load", () => markZoomableImage(image, signal), {
+      once: true,
+      signal,
+    });
   }
 }
 
-function markZoomableImage(image: HTMLImageElement, signal?: AbortSignal) {
+function markZoomableImage(image: HTMLImageElement, signal: AbortSignal) {
   if (!isZoomableImage(image)) return;
-  image.classList.add("reader-content-image");
   image.classList.add("reader-zoomable-image");
   image.addEventListener("click", handleReaderImageClick, { passive: false, signal });
-}
-
-function isContentImage(image: HTMLImageElement) {
-  if (image.closest("[data-reader-footnote-target='true']")) return false;
-  return Boolean(image.closest("figure, [data-reader-role~='figure'], [data-reader-media-block='true']"));
 }
 
 function ensureMediumZoom() {
@@ -99,28 +89,6 @@ export async function disposeContent() {
   readerImageZoom?.off("closed", handleImageZoomClosed);
   readerImageZoom?.detach();
   readerImageZoom = null;
-}
-
-function isZoomableImage(image: HTMLImageElement) {
-  if (image.closest("[data-reader-footnote-target='true']")) return false;
-  if (image.closest("a[href]")) return false;
-  if (image.closest("button, input, label, summary")) return false;
-
-  const style = image.ownerDocument.defaultView?.getComputedStyle(image);
-  const renderedWidth = Number.parseFloat(style?.width ?? "");
-  const renderedHeight = Number.parseFloat(style?.height ?? "");
-  if (renderedWidth > 0 && renderedHeight > 0
-    && renderedWidth < MIN_ZOOMABLE_IMAGE_SIZE && renderedHeight < MIN_ZOOMABLE_IMAGE_SIZE) {
-    return false;
-  }
-
-  const knownWidth = image.naturalWidth || image.width;
-  const knownHeight = image.naturalHeight || image.height;
-  if (!knownWidth || !knownHeight) return false;
-  if (knownWidth < MIN_ZOOMABLE_IMAGE_SIZE && knownHeight < MIN_ZOOMABLE_IMAGE_SIZE) {
-    return false;
-  }
-  return true;
 }
 
 function handleReaderImageClick(event: MouseEvent) {

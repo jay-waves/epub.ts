@@ -174,7 +174,7 @@ Dropping old-browser support does not drop old-book support. The parser and typo
 
 <img src="assets/screenshot1.png" width="800">
 
-## 渲染管线 / Rendering Pipeline
+## 渲染与交互 / Rendering & Interaction
 
 ```text
 EPUB ZIP
@@ -184,37 +184,45 @@ EPUB ZIP
 Read the ZIP directory and package; build the spine and TOC
    |
    v
-按需解压章节，重写 CSS、图片和链接（书级 Blob URL LRU）
-Extract sections on demand and rewrite resources (per-book Blob URL LRU)
+按需解压章节，重写 XHTML/CSS/SVG 中的资源 URL
+Extract sections on demand and rewrite resource URLs
    |
    v
-创建 iframe Document，注入阅读样式
+创建 iframe Document，注入基础阅读样式
 Create the iframe Document and inject reader styles
    |
-   +--------> 语义、脚注和图片交互 / Semantics, footnotes, images
-   |
-   +--------> 代码高亮 / Code highlighting
-   |
-   +--------> 等待字体 / Wait for fonts ---> MathJax 公式 / formulas
+   +--------> 预加载字体 / PreLoad fonts
+   +--------> 预加载图片 / PreLoad images
+   +--------> 预加载 MathJax / Preload MathJax
+   +--------> 预加载代码高亮 / Preload syntax highlighting
    |
    v
-测量、分页并显示 / Measure, paginate, and reveal
+内容增强：语言、字体映射、语义、表格、脚注和图片布局
+Enhance content: language, font mapping, semantics, tables, footnotes, and image layout
+   |
+   v
+等待字体 / Wait for fonts (避免使用默认字体渲染，不同字体的高度不同，会抖动）
+   |
+   +--------> 渲染 MathJax 公式 / MathJax formulas
+   +--------> 渲染代码高亮 / Syntax highlighting
+   |
+   v
+确定书写方向，测量并完成分页或滚动布局
+Resolve writing direction, measure, and lay out paginated or scrolled content
+   |
+   v
+显示章节，绑定链接、图片、输入和标注交互
+Reveal the section and bind link, image, input, and annotation interactions
    |
    v
 章节卸载或换书时清理 / Clean up on unload or book change
 ```
 
-## 交互与界面层 / Interaction and UI Layers
+Each pointer gesture should has only one owner and follow this priority order:
 
-一次指针操作只交给一个处理者，优先级为：控件 > 链接 > 高亮与批注 > 图片 > 文本选择 > 翻页。右键操作同样优先命中高亮，再处理图片或普通文本。
+controls > links > highlights & annotations > images > text selection > page turning.
 
-Each pointer gesture has one owner: controls > links > highlights and annotations > images > text selection > page turning. Right-clicks also prefer highlights before media or ordinary text.
-
-界面简化为三层：EPUB iframe 正文、SVG 内容装饰层（高亮与批注）、应用界面层（Dock、菜单、弹窗与图片放大）。
-
-The UI has three broad layers: EPUB iframe content, SVG content decorations (highlights and annotations), and application chrome (Dock, menus, dialogs, and image zoom).
-
-## 快捷键与交互 / Shortcuts and Interaction
+## 快捷键 / Shortcuts
 
 | 输入 / Input | Paginated | Scrolled |
 | --- | --- | --- |
@@ -234,3 +242,9 @@ The UI has three broad layers: EPUB iframe content, SVG content decorations (hig
 - [foliate-js](https://github.com/johnfactotum/foliate-js)（初始 renderer 与 EPUB parser）
 - EB Garamond font
 - Monaspace Argon
+
+## 故障排查 / Troubleshooting
+
+在 Edge 使用英文界面时，Language Detector API 可能会将现代中文错误识别为文言文（`lzh`），导致 Translator API 无法使用。
+
+When Edge uses an English interface, the Language Detector API may incorrectly identify modern Chinese as Literary Chinese (`lzh`), preventing the Translator API from working.

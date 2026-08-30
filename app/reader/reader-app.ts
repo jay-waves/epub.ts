@@ -28,11 +28,7 @@ import {
   clearMathCache,
   prepareTypography,
 } from "../typography";
-import {
-  closeContentOverlays,
-  disposeContent,
-  enhanceImages,
-} from "./image-zoom";
+import { closeContentOverlays, disposeContent } from "./image-zoom";
 import { createSearch } from "./search";
 import { createBookInfo } from "./book-info";
 import { App } from "./ui/App";
@@ -441,7 +437,6 @@ async function enhanceContent(
       reflowable,
       signal,
     });
-    if (reflowable && !signal.aborted) enhanceImages(doc, signal);
   } catch (error) {
     console.warn("Failed to enhance reader content.", error);
   }

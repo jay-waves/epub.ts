@@ -8,13 +8,7 @@ export function baseLanguage(language: string) {
 
 export function translationModelLanguage(language: string) {
   try {
-    const locale = new Intl.Locale(language);
-    if (locale.language === "zh") {
-      // TODO: Restore specific Chinese tags when Edge no longer leaves the
-      // zh-Hans/zh-Hant translation model download permanently pending.
-      return "lzh";
-    }
-    return locale.baseName.toLowerCase();
+    return new Intl.Locale(language).baseName.toLowerCase();
   } catch {
     return baseLanguage(language);
   }

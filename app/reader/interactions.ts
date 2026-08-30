@@ -7,6 +7,7 @@ import {
   resolveReaderPointerIntent,
 } from "./interaction-arbiter";
 import { openMediaContext } from "./context-menu/media-context";
+import { bindImageInteractions } from "./image-zoom";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
@@ -117,6 +118,7 @@ export function createInteractions(options: InteractionOptions) {
   const cursor = new CursorHider();
 
   const bindDoc = (view: ReaderView, doc: Document, index: number, signal: AbortSignal) => {
+    if (view.renderMode !== "fixed") bindImageInteractions(doc, signal);
     cursor.add(doc.documentElement, () => view.hasAttribute("autohide-cursor"), signal);
     const targetStyle = doc.createElement("style");
     targetStyle.textContent = TARGET_STYLE;

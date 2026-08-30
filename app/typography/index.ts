@@ -2,6 +2,7 @@ import { loadDocumentFonts } from "./fonts";
 import { getReaderFontFamily } from "./font-family";
 import { prepareMathRenderer, renderMathDocument } from "./enhancers/math";
 import { preservePublisherFontScale } from "./enhancers/font-scaling";
+import { prepareImages } from "./enhancers/images";
 import { getEpubType, markReaderSemantics } from "./enhancers/semantics";
 import { enhanceTypography } from "./enhancers/typography";
 import { enhanceTables } from "./enhancers/tables";
@@ -28,20 +29,22 @@ export async function prepareTypography(doc: Document, options: {
 
   if (!options.reflowable) return;
 
+  const fontsReady = loadDocumentFonts(doc, options.fontQueries);
+  const mathReady = doc.querySelector('math[display="block"]')
+    ? prepareMathRenderer()
+    : null;
+  const highlighterReady = doc.querySelector("pre")
+    ? import("./enhancers/highlighter")
+    : null;
+
   preservePublisherFontScale(doc);
   mapInlinePublisherFontFamilies(doc);
   markReaderSemantics(doc);
   enhanceTypography(doc);
   enhanceTables(doc, options.paginated, options.signal);
   labelFootnotes(doc);
+  prepareImages(doc, options.signal);
   const codeBlocks = prepareReaderCodeBlocks(doc);
-  const fontsReady = loadDocumentFonts(doc, options.fontQueries);
-  const mathReady = doc.querySelector('math[display="block"]')
-    ? prepareMathRenderer()
-    : null;
-  const highlighterReady = codeBlocks.length
-    ? import("./enhancers/highlighter")
-    : null;
 
   await fontsReady;
   if (options.signal.aborted) return;
