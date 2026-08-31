@@ -69,28 +69,28 @@ function grantDownloadConsent(languagePairKey: string) {
   }
 }
 
-function withTimeout<Result>(
-  promise: Promise<Result>,
+async function withTimeout<Result>(
+  task: (signal: AbortSignal) => Promise<Result>,
   controller: AbortController,
   message: string,
   timeoutMs = operationTimeoutMs,
 ) {
-  return new Promise<Result>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      reject(new ModelTimeoutError(message));
-      controller.abort();
-    }, timeoutMs);
-    promise.then(
-      (result) => {
-        window.clearTimeout(timeout);
-        resolve(result);
-      },
-      (error) => {
-        window.clearTimeout(timeout);
-        reject(error);
-      },
-    );
-  });
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = AbortSignal.any([controller.signal, timeout]);
+  signal.throwIfAborted();
+  const aborted = Promise.withResolvers<never>();
+  const reject = () => aborted.reject(signal.reason);
+  signal.addEventListener("abort", reject, { once: true });
+  try {
+    return await Promise.race([task(signal), aborted.promise]);
+  } catch (error) {
+    if (timeout.aborted) {
+      throw new ModelTimeoutError(message);
+    }
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", reject);
+  }
 }
 
 function isSameTranslationLanguage(sourceLanguage: string, targetLanguage: string) {
@@ -111,7 +111,6 @@ export function createTranslation(options: {
   const builtInAi = globalThis as BuiltInAiGlobals;
   let activeController: AbortController | null = null;
   let pendingDownload: (() => void) | null = null;
-  let runId = 0;
   let cachedTranslator: {
     languagePairKey: string;
     session: TranslatorSession;
@@ -128,7 +127,6 @@ export function createTranslation(options: {
   };
 
   const cancel = () => {
-    ++runId;
     activeController?.abort();
     activeController = null;
     pendingDownload = null;
@@ -145,7 +143,6 @@ export function createTranslation(options: {
     downloadApproved = false,
   ) => {
     cancel();
-    const currentRunId = runId;
     const controller = new AbortController();
     activeController = controller;
     const targetLanguage = translationModelLanguage(options.getTargetLanguage());
@@ -176,7 +173,7 @@ export function createTranslation(options: {
         throw new Error("The document language could not be detected.");
       }
       const sourceLanguage = translationModelLanguage(effectiveLanguage);
-      if (currentRunId !== runId) return;
+      controller.signal.throwIfAborted();
       if (isSameTranslationLanguage(sourceLanguage, targetLanguage)) {
         emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
           ...baseDetail,
@@ -196,12 +193,12 @@ export function createTranslation(options: {
       const canDownload = downloadApproved || hasDownloadConsent(languagePairKey);
       if (!translator && !canDownload) {
         const availability = await withTimeout(
-          Translator.availability(languagePair),
+          () => Translator.availability(languagePair),
           controller,
           "The browser did not report translation model availability.",
           availabilityTimeoutMs,
         );
-        if (currentRunId !== runId) return;
+        controller.signal.throwIfAborted();
         ensureUsable(availability, "The built-in translation model");
         if (availability !== "available") {
           pendingDownload = () => {
@@ -227,12 +224,12 @@ export function createTranslation(options: {
           sourceLanguage,
         });
         translator = await withTimeout(
-          Translator.create({
+          (signal) => Translator.create({
             ...languagePair,
-            signal: controller.signal,
+            signal,
             monitor(monitor) {
               monitor.addEventListener("downloadprogress", ({ loaded }) => {
-                if (currentRunId !== runId) return;
+                if (signal.aborted) return;
                 emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
                   ...baseDetail,
                   message: loaded >= 1
@@ -247,7 +244,7 @@ export function createTranslation(options: {
           controller,
           "The built-in translation model took too long to become ready.",
         );
-        if (currentRunId !== runId) {
+        if (controller.signal.aborted) {
           release(translator);
           return;
         }
@@ -263,11 +260,11 @@ export function createTranslation(options: {
       });
 
       const translatedText = await withTimeout(
-        translator.translate(sourceText, { signal: controller.signal }),
+        (signal) => translator.translate(sourceText, { signal }),
         controller,
         "Translation took too long.",
       );
-      if (currentRunId !== runId) return;
+      controller.signal.throwIfAborted();
 
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
@@ -276,7 +273,7 @@ export function createTranslation(options: {
         translatedText,
       });
     } catch (error) {
-      if (currentRunId !== runId) return;
+      if (controller.signal.aborted) return;
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
         message: error instanceof Error ? error.message : "Translation failed.",

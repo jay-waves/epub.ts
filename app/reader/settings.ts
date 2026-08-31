@@ -208,7 +208,7 @@ export function applyReaderLayout({ view }: ReaderLayoutTarget) {
 
 function configureReaderRenderer(renderer: Renderer, flow: ReaderFlow) {
   const layout = getLayoutPreset();
-  const element = renderer.element;
+  const element = renderer;
   element.setAttribute("gap", flow === "paginated" ? PAGINATED_GAP : "1.5%");
   element.setAttribute("animated", "");
   if (flow === "paginated") {
@@ -273,7 +273,6 @@ export async function applyReaderLayoutMode(mode: ReaderFlow, target: ReaderLayo
   if (view && view.renderMode !== "fixed" && view.renderMode !== mode) {
     await view.setRenderMode(mode, (renderer) => {
       configureReaderRenderer(renderer, mode);
-      renderer.setStyles?.(getBookStyles());
     });
     return;
   }

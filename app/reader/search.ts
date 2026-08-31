@@ -101,7 +101,7 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
         (item): item is Content & { doc: Document } => item.index === hit.index && Boolean(item.doc),
       );
       const range = content?.doc ? resolveHitRange(hit, content.doc, navigation) : null;
-      if (range && content && isVisible(range, content.doc, view.renderer.element)) {
+      if (range && content && isVisible(range, content.doc, view.renderer)) {
         selectRange(range);
       } else if (content) {
         await navigation.go(target, { select: true });
@@ -245,7 +245,7 @@ function distanceFromViewport(
   view: ReaderView,
 ) {
   const anchor = resolveHitRange(hit, content.doc, navigation);
-  return anchor ? distanceToViewport(anchor, content.doc, view.renderer.element) : Infinity;
+  return anchor ? distanceToViewport(anchor, content.doc, view.renderer) : Infinity;
 }
 
 function resolveHitRange(hit: Hit, doc: Document, navigation: Navigation) {

@@ -97,10 +97,10 @@ function getReadingRange(
   return undefined;
 }
 
-/** Owns the scroll-mode hot path: geometry, throttling, and reading-edge sampling. */
 /** Scroll-mode geometry sampling and anchor projection. */
 export class ScrollCoordinator {
   readonly #container: HTMLElement;
+  readonly #events = new AbortController();
   readonly #update: () => void;
   #updateFrame = 0;
   #suppressScrollEnd = false;
@@ -108,7 +108,9 @@ export class ScrollCoordinator {
   constructor(container: HTMLElement, update: () => void) {
     this.#container = container;
     this.#update = update;
-    container.addEventListener("scrollend", this.#handleScrollEnd);
+    container.addEventListener("scrollend", this.#handleScrollEnd, {
+      signal: this.#events.signal,
+    });
   }
 
   anchorTarget(doc: Document, rect: DOMRect, inset: number) {
@@ -159,6 +161,6 @@ export class ScrollCoordinator {
 
   destroy() {
     this.cancel();
-    this.#container.removeEventListener("scrollend", this.#handleScrollEnd);
+    this.#events.abort();
   }
 }

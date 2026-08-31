@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, MessageSquareText, Trash2 } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import { emitViewerEvent, emitViewerSignal, VIEWER_EVENTS } from "../../events";
 import type { AnnotationDetail } from "../../events";
 import { useViewerEvent } from "./use-viewer-event";
 
@@ -59,7 +59,7 @@ export function AnnotationPopover() {
   }, [state.open, state.value]);
 
   const popover = usePointPopover({
-    onDismiss: () => emitViewerEvent(VIEWER_EVENTS.annotationClose),
+    onDismiss: () => emitViewerSignal(VIEWER_EVENTS.annotationClose),
     open: state.open,
     x: state.x,
     y: state.y,

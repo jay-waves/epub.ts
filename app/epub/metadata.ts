@@ -6,13 +6,11 @@ function normalizeInlineText(value: string) {
 
 export function normalizeTocHref(href?: string) {
   if (!href) return "";
-
-  try {
-    const url = new URL(href, "https://reader.local/");
-    return `${url.pathname}${url.hash}`;
-  } catch {
-    return href.trim();
-  }
+  const value = href.trim();
+  const base = "https://reader.local/";
+  if (!URL.canParse(value, base)) return value;
+  const url = new URL(value, base);
+  return `${url.pathname}${url.hash}`;
 }
 
 function formatLocalized(value?: string | Record<string, string>) {

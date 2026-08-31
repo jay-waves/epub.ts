@@ -1,7 +1,7 @@
 import type { Content } from "../renderer";
 import type { ReaderView } from "./model";
 
-export type RenderedContentBinding = (content: Content & { doc: Document }, signal: AbortSignal) => void;
+export type RenderedContentBinding = (content: Content, signal: AbortSignal) => void;
 
 type Subscriber = {
   bind: RenderedContentBinding;
@@ -10,12 +10,12 @@ type Subscriber = {
 
 class RenderedContents {
   readonly #subscribers = new Set<Subscriber>();
-  readonly #contents = new Map<Document, Content & { doc: Document }>();
+  readonly #contents = new Map<Document, Content>();
   readonly #events = new AbortController();
 
   constructor(readonly view: ReaderView) {
     view.renderer?.getContents?.().forEach((content) => {
-      if (content.doc) this.#contents.set(content.doc, content as Content & { doc: Document });
+      this.#contents.set(content.doc, content);
     });
     view.addEventListener("load", (event) => {
       const content = { doc: event.detail.doc, index: event.detail.index };
@@ -54,7 +54,7 @@ class RenderedContents {
     hubs.delete(this.view);
   }
 
-  #bind(subscriber: Subscriber, content: Content & { doc: Document }) {
+  #bind(subscriber: Subscriber, content: Content) {
     if (subscriber.bindings.has(content.doc)) return;
     const events = new AbortController();
     subscriber.bindings.set(content.doc, events);

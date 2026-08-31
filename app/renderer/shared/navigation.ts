@@ -163,14 +163,25 @@ type NavigationTask<T> = () => T | Promise<T>;
 
 /** Serializes user navigation and coalesces reflows requested during a move. */
 export class NavigationTransaction {
+  readonly #reflow: () => void;
   #active = false;
   #idle: Promise<void> | undefined;
   #pending = 0;
   #resolveIdle: (() => void) | undefined;
   #queue = Promise.resolve();
   #reflowPending = false;
+  #revision = 0;
+
+  constructor(reflow: () => void) {
+    this.#reflow = reflow;
+  }
 
   get busy() { return this.#active || this.#pending > 0; }
+  get revision() { return this.#revision; }
+
+  invalidate() {
+    this.#revision += 1;
+  }
 
   deferReflow() {
     if (!this.#active) return false;
@@ -184,7 +195,7 @@ export class NavigationTransaction {
     return true;
   }
 
-  async run<T>(task: NavigationTask<T>, reflow: () => void): Promise<T | undefined> {
+  async run<T>(task: NavigationTask<T>): Promise<T | undefined> {
     if (this.#active) return undefined;
     this.#active = true;
     const idle = Promise.withResolvers<void>();
@@ -199,19 +210,26 @@ export class NavigationTransaction {
       this.#resolveIdle = undefined;
       if (this.#reflowPending) {
         this.#reflowPending = false;
-        reflow();
+        this.#reflow();
       }
     }
   }
 
-  enqueue<T>(task: NavigationTask<T>, reflow: () => void): Promise<T | undefined> {
+  enqueue<T>(task: NavigationTask<T>): Promise<T | undefined> {
     this.#pending += 1;
     const result = this.#queue.then(async () => {
       if (this.#idle) await this.#idle;
-      return this.run(task, reflow);
+      return this.run(task);
     });
     this.#queue = result.then(() => undefined, () => undefined);
     return result.finally(() => this.#pending -= 1);
+  }
+
+  enqueueCurrent<T>(
+    task: (revision: number) => T | Promise<T>,
+    revision = this.#revision,
+  ) {
+    return this.enqueue(() => revision === this.#revision ? task(revision) : undefined);
   }
 }
 
@@ -225,8 +243,8 @@ export function uncollapseRange(target: Node | Range): Node | Range {
     if (node?.nodeType === Node.ELEMENT_NODE) return node;
     return endContainer;
   }
-  if (endOffset + 1 < (endContainer.nodeValue?.length ?? 0)) range.setEnd(endContainer, endOffset + 1);
-  else if (endOffset > 1) range.setStart(endContainer, endOffset - 1);
+  if (endOffset < (endContainer.nodeValue?.length ?? 0)) range.setEnd(endContainer, endOffset + 1);
+  else if (endOffset > 0) range.setStart(endContainer, endOffset - 1);
   else return endContainer.parentNode ?? endContainer;
   return range;
 }

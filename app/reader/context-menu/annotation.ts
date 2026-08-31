@@ -1,7 +1,7 @@
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
+import { emitViewerEvent, emitViewerSignal, listenViewerEvent, VIEWER_EVENTS } from "../events";
 import type { ReaderAnnotation } from "../../epub/annotation";
 import { annotationRepository } from "./annotation-repository";
-import type { Content, OverlayDraw, OverlayDrawOptions } from "../../renderer";
+import type { Annotation, Content, OverlayDraw, OverlayDrawOptions } from "../../renderer";
 import type { ReaderView } from "../model";
 import type { Navigation } from "../navigation";
 import { drawAnnotation as drawAnnotationOverlay } from "./annotation-overlay";
@@ -158,11 +158,11 @@ export function createAnnotations(options: AnnotationOptions) {
     });
   };
 
-  const getAnnotationText = (highlight: ReaderAnnotation) => highlight.text?.trim() || highlight.value;
+  const getAnnotationText = (highlight: Annotation) => highlight.text?.trim() || highlight.value;
 
-  const hasAnnotationNote = (highlight: ReaderAnnotation) => Boolean(highlight.note?.trim());
+  const hasAnnotationNote = (highlight: Annotation) => Boolean(highlight.note?.trim());
 
-  const getHighlightColor = (highlight: ReaderAnnotation) =>
+  const getHighlightColor = (highlight: Annotation) =>
     !highlight.color || highlight.color === AUTO_HIGHLIGHT_COLOR || highlight.color === LEGACY_HIGHLIGHT_COLOR
       ? THEME_HIGHLIGHT_COLOR
       : highlight.color;
@@ -179,7 +179,7 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const openAnnotationPopover = (highlight: ReaderAnnotation, point?: { x: number; y: number }) => {
-    emitViewerEvent(VIEWER_EVENTS.translationClose);
+    emitViewerSignal(VIEWER_EVENTS.translationClose);
     emitViewerEvent(VIEWER_EVENTS.annotationOpen, {
       note: highlight.note ?? "",
       sourceText: getAnnotationText(highlight),
@@ -224,7 +224,7 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const drawAnnotation = (detail: {
-    annotation: ReaderAnnotation;
+    annotation: Annotation;
     draw: <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, options?: Options) => void;
   }) => {
     detail.draw(drawAnnotationOverlay, {
@@ -232,14 +232,14 @@ export function createAnnotations(options: AnnotationOptions) {
       color: getHighlightColor(detail.annotation),
       hasNote: hasAnnotationNote(detail.annotation),
       onBadgeClick: (event) => {
-        const highlight = annotationRepository.getByCfi(detail.annotation.value) ?? detail.annotation;
-        if (!hasAnnotationNote(highlight)) return;
+        const highlight = annotationRepository.getByCfi(detail.annotation.value);
+        if (!highlight || !hasAnnotationNote(highlight)) return;
         openAnnotationPopover(highlight, getPagePointFromDocumentEvent(event));
         textContext.close();
       },
       onActivate: (event) => {
-        const highlight = annotationRepository.getByCfi(detail.annotation.value)
-          ?? detail.annotation;
+        const highlight = annotationRepository.getByCfi(detail.annotation.value);
+        if (!highlight) return;
         options.getNavigation()?.clearSelection();
         open({ highlight, pageX: event.clientX, pageY: event.clientY });
       },
@@ -279,7 +279,7 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const markUnsaved = () => {
-    emitViewerEvent(VIEWER_EVENTS.unsavedChange);
+    emitViewerSignal(VIEWER_EVENTS.unsavedChange);
   };
 
   const persistHighlight = async (highlight: ReaderAnnotation, selection?: TextSelection) => {
@@ -305,7 +305,7 @@ export function createAnnotations(options: AnnotationOptions) {
     markUnsaved();
     await view.deleteAnnotation?.(highlight);
     await annotationRepository.remove(bookKey, highlight.id);
-    emitViewerEvent(VIEWER_EVENTS.annotationClose);
+    emitViewerSignal(VIEWER_EVENTS.annotationClose);
     textContext.close();
   };
 
@@ -318,7 +318,7 @@ export function createAnnotations(options: AnnotationOptions) {
       note: undefined,
     };
     if (!await persistHighlight(highlight)) return;
-    emitViewerEvent(VIEWER_EVENTS.annotationClose);
+    emitViewerSignal(VIEWER_EVENTS.annotationClose);
   };
 
   const saveAnnotationNote = async (value: string, note: string) => {

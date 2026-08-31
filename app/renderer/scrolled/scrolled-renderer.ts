@@ -1,4 +1,5 @@
 import { ReflowableSpine } from '../shared/reflowable-spine'
+import type { SpineEntry } from '../shared/spine-state'
 import {
     anchorForPosition,
     animateNumber,
@@ -18,7 +19,11 @@ import { isAtScrolledBookEdge, planScrolledNavigation } from './scrolled-navigat
 import { resolveScrolledLocation, scrolledReadingEdge } from './scrolled-visible-location'
 import { ScrollCoordinator } from './scroll-coordinator'
 import { ScrolledTrack } from './scrolled-track'
-import { SectionFrame, type SectionDirection } from '../shared/section-frame'
+import {
+    sameSectionDirection,
+    SectionFrame,
+    type SectionDirection,
+} from '../shared/section-frame'
 import type { Book, Resolved } from '../reader-view.js'
 import type { RendererStyles } from '../renderer'
 import { getLayoutGap, supportsContinuousSpine } from '../shared/flow-geometry'
@@ -42,16 +47,15 @@ export class ScrolledRenderer extends HTMLElement {
     #container!: HTMLElement
     #track!: HTMLElement
     #spine!: ReflowableSpine
-    #navigation = new NavigationTransaction()
+    #navigation = new NavigationTransaction(() => this.#scheduleRender())
     #vertical = false
     #rtl = false
+    #writingMode: SectionDirection['writingMode'] = 'horizontal-tb'
     #margin = 0
     #position?: ReadingPosition
     #targetAnchor: NavigationAnchor = 0
     #motion?: AbortController
-    #navigationRevision = 0
     #justAnchored = false
-    #scrollBounds: [number, number, number] | null = null
     #renderFrame?: number
     #scrolledViewport!: ScrollCoordinator
     #containerWidth = 0
@@ -118,6 +122,8 @@ export class ScrolledRenderer extends HTMLElement {
             host: this,
             layout: () => this.#layoutEntries(),
             layoutFor: direction => this.#beforeRender(direction),
+            canJoinWindow: (current, candidate) =>
+                sameSectionDirection(current.direction, candidate.direction),
             navigation: this.#navigation,
             restoreViewport: offset => this.#restoreViewport(offset),
             scheduleRender: () => this.#scheduleRender(),
@@ -183,32 +189,45 @@ export class ScrolledRenderer extends HTMLElement {
         this.#track.style.width = '100%'
         this.#track.style.height = `${this.#spine.physicalExtent}px`
     }
-    #beforeRender({ vertical, rtl, background = '' }: SectionDirection): ScrolledSectionLayout {
-        this.#vertical = vertical
-        this.#rtl = rtl
-        this.#top.classList.toggle('vertical', vertical)
-
-        // set background to `doc` background
-        // this is needed because the iframe does not fill the whole element
-        this.#background.style.background = background
-
+    #beforeRender({ vertical }: SectionDirection): ScrolledSectionLayout {
         const { width, height } = this.#container.getBoundingClientRect()
-        this.#containerWidth = width
-        this.#containerHeight = height
         const size = vertical ? height : width
 
         const style = getComputedStyle(this.#top)
         const maxInlineSize = parseFloat(style.getPropertyValue('--_max-inline-size'))
         const margin = parseFloat(style.getPropertyValue('--_margin'))
-        this.#margin = margin
 
         const baseGap = getLayoutGap(style.getPropertyValue('--_gap'), size)
 
-        // FIXME: vertical-rl only, not -lr
-        this.setAttribute('dir', vertical ? 'rtl' : 'ltr')
-        this.#top.style.padding = '0'
         return { kind: 'scrolled', width, height, margin,
             gap: baseGap, columnWidth: maxInlineSize }
+    }
+    #activateEntry(entry: SpineEntry<SectionFrame>) {
+        const { direction } = entry.view
+        const changed = direction.vertical !== this.#vertical
+            || direction.rtl !== this.#rtl
+            || direction.writingMode !== this.#writingMode
+        this.#spine.activate(entry)
+        this.#vertical = direction.vertical
+        this.#rtl = direction.rtl
+        this.#writingMode = direction.writingMode
+        this.#margin = entry.view.margin
+        this.#top.classList.toggle('vertical', direction.vertical)
+        this.setAttribute('dir', direction.writingMode === 'vertical-rl' ? 'rtl' : 'ltr')
+        this.#top.style.padding = '0'
+        if (!this.continuous) {
+            if (this.#spine.entries.length > 1) this.#spine.removeOtherThanCurrent()
+            const { style } = entry.view.element
+            style.removeProperty('position')
+            style.removeProperty('left')
+            style.removeProperty('top')
+            this.#spine.track.reset()
+            this.#track.style.width = '100%'
+            this.#track.style.height = '100%'
+        } else if (changed) {
+            this.#spine.track.reset()
+            this.#layoutEntries()
+        }
     }
     render() {
         const view = this.#spine.currentView
@@ -227,6 +246,7 @@ export class ScrolledRenderer extends HTMLElement {
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
+                writingMode: this.#writingMode,
             }), false)
         }
         if (!this.continuous) {
@@ -253,9 +273,6 @@ export class ScrolledRenderer extends HTMLElement {
     }
     get mode() {
         return 'scrolled' as const
-    }
-    get element() {
-        return this
     }
     get continuous() {
         return supportsContinuousSpine(this.#bookDir, this.#rtl, this.#vertical)
@@ -291,7 +308,7 @@ export class ScrolledRenderer extends HTMLElement {
         return Math.round(this.viewSize / this.size)
     }
     panBy(dx: number, dy: number) {
-        const delta = this.#vertical ? dy : dx
+        const delta = this.#vertical ? dx : dy
         const element = this.#container
         const { scrollProp } = this
         element[scrollProp] += delta
@@ -319,7 +336,6 @@ export class ScrolledRenderer extends HTMLElement {
             this.#scrolledViewport.cancel(true)
         }
         this.#container[this.scrollProp] = offset
-        if (this.#scrollBounds) this.#scrollBounds[0] = offset
     }
     async #scrollToRect(rect: DOMRect, reason: string, entry = this.#entryForView()) {
         if (!entry) return false
@@ -330,18 +346,11 @@ export class ScrolledRenderer extends HTMLElement {
     async #scrollTo(offset: number, reason: string, smooth = false) {
         if (this.#destroyed) return false
         const element = this.#container
-        const { scrollProp, size } = this
-        // FIXME: vertical-rl only, not -lr
-        if (this.#vertical) offset = -offset
+        const { scrollProp } = this
+        if (this.#writingMode === 'vertical-rl') offset = -offset
         const moved = element[scrollProp] !== offset
         const commit = () => {
             if (this.#destroyed) return false
-            const actualOffset = element[scrollProp]
-            this.#scrollBounds = [
-                actualOffset,
-                this.atStart ? 0 : size,
-                this.atEnd ? 0 : size,
-            ]
             const location = resolveScrolledLocation({
                 continuous: this.continuous,
                 current: this.#entryForView(),
@@ -361,7 +370,7 @@ export class ScrolledRenderer extends HTMLElement {
                 this.#scrolledViewport.cancel(true)
                 this.#justAnchored = true
             }
-            this.#spine.activate(entry)
+            this.#activateEntry(entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
                 this.#targetAnchor = position.range ?? position.fraction
@@ -443,12 +452,12 @@ export class ScrolledRenderer extends HTMLElement {
         }
     }
     async #goTo({ index, anchor, select = false }: Resolved,
-        revision = this.#navigationRevision,
+        revision = this.#navigation.revision,
         reason = select ? 'selection' : 'navigation') {
         const hasFocus = this.#spine.currentView?.document?.hasFocus()
         const entry = await this.#spine.prepare(index)
-        if (this.#destroyed || revision !== this.#navigationRevision) return false
-        this.#spine.activate(entry)
+        if (this.#destroyed || revision !== this.#navigation.revision) return false
+        this.#activateEntry(entry)
         const resolvedAnchor = typeof anchor === 'function'
             ? anchor(entry.view.document) : anchor
         const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
@@ -457,11 +466,11 @@ export class ScrolledRenderer extends HTMLElement {
         return landed !== false
     }
     #enqueueNavigation<T>(task: (revision: number) => T | Promise<T>,
-        revision = this.#navigationRevision) {
-        return this.#navigation.enqueue(() => {
-            if (this.#destroyed || revision !== this.#navigationRevision) return
-            return task(revision)
-        }, () => this.#scheduleRender())
+        revision = this.#navigation.revision) {
+        return this.#navigation.enqueueCurrent(current => {
+            if (this.#destroyed) return
+            return task(current)
+        }, revision)
     }
     capturePosition() {
         // Commit the physical offset synchronously before a mode switch aborts
@@ -469,16 +478,15 @@ export class ScrolledRenderer extends HTMLElement {
         void this.#scrollTo(this.start, 'switch')
     }
     cancelNavigation() {
-        this.#navigationRevision += 1
+        this.#navigation.invalidate()
         this.#motion?.abort()
         this.#motion = undefined
-        this.#scrollBounds = null
         this.#scrolledViewport.cancel(true)
     }
     async goTo(target: Resolved | Promise<Resolved>) {
-        const revision = this.#navigationRevision
+        const revision = this.#navigation.revision
         const resolved = await target
-        if (this.#destroyed || revision !== this.#navigationRevision) return
+        if (this.#destroyed || revision !== this.#navigation.revision) return
         if (this.#spine.contains(resolved.index))
             return this.#enqueueNavigation(
                 current => this.#goTo(resolved, current), revision)
@@ -504,7 +512,7 @@ export class ScrolledRenderer extends HTMLElement {
             index,
             anchor: dir < 0 ? 1 : 0,
             select: false,
-        }, this.#navigationRevision, reason)
+        }, this.#navigation.revision, reason)
     }
     async #turnPage(dir: -1 | 1, distance?: number) {
         if (!this.#spine.currentView) return

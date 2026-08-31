@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, Languages, X } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import { emitViewerSignal, VIEWER_EVENTS } from "../../events";
 import type { TranslationDetail } from "../../events";
 import { useViewerEvent } from "./use-viewer-event";
 
@@ -34,7 +34,7 @@ export function TranslationPopover() {
   });
 
   const popover = usePointPopover({
-    onDismiss: () => emitViewerEvent(VIEWER_EVENTS.translationClose),
+    onDismiss: () => emitViewerSignal(VIEWER_EVENTS.translationClose),
     open: state.open,
     x: state.x,
     y: state.y,
@@ -80,7 +80,7 @@ export function TranslationPopover() {
           <button
             aria-label="Close translation"
             type="button"
-            onClick={() => emitViewerEvent(VIEWER_EVENTS.translationClose)}
+            onClick={() => emitViewerSignal(VIEWER_EVENTS.translationClose)}
           >
             <X size={15} aria-hidden="true" />
           </button>
@@ -95,7 +95,7 @@ export function TranslationPopover() {
           <button
             className="reader-text-popover-download"
             type="button"
-            onClick={() => emitViewerEvent(VIEWER_EVENTS.translationDownload)}
+            onClick={() => emitViewerSignal(VIEWER_EVENTS.translationDownload)}
           >
             {translationDirection}: {state.message ?? "Download this language model and translate."}
           </button>

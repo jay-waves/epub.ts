@@ -1,6 +1,14 @@
 import * as CFI from './cfi.js'
 import { ResourceCache } from './resource-cache.js'
-import type { Book, BookSection, Resolved, TocItem } from '../renderer/reader-view.js'
+import type {
+    Book,
+    BookMetadata,
+    BookRendition,
+    BookSection,
+    LocalizedText,
+    Resolved,
+    TocItem,
+} from '../renderer/reader-view.js'
 
 type LoadText = (path: string) => Promise<string | null> | string | null
 type LoadBlob = (path: string) => Promise<Blob | null> | Blob | null
@@ -27,8 +35,24 @@ type SpineItem = {
 }
 type GuideItem = { label: string | null; type: string[]; href: string }
 type NavItem = TocItem & { type?: string[]; subitems?: NavItem[] | null }
-type LooseRecord = Record<string, any>
 type ReplaceCallback = (...args: any[]) => string | Promise<string | null>
+type MutableRecord = Record<string, unknown>
+type MetadataEntry = {
+    attrs: Record<string, string>
+    lang: string | null
+    property: string | null
+    props: Record<string, MetadataEntry[]>
+    scheme: string | null
+    value: string
+}
+type ParsedContributor = {
+    code?: string
+    name: LocalizedText | null
+    role: string[]
+    scheme?: string
+    sortAs?: LocalizedText
+}
+type AlternateIdentifier = string | { scheme: string, value: string }
 
 const NS = {
     CONTAINER: 'urn:oasis:names:tc:opendocument:xmlns:container',
@@ -151,21 +175,25 @@ const replaceAsync = async (value: string, regex: RegExp, replace: ReplaceCallba
     return value.replace(regex, () => results[index++] ?? '')
 }
 
-const tidy = (obj: LooseRecord): any => {
+const isMutableRecord = (value: unknown): value is MutableRecord =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const tidy = (obj: MutableRecord): unknown => {
     for (const [key, val] of Object.entries(obj))
         if (val == null) delete obj[key]
         else if (Array.isArray(val)) {
             obj[key] = val.filter(x => x).map(x =>
-                typeof x === 'object' && !Array.isArray(x) ? tidy(x) : x)
-            if (!obj[key].length) delete obj[key]
-            else if (obj[key].length === 1) obj[key] = obj[key][0]
+                isMutableRecord(x) ? tidy(x) : x)
+            const items = obj[key] as unknown[]
+            if (!items.length) delete obj[key]
+            else if (items.length === 1) obj[key] = items[0]
         }
-        else if (typeof val === 'object') {
+        else if (isMutableRecord(val)) {
             obj[key] = tidy(val)
             if (!Object.keys(val).length) delete obj[key]
         }
     const keys = Object.keys(obj)
-    if (keys.length === 1 && keys[0] === 'name') return obj[keys[0]]
+    if (keys.length === 1 && keys[0] === 'name') return obj.name
     return obj
 }
 
@@ -204,7 +232,7 @@ const getMetadata = (opf: Document) => {
     const baseLang = $metadata.getAttribute('xml:lang')
         ?? opf.documentElement.getAttribute('xml:lang') ?? 'und'
     const prefixes = getPrefixes(opf)
-    const parse = (el: Element): LooseRecord => {
+    const parse = (el: Element): MetadataEntry => {
         const property = el.getAttribute('property')
         const scheme = el.getAttribute('scheme')
         return {
@@ -220,24 +248,26 @@ const getMetadata = (opf: Document) => {
         }
     }
     const refines = Map.groupBy(els.meta ?? [], el => el.getAttribute('refines'))
-    const getProperties = (el?: Element | null): Record<string, LooseRecord[]> | null => {
+    const getProperties = (el?: Element | null): Record<string, MetadataEntry[]> => {
         const els = refines.get(el ? '#' + el.getAttribute('id') : null)
-        if (!els) return null
+        if (!els) return {}
         return Object.groupBy(els.map(parse), x => String(x.property)) as
-            Record<string, LooseRecord[]>
+            Record<string, MetadataEntry[]>
     }
     const dcGroups = Object.groupBy(els.dc ?? [], el => el.localName)
-    const dc: Record<string, LooseRecord[]> = Object.fromEntries(
+    const dc: Record<string, MetadataEntry[]> = Object.fromEntries(
         Object.entries(dcGroups).flatMap(([name, elements]) =>
             elements ? [[name, elements.map(parse)]] : []))
-    const properties = getProperties() ?? {}
-    const legacyMeta = Object.fromEntries(els.legacyMeta?.map(el =>
-        [el.getAttribute('name'), el.getAttribute('content')]) ?? [])
+    const properties = getProperties()
+    const legacyMeta = Object.fromEntries(els.legacyMeta?.flatMap(el => {
+        const name = el.getAttribute('name')
+        return name ? [[name, el.getAttribute('content') ?? ''] as const] : []
+    }) ?? [])
 
     // second pass: map to webpub
-    const one = (items?: LooseRecord[]) => items?.[0]?.value
-    const prop = (item: LooseRecord | undefined, property: string) => one(item?.props?.[property])
-    const makeLanguageMap = (item?: LooseRecord | null): any => {
+    const one = (items?: MetadataEntry[]) => items?.[0]?.value
+    const prop = (item: MetadataEntry | undefined, property: string) => one(item?.props[property])
+    const makeLanguageMap = (item?: MetadataEntry | null): LocalizedText | null => {
         const x = item
         if (!x) return null
         const alts = x.props?.['alternate-script'] ?? []
@@ -245,28 +275,28 @@ const getMetadata = (opf: Document) => {
         if (!alts.length && (!x.lang || x.lang === baseLang) && !altRep) return x.value
         const map = { [x.lang ?? baseLang]: x.value }
         if (altRep) map[x.attrs['alt-rep-lang']] = altRep
-        for (const y of alts) map[y.lang] ??= y.value
+        for (const y of alts) map[y.lang ?? baseLang] ??= y.value
         return map
     }
-    const makeContributor = (x: LooseRecord): LooseRecord => ({
+    const makeContributor = (x: MetadataEntry): ParsedContributor => ({
         name: makeLanguageMap(x),
-        sortAs: makeLanguageMap(x.props?.['file-as']?.[0]) ?? x.attrs['file-as'],
-        role: x.props?.role?.filter((role: LooseRecord) =>
+        sortAs: makeLanguageMap(x.props['file-as']?.[0]) ?? x.attrs['file-as'],
+        role: x.props.role?.filter(role =>
             role.scheme === PREFIX.marc + 'relators')
-            ?.map((role: LooseRecord) => role.value) ?? [x.attrs.role],
+            .map(role => role.value) ?? (x.attrs.role ? [x.attrs.role] : []),
         code: prop(x, 'term') ?? x.attrs.term,
         scheme: prop(x, 'authority') ?? x.attrs.authority,
     })
-    const makeCollection = (x: LooseRecord) => ({
+    const makeCollection = (x: MetadataEntry) => ({
         name: makeLanguageMap(x),
         // NOTE: webpub requires number but EPUB allows values like "2.2.1"
         position: one(x.props?.['group-position']),
     })
-    const makeAltIdentifier = (x: LooseRecord): any => {
+    const makeAltIdentifier = (x: MetadataEntry): AlternateIdentifier => {
         const { value } = x
         if (/^urn:/i.test(value)) return value
         if (/^doi:/i.test(value)) return `urn:${value}`
-        const type = x.props?.['identifier-type']
+        const [type] = x.props['identifier-type'] ?? []
         if (!type) {
             const scheme = x.attrs.scheme
             if (!scheme) return value
@@ -277,7 +307,8 @@ const getMetadata = (opf: Document) => {
             return { scheme, value }
         }
         if (type.scheme === PREFIX.onix + 'codelist5') {
-            const nid = ONIX5[type.value as keyof typeof ONIX5]
+            const nid: string | undefined = Object.hasOwn(ONIX5, type.value)
+                ? ONIX5[type.value as keyof typeof ONIX5] : undefined
             if (nid) return `urn:${nid}:${value}`
         }
         return value
@@ -286,10 +317,10 @@ const getMetadata = (opf: Document) => {
         x => prop(x, 'collection-type') === 'series' ? 'series' : 'collection')
     const mainTitle = dc.title?.find(x => prop(x, 'title-type') === 'main') ?? dc.title?.[0]
     const identifier = getIdentifier(opf)
-    const metadata: LooseRecord = {
+    const metadata: BookMetadata = {
         identifier,
-        title: makeLanguageMap(mainTitle),
-        sortAs: makeLanguageMap(mainTitle?.props?.['file-as']?.[0])
+        title: makeLanguageMap(mainTitle) ?? undefined,
+        sortAs: makeLanguageMap(mainTitle?.props['file-as']?.[0])
             ?? mainTitle?.attrs?.['file-as']
             ?? legacyMeta?.['calibre:title_sort'],
         subtitle: dc.title?.find(x => prop(x, 'title-type') === 'subtitle')?.value,
@@ -315,23 +346,25 @@ const getMetadata = (opf: Document) => {
         rights: one(dc.rights), // NOTE: not in webpub schema
         pageBreakSource: one(properties['pageBreakSource']), // NOTE: not in webpub schema
     }
-    const remapContributor = (defaultKey: string) => (x: LooseRecord) => {
-        const keys = new Set<string>(x.role?.map((role: string) =>
-            RELATORS[role as keyof typeof RELATORS] ?? defaultKey))
+    const remapContributor = (defaultKey: string) =>
+        (x: ParsedContributor): [Iterable<string>, ParsedContributor] => {
+        const keys = new Set(x.role.map(role =>
+            Object.hasOwn(RELATORS, role)
+                ? RELATORS[role as keyof typeof RELATORS] : defaultKey))
         return [keys.size ? keys : [defaultKey], x]
     }
-    const contributors: Array<[Iterable<string>, LooseRecord]> = [
+    const contributors = [
         dc.creator?.map(makeContributor)?.map(remapContributor('author')) ?? [],
         dc.contributor?.map(makeContributor)?.map(remapContributor('contributor')) ?? [],
-    ]
-        .flat() as Array<[Iterable<string>, LooseRecord]>
+    ].flat()
+    const contributorGroups: Record<string, ParsedContributor[]> = {}
     for (const [keys, val] of contributors)
         for (const key of keys)
-            if (metadata[key]) metadata[key].push(val)
-            else metadata[key] = [val]
+            (contributorGroups[key] ??= []).push(val)
+    Object.assign(metadata, contributorGroups)
     tidy(metadata)
 
-    const rendition: LooseRecord = {}
+    const rendition: BookRendition = {}
     for (const [key, val] of Object.entries(properties)) {
         if (key.startsWith(PREFIX.rendition))
             rendition[camel(key.replace(PREFIX.rendition, ''))] = one(val)
@@ -840,8 +873,8 @@ export class EPUB implements Book {
     toc?: TocItem[]
     pageList?: TocItem[]
     landmarks?: Array<{ href?: string; type: string[] }>
-    metadata?: LooseRecord
-    rendition: LooseRecord = {}
+    metadata?: BookMetadata
+    rendition: BookRendition = {}
     dir?: string
     transformTarget?: EventTarget
     resources!: Resources

@@ -19,7 +19,11 @@ import {
     planPaginatedNavigation,
 } from './paginated-navigation'
 import { paginatedReadingEdge, resolvePaginatedLocation } from './paginated-visible-location'
-import { SectionFrame, type SectionDirection } from '../shared/section-frame'
+import {
+    sameSectionDirection,
+    SectionFrame,
+    type SectionDirection,
+} from '../shared/section-frame'
 import { getPaginatedColumnGeometry } from './paginated-layout'
 import { PaginatedTrack } from './paginated-track'
 import type { Book, Resolved } from '../reader-view.js'
@@ -89,13 +93,13 @@ export class PaginatedRenderer extends HTMLElement {
     #container!: HTMLElement
     #track!: HTMLElement
     #spine!: ReflowableSpine
-    #navigation = new NavigationTransaction()
+    #navigation = new NavigationTransaction(() => this.#scheduleRender())
     #vertical = false
     #rtl = false
+    #writingMode: SectionDirection['writingMode'] = 'horizontal-tb'
     #position?: ReadingPosition
     #targetAnchor: NavigationAnchor = 0
     #motion?: AbortController
-    #navigationRevision = 0
     #scrollBounds: [number, number, number] | null = null
     #renderFrame?: number
     #containerWidth = 0
@@ -198,6 +202,8 @@ export class PaginatedRenderer extends HTMLElement {
             layout: () => this.#layoutEntries(),
             layoutFor: direction => this.#beforeRender(direction),
             layoutRevision: () => this.#layoutRevision,
+            canJoinWindow: (current, candidate) =>
+                sameSectionDirection(current.direction, candidate.direction),
             navigation: this.#navigation,
             onClear: () => this.#pageOrigin = 0,
             restoreViewport: offset => this.#restoreViewport(offset),
@@ -313,14 +319,9 @@ export class PaginatedRenderer extends HTMLElement {
         this.#track.style[side] = `${this.#spine.physicalExtent}px`
         this.#track.style[otherSide] = '100%'
     }
-    #beforeRender({ vertical, rtl, background = '' }: SectionDirection) {
-        this.#vertical = vertical
-        this.#rtl = rtl
+    #beforeRender({ vertical }: SectionDirection) {
+        const activeVertical = this.#top.classList.contains('vertical')
         this.#top.classList.toggle('vertical', vertical)
-
-        // set background to `doc` background
-        // this is needed because the iframe does not fill the whole element
-        this.#background.style.background = background
 
         const { width, height } = this.#container.getBoundingClientRect()
         this.#containerWidth = width
@@ -352,16 +353,34 @@ export class PaginatedRenderer extends HTMLElement {
             pageSize,
         } = getPaginatedColumnGeometry(
             size, maxColumnCount, maxInlineSize, baseGap)
-        this.#pageSize = pageSize
-        this.#turnSize = columnStep
-        this.#edgeTurns = Math.max(1, Math.round(pageSize / this.#turnSize))
-        this.setAttribute('dir', this.reversed ? 'rtl' : 'ltr')
-
-        return { kind: 'columns' as const,
+        const layout = { kind: 'columns' as const,
             height: vertical ? pageSize : height,
             width: vertical ? width : pageSize,
             margin, gap,
             columnWidth, columnCount: divisor, columnStep }
+        this.#top.classList.toggle('vertical', activeVertical)
+        return layout
+    }
+    #activateEntry(entry: SpineEntry<SectionFrame>) {
+        const { direction, columnCount, columnStep } = entry.view
+        const changed = direction.vertical !== this.#vertical
+            || direction.rtl !== this.#rtl
+            || direction.writingMode !== this.#writingMode
+        this.#spine.activate(entry)
+        if (changed && this.#spine.entries.length > 1) this.#spine.removeOtherThanCurrent()
+        this.#vertical = direction.vertical
+        this.#rtl = direction.rtl
+        this.#writingMode = direction.writingMode
+        this.#top.classList.toggle('vertical', direction.vertical)
+        this.#pageSize = Math.max(1, columnCount * columnStep)
+        this.#turnSize = Math.max(1, columnStep)
+        this.#edgeTurns = Math.max(1, columnCount)
+        this.setAttribute('dir', this.reversed ? 'rtl' : 'ltr')
+        if (changed) {
+            this.#spine.track.reset()
+            this.#layoutEntries()
+            this.#scrollBounds = null
+        }
     }
     render() {
         const view = this.#spine.currentView
@@ -379,6 +398,7 @@ export class PaginatedRenderer extends HTMLElement {
             view.render(this.#beforeRender({
                 vertical: this.#vertical,
                 rtl: this.#rtl,
+                writingMode: this.#writingMode,
             }), false)
         }
         this.#layoutEntries()
@@ -406,9 +426,6 @@ export class PaginatedRenderer extends HTMLElement {
     }
     get mode() {
         return 'paginated' as const
-    }
-    get element() {
-        return this
     }
     get reversed() {
         return !this.#vertical && (this.#rtl || this.#bookDir === 'rtl')
@@ -553,7 +570,7 @@ export class PaginatedRenderer extends HTMLElement {
             const size = preferred
                 ? Math.min(1, this.size / entry.view.extent)
                 : location.size
-            this.#spine.activate(entry)
+            this.#activateEntry(entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
                 this.#targetAnchor = position.range ?? position.fraction
@@ -661,12 +678,12 @@ export class PaginatedRenderer extends HTMLElement {
         }
     }
     async #goTo({ index, anchor, select = false }: Resolved,
-        revision = this.#navigationRevision,
+        revision = this.#navigation.revision,
         reason: string | null = select ? 'selection' : 'navigation') {
         const hasFocus = this.#spine.currentView?.document?.hasFocus()
         const entry = await this.#spine.prepare(index)
-        if (this.#destroyed || revision !== this.#navigationRevision) return false
-        this.#spine.activate(entry)
+        if (this.#destroyed || revision !== this.#navigation.revision) return false
+        this.#activateEntry(entry)
         const resolvedAnchor = typeof anchor === 'function'
             ? anchor(entry.view.document) : anchor
         const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
@@ -675,11 +692,11 @@ export class PaginatedRenderer extends HTMLElement {
         return landed !== false
     }
     #enqueueNavigation<T>(task: (revision: number) => T | Promise<T>,
-        revision = this.#navigationRevision) {
-        return this.#navigation.enqueue(() => {
-            if (this.#destroyed || revision !== this.#navigationRevision) return
-            return task(revision)
-        }, () => this.#scheduleRender())
+        revision = this.#navigation.revision) {
+        return this.#navigation.enqueueCurrent(current => {
+            if (this.#destroyed) return
+            return task(current)
+        }, revision)
     }
     capturePosition() {
         // Commit the physical offset synchronously before a mode switch aborts
@@ -687,15 +704,15 @@ export class PaginatedRenderer extends HTMLElement {
         void this.#scrollTo(this.#container[this.scrollProp], 'switch')
     }
     cancelNavigation() {
-        this.#navigationRevision += 1
+        this.#navigation.invalidate()
         this.#motion?.abort()
         this.#motion = undefined
         this.#scrollBounds = null
     }
     async goTo(target: Resolved | Promise<Resolved>) {
-        const revision = this.#navigationRevision
+        const revision = this.#navigation.revision
         const resolved = await target
-        if (this.#destroyed || revision !== this.#navigationRevision) return
+        if (this.#destroyed || revision !== this.#navigation.revision) return
         if (this.#spine.contains(resolved.index))
             return this.#enqueueNavigation(
                 current => this.#goTo(resolved, current), revision)
@@ -719,7 +736,7 @@ export class PaginatedRenderer extends HTMLElement {
             index,
             anchor: dir < 0 ? 1 : 0,
             select: false,
-        }, this.#navigationRevision, reason)
+        }, this.#navigation.revision, reason)
     }
     async #turnPage(dir: -1 | 1, turns = 1) {
         if (!this.#spine.currentView) return

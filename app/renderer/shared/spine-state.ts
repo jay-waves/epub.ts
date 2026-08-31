@@ -59,8 +59,8 @@ export class SpineBuffer<View> {
     this.#getExtent = getExtent;
   }
 
-  get entries() {
-    return this.#entries as readonly SpineEntry<View>[];
+  get entries(): readonly SpineEntry<View>[] {
+    return this.#entries;
   }
 
   get first() {

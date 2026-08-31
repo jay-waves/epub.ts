@@ -1,38 +1,40 @@
 export function createRenderState(root: HTMLElement) {
-  let pendingToken = 0;
+  let pending = 0;
 
   const begin = () => {
-    pendingToken += 1;
+    pending += 1;
     root.classList.add("reader-frame--pending");
-  };
-
-  const end = () => {
-    root.classList.remove("reader-frame--pending");
-  };
-
-  const revealAfterPaint = async () => {
-    const token = pendingToken;
-    await waitForNextPaint();
-    if (token === pendingToken) end();
+    let active = true;
+    const end = () => {
+      if (!active) return;
+      active = false;
+      pending -= 1;
+      if (!pending) root.classList.remove("reader-frame--pending");
+    };
+    return {
+      end,
+      revealAfterPaint: async () => {
+        await waitForNextPaint();
+        end();
+      },
+    };
   };
 
   const run = async <Result>(action: () => Promise<Result> | Result) => {
-    begin();
+    const render = begin();
     try {
       const result = await action();
-      await revealAfterPaint();
+      await render.revealAfterPaint();
       return result;
     } catch (error) {
-      end();
+      render.end();
       throw error;
     }
   };
 
   return {
     begin,
-    end,
-    isPending: () => root.classList.contains("reader-frame--pending"),
-    revealAfterPaint,
+    isPending: () => pending > 0,
     run,
   };
 }

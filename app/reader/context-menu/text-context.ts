@@ -1,6 +1,6 @@
 import type { ContentContextAction } from "./context-menu-store";
 import { contextMenuStore } from "./context-menu-store";
-import { emitViewerEvent, VIEWER_EVENTS } from "../events";
+import { emitViewerSignal, VIEWER_EVENTS } from "../events";
 import { createTranslation } from "./translation";
 
 type TextContextRequest = {
@@ -88,8 +88,8 @@ export function createTextContext(options: TextContextOptions) {
     dismiss() {
       close();
       translation.cancel();
-      emitViewerEvent(VIEWER_EVENTS.translationClose);
-      emitViewerEvent(VIEWER_EVENTS.annotationClose);
+      emitViewerSignal(VIEWER_EVENTS.translationClose);
+      emitViewerSignal(VIEWER_EVENTS.annotationClose);
     },
     open(request: TextContextRequest) {
       current = request;

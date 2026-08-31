@@ -32,7 +32,7 @@ import { closeContentOverlays, disposeContent } from "./image-zoom";
 import { createSearch } from "./search";
 import { createBookInfo } from "./book-info";
 import { App } from "./ui/App";
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "./events";
+import { emitViewerEvent, emitViewerSignal, listenViewerEvent, VIEWER_EVENTS } from "./events";
 import { createViewerInput } from "./input";
 import { createInteractions } from "./interactions";
 import {
@@ -41,7 +41,6 @@ import {
   saveReadingPosition,
 } from "./storage";
 import type { ReaderSettings, ReaderView } from "./model";
-import type { ReaderAnnotation } from "../epub/annotation";
 import { annotationRepository } from "./context-menu/annotation-repository";
 import type { Location } from "./navigation";
 import type { DockAction, ReaderCommand } from "./events";
@@ -178,7 +177,7 @@ function ensureViewerInput() {
     onChapterBoundary: showChapterBoundaryPending,
     onScrollEdge: showScrollEdgeFeedback,
     dispatchCommand: (command) => emitViewerEvent(VIEWER_EVENTS.readerCommand, command),
-    dispatchProgressReturn: () => emitViewerEvent(VIEWER_EVENTS.progressReturn),
+    dispatchProgressReturn: () => emitViewerSignal(VIEWER_EVENTS.progressReturn),
     dispatchProgressSeek: (progress) => emitViewerEvent(VIEWER_EVENTS.progressSeek, progress),
   });
   const view = getView();
@@ -238,9 +237,6 @@ function wireReaderEvents(reader: Reader) {
   const { signal, view } = reader;
   const listenerOptions = { signal };
 
-  view.addEventListener("load", () => {
-    void renderState.revealAfterPaint();
-  }, listenerOptions);
   view.addEventListener("relocate", (event) => {
     const detail = reader.navigation.location(event.detail);
 
@@ -300,7 +296,7 @@ async function saveAnnotatedBook() {
   if (!session.dirty || !bookKey || !document) return;
 
   try {
-    emitViewerEvent(VIEWER_EVENTS.annotationClose);
+    emitViewerSignal(VIEWER_EVENTS.annotationClose);
     await annotationState.flushPendingWrites();
 
     // Browser file pickers need the live Ctrl+S/click activation, so acquire
@@ -359,7 +355,7 @@ function toggleSearch() {
 
 async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
   await flushPositionSave();
-  emitViewerEvent(VIEWER_EVENTS.annotationClose);
+  emitViewerSignal(VIEWER_EVENTS.annotationClose);
   await annotationState.flushPendingWrites();
 
   const reader = runtime.reader;
@@ -401,13 +397,13 @@ async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined
   applyReaderTextAlignment(nextSettings.textAlignment);
   applyReaderFontSize(nextSettings.fontSize);
   applyReaderLayoutLevel(nextSettings.layoutLevel, { view: null });
-  await applyReaderLayoutMode(nextLayoutMode, readerLayoutTarget);
   getView()?.setStyles(getBookStyles());
+  await applyReaderLayoutMode(nextLayoutMode, readerLayoutTarget);
   emitDockUpdate();
 }
 
 async function mountView() {
-  const view = await createView<ReaderAnnotation>();
+  const view = await createView();
   view.enhanceRenderedDocument = (doc, _index, signal) =>
     enhanceContent(
       doc,
@@ -490,6 +486,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
   let reader: Reader | null = null;
   let view: ReaderView | null = null;
+  let render: ReturnType<typeof renderState.begin> | undefined;
   startupTrace.start("document-opening", { source: platformDocument.sourceLabel });
   try {
     await resetBookState({
@@ -500,7 +497,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
 
     view = await mountView();
     if (runtime.disposed) throw new DOMException("Viewer disposed", "AbortError");
-    renderState.begin();
+    render = renderState.begin();
     const fontsReady = preloadReaderFonts();
     reader = new Reader(platformDocument, view);
     runtime.reader = reader;
@@ -511,7 +508,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
       detectDocumentLanguage(reader.book, reader.signal),
     );
     const { navigation } = reader;
-    emitViewerEvent(VIEWER_EVENTS.documentOpen);
+    emitViewerSignal(VIEWER_EVENTS.documentOpen);
     session.bookKey = await getBookKey(view.book, platformDocument.key);
     reader.signal.throwIfAborted();
     const bookKey = session.bookKey;
@@ -539,7 +536,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     }
     reader.signal.throwIfAborted();
     const paintStartedAt = performance.now();
-    await renderState.revealAfterPaint();
+    await render.revealAfterPaint();
     reader.signal.throwIfAborted();
     const initialDomElementCount = (reader.view.renderer.getContents?.() ?? []).reduce(
       (total, { doc }) => total + (doc?.querySelectorAll("*").length ?? 0),
@@ -553,7 +550,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     });
     startupTrace.finish();
   } catch (error) {
-    renderState.end();
+    render?.end();
     runtime.search?.dispose();
     runtime.search = null;
     if (runtime.reader === reader) runtime.reader = null;
@@ -580,7 +577,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
       session.bookKey = "";
       renderDocumentTitle();
       emitDockUpdate();
-      emitViewerEvent(VIEWER_EVENTS.welcomeOpen);
+      emitViewerSignal(VIEWER_EVENTS.welcomeOpen);
     }
   }
 }
@@ -621,17 +618,17 @@ function setupEventListeners(signal: AbortSignal) {
     "open-search": openSearch,
     escape: () => {
       clearSearchState();
-      emitViewerEvent(VIEWER_EVENTS.tocClose);
+      emitViewerSignal(VIEWER_EVENTS.tocClose);
     },
     "save-book": () => {
       void saveAnnotatedBook();
     },
-    "toggle-dock": () => emitViewerEvent(VIEWER_EVENTS.dockToggle),
+    "toggle-dock": () => emitViewerSignal(VIEWER_EVENTS.dockToggle),
     "zoom-in": () => runDockCommand("zoom-in", "increase-width"),
     "zoom-out": () => runDockCommand("zoom-out", "decrease-width"),
     "open-toc": () => {
       emitTocUpdate();
-      emitViewerEvent(VIEWER_EVENTS.tocOpen);
+      emitViewerSignal(VIEWER_EVENTS.tocOpen);
     },
   } satisfies Record<ReaderCommand, () => void>;
   listenViewerEvent(VIEWER_EVENTS.readerCommand, (command) => readerCommandHandlers[command](), { signal });
@@ -685,11 +682,11 @@ async function handleDockAction(action: DockAction) {
   switch (action) {
     case "open-info":
       emitBookInfoUpdate();
-      emitViewerEvent(VIEWER_EVENTS.bookInfoOpen);
+      emitViewerSignal(VIEWER_EVENTS.bookInfoOpen);
       return;
     case "open-toc":
       emitTocUpdate();
-      emitViewerEvent(VIEWER_EVENTS.tocOpen);
+      emitViewerSignal(VIEWER_EVENTS.tocOpen);
       return;
     case "toggle-search":
       toggleSearch();
@@ -770,7 +767,7 @@ async function bootstrap() {
       durationMs: Math.round(performance.now() - startedAt),
       error,
     });
-    emitViewerEvent(VIEWER_EVENTS.welcomeOpen);
+    emitViewerSignal(VIEWER_EVENTS.welcomeOpen);
   }
 }
 
@@ -783,7 +780,7 @@ async function disposeViewer() {
   window.clearTimeout(runtime.scrollEdgeFeedbackTimer);
   runtime.scrollEdgeFeedbackTimer = undefined;
 
-  emitViewerEvent(VIEWER_EVENTS.annotationClose);
+  emitViewerSignal(VIEWER_EVENTS.annotationClose);
   await annotationState.flushPendingWrites();
 
   runtime.listeners?.abort();

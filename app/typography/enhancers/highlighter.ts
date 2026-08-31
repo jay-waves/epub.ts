@@ -63,7 +63,7 @@ function resolveHighlightLanguage(block: HTMLElement, codeElement: HTMLElement) 
     block.getAttribute("data-language"),
     codeElement.className,
     block.className,
-  ].filter(Boolean) as string[];
+  ].filter((value): value is string => Boolean(value));
 
   for (const value of candidates) {
     const language = extractLanguageCandidate(value);

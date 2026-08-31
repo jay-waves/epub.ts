@@ -156,6 +156,26 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.welcomeOpen]: void;
 };
 
+const VIEWER_SIGNALS = [
+  VIEWER_EVENTS.annotationClose,
+  VIEWER_EVENTS.unsavedChange,
+  VIEWER_EVENTS.translationClose,
+  VIEWER_EVENTS.translationDownload,
+  VIEWER_EVENTS.dockToggle,
+  VIEWER_EVENTS.documentOpen,
+  VIEWER_EVENTS.progressReturn,
+  VIEWER_EVENTS.searchClear,
+  VIEWER_EVENTS.searchNext,
+  VIEWER_EVENTS.searchPrevious,
+  VIEWER_EVENTS.bookInfoOpen,
+  VIEWER_EVENTS.tocOpen,
+  VIEWER_EVENTS.tocClose,
+  VIEWER_EVENTS.welcomeOpen,
+] as const satisfies readonly (keyof ViewerEventDetailMap)[];
+
+type ViewerSignalName = typeof VIEWER_SIGNALS[number];
+type ViewerPayloadName = Exclude<keyof ViewerEventDetailMap, ViewerSignalName>;
+
 const viewerEvents = new EventTarget();
 const STATE_EVENTS = new Set<string>([
   VIEWER_EVENTS.dockUpdate,
@@ -174,23 +194,27 @@ type ViewerState = { updates: Record<string, ViewerStateUpdate | undefined> };
 
 export const viewerStore = createStore<ViewerState>(() => ({ updates: {} }));
 
-export function emitViewerEvent<EventName extends keyof ViewerEventDetailMap>(
+export function emitViewerSignal(eventName: ViewerSignalName) {
+  viewerEvents.dispatchEvent(new Event(eventName));
+}
+
+export function emitViewerEvent<EventName extends ViewerPayloadName>(
   eventName: EventName,
-  ...detail: ViewerEventDetailMap[EventName] extends void ? [] : [ViewerEventDetailMap[EventName]]
+  detail: ViewerEventDetailMap[EventName],
 ) {
   if (STATE_EVENTS.has(eventName)) {
     viewerStore.setState((state) => ({
       updates: {
         ...state.updates,
         [eventName]: {
-          detail: detail[0],
+          detail,
           revision: (state.updates[eventName]?.revision ?? 0) + 1,
         },
       },
     }));
     return;
   }
-  viewerEvents.dispatchEvent(new CustomEvent(eventName, { detail: detail[0] }));
+  viewerEvents.dispatchEvent(new CustomEvent(eventName, { detail }));
 }
 
 export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(

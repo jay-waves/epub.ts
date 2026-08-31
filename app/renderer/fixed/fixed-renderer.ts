@@ -1,18 +1,48 @@
-const parseViewport = str => {
+import type { Book, BookSection, Content, Resolved } from '../reader-view.js'
+import type { Renderer } from '../renderer.js'
+import { loadFrameDocument } from '../shared/frame-document.js'
+
+type Viewport = { width: number, height: number }
+type ZoomHandler = (options: { doc: Document | null, scale: number }) => void
+type FrameSource = string | { src?: string | null, onZoom?: ZoomHandler } | null
+type FrameRequest = { index: number, src?: FrameSource }
+type Frame = {
+    blank?: boolean
+    element: HTMLDivElement
+    iframe: HTMLIFrameElement
+    height?: number
+    width?: number
+    onZoom?: ZoomHandler | null
+}
+type Spread = { left?: BookSection, right?: BookSection, center?: BookSection }
+type SpreadSide = 'left' | 'right' | 'center'
+
+const parseViewport = (str: string | null | undefined): Viewport | null => {
     const entries = str
         ?.split(/[,;\s]/) // NOTE: technically, only the comma is valid
         .filter(Boolean)
         .map(part => part.split('=').map(value => value.trim()))
         .filter(([name, value]) => name && value)
-    return entries?.length ? Object.fromEntries(entries) : null
+    return entries?.length ? toViewport(Object.fromEntries(entries)) : null
 }
 
-const getViewport = (doc, viewport) => {
+const toViewport = (value: unknown): Viewport | null => {
+    if (!value || typeof value !== 'object') return null
+    const record = value as Record<string, unknown>
+    const width = Number(record.width)
+    const height = Number(record.height)
+    return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+        ? { width, height }
+        : null
+}
+
+const getViewport = (doc: Document, viewport: unknown): Viewport => {
     // use `viewBox` for SVG
     if (doc.documentElement.localName === 'svg') {
         const [, , width, height] = doc.documentElement
-            .getAttribute('viewBox')?.split(/\s/) ?? []
-        return { width, height }
+            .getAttribute('viewBox')?.split(/\s+/) ?? []
+        const parsed = toViewport({ width, height })
+        if (parsed) return parsed
     }
 
     // get `viewport` `meta` element
@@ -25,32 +55,39 @@ const getViewport = (doc, viewport) => {
         const parsed = parseViewport(viewport)
         if (parsed) return parsed
     }
-    if (viewport?.width && viewport.height) return viewport
+    const fallback = toViewport(viewport)
+    if (fallback) return fallback
 
     // if no viewport (possibly with image directly in spine), get image size
     const img = doc.querySelector('img')
-    if (img) return { width: img.naturalWidth, height: img.naturalHeight }
+    const imageViewport = img && toViewport({ width: img.naturalWidth, height: img.naturalHeight })
+    if (imageViewport) return imageViewport
 
     // just show *something*, i guess...
     console.warn(new Error('Missing viewport properties'))
     return { width: 1000, height: 2000 }
 }
 
-export class FixedRenderer extends HTMLElement {
+export class FixedRenderer extends HTMLElement implements Renderer {
     static observedAttributes = ['zoom']
     #root = this.attachShadow({ mode: 'closed' })
+    #lifecycle = new AbortController()
     #observer = new ResizeObserver(() => this.#render())
-    #spreads
+    #spreads: Spread[] = []
     #index = -1
-    defaultViewport
-    spread
+    defaultViewport?: unknown
+    spread?: string
     #portrait = false
-    #left
-    #right
-    #center
-    #side
-    #zoom
+    #left?: Frame | null
+    #right?: Frame | null
+    #center?: Frame | null
+    #side?: SpreadSide
+    #zoom: number | 'fit-width' | 'fit-page' = 'fit-page'
     #destroyed = false
+    #navigation = Promise.resolve()
+    book!: Book
+    rtl = false
+    beforeRenderDocument?: Renderer['beforeRenderDocument']
     constructor() {
         super()
 
@@ -68,22 +105,24 @@ export class FixedRenderer extends HTMLElement {
 
         this.#observer.observe(this)
     }
-    get element() {
-        return this
-    }
-    get mode() {
+    get mode(): 'fixed' {
         return 'fixed'
     }
-    attributeChangedCallback(name, _, value) {
+    attributeChangedCallback(name: string, _: string | null, value: string | null) {
+        if (value == null) return
         switch (name) {
             case 'zoom':
-                this.#zoom = value !== 'fit-width' && value !== 'fit-page'
-                    ? parseFloat(value) : value
+                if (value === 'fit-width' || value === 'fit-page') this.#zoom = value
+                else {
+                    const zoom = Number(value)
+                    this.#zoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 'fit-page'
+                }
                 this.#render()
                 break
         }
     }
-    async #createFrame({ index, src: srcOption }) {
+    async #createFrame({ index, src: srcOption }: FrameRequest, signal: AbortSignal): Promise<Frame> {
+        signal.throwIfAborted()
         const srcOptionIsString = typeof srcOption === 'string'
         const src = srcOptionIsString ? srcOption : srcOption?.src
         const onZoom = srcOptionIsString ? null : srcOption?.onZoom
@@ -102,32 +141,23 @@ export class FixedRenderer extends HTMLElement {
         iframe.setAttribute('part', 'filter')
         this.#root.append(element)
         if (!src) return { blank: true, element, iframe }
-        return new Promise((resolve, reject) => {
-            iframe.addEventListener('load', async () => {
-                try {
-                    const doc = iframe.contentDocument
-                    await this.beforeRenderDocument?.(doc, index)
-                    if (this.#destroyed)
-                        throw new DOMException('Fixed layout destroyed', 'AbortError')
-                    this.dispatchEvent(new CustomEvent('load', { detail: { doc, index } }))
-                    const { width, height } = getViewport(doc, this.defaultViewport)
-                    resolve({
-                        element, iframe,
-                        width: parseFloat(width),
-                        height: parseFloat(height),
-                        onZoom,
-                    })
-                } catch (error) {
-                    reject(error)
-                }
-            }, { once: true })
-            iframe.src = src
+        return loadFrameDocument(iframe, src, signal, async (doc, loadSignal) => {
+            await this.beforeRenderDocument?.(doc, index)
+            loadSignal.throwIfAborted()
+            this.dispatchEvent(new CustomEvent('load', { detail: { doc, index } }))
+            const { width, height } = getViewport(doc, this.defaultViewport)
+            return {
+                element, iframe,
+                width,
+                height,
+                onZoom,
+            }
         })
     }
     #render(side = this.#side) {
         if (!side) return
-        const left = this.#left ?? {}
-        const right = this.#center ?? this.#right ?? {}
+        const left: Partial<Frame> = this.#left ?? {}
+        const right: Partial<Frame> = this.#center ?? this.#right ?? {}
         const target = side === 'left' ? left : right
         const { width, height } = this.getBoundingClientRect()
         const portrait = this.spread !== 'both' && this.spread !== 'portrait'
@@ -153,21 +183,24 @@ export class FixedRenderer extends HTMLElement {
                             right.height ?? blankHeight)))
             ) || 1
 
-        const transform = frame => {
-            let { element, iframe, width, height, blank, onZoom } = frame
-            if (!iframe) return
+        const transform = (frame: Frame) => {
+            const {
+                element, iframe, blank, onZoom,
+                width: frameWidth = blankWidth,
+                height: frameHeight = blankHeight,
+            } = frame
             if (onZoom) onZoom({ doc: frame.iframe.contentDocument, scale })
             const iframeScale = onZoom ? scale : 1
             Object.assign(iframe.style, {
-                width: `${width * iframeScale}px`,
-                height: `${height * iframeScale}px`,
+                width: `${frameWidth * iframeScale}px`,
+                height: `${frameHeight * iframeScale}px`,
                 transform: onZoom ? 'none' : `scale(${scale})`,
                 transformOrigin: 'top left',
                 display: blank ? 'none' : 'block',
             })
             Object.assign(element.style, {
-                width: `${(width ?? blankWidth) * scale}px`,
-                height: `${(height ?? blankHeight) * scale}px`,
+                width: `${frameWidth * scale}px`,
+                height: `${frameHeight * scale}px`,
                 overflow: 'hidden',
                 display: 'block',
                 flexShrink: '0',
@@ -180,32 +213,43 @@ export class FixedRenderer extends HTMLElement {
         if (this.#center) {
             transform(this.#center)
         } else {
-            transform(left)
-            transform(right)
+            transform(this.#left!)
+            transform(this.#right!)
         }
     }
-    async #showSpread({ left, right, center, side }) {
+    async #showSpread({ left, right, center, side }: {
+        left?: FrameRequest
+        right?: FrameRequest
+        center?: FrameRequest
+        side?: SpreadSide
+    }) {
+        const loading = new AbortController()
+        const signal = AbortSignal.any([this.#lifecycle.signal, loading.signal])
         this.#unloadDocuments()
         this.#root.replaceChildren()
         this.#left = null
         this.#right = null
         this.#center = null
-        if (center) {
-            this.#center = await this.#createFrame(center)
-            this.#side = 'center'
-            this.#render()
-        } else {
-            ;[this.#left, this.#right] = await Promise.all([
-                this.#createFrame(left), this.#createFrame(right),
-            ])
-            this.#side = this.#left.blank ? 'right'
-                : this.#right.blank ? 'left' : side
-            this.#render()
+        try {
+            if (center) {
+                this.#center = await this.#createFrame(center, signal)
+                this.#side = 'center'
+                this.#render()
+            } else {
+                ;[this.#left, this.#right] = await Promise.all([
+                    this.#createFrame(left!, signal), this.#createFrame(right!, signal),
+                ])
+                this.#side = this.#left.blank ? 'right'
+                    : this.#right.blank ? 'left' : side
+                this.#render()
+            }
+        } catch (error) {
+            loading.abort(error)
+            throw error
         }
     }
     #goLeft() {
-        if (this.#center || this.#left?.blank) return
-        if (this.#portrait && this.#left?.element?.style?.display === 'none') {
+        if (this.#canShow(this.#left)) {
             this.#side = 'left'
             this.#render()
             this.#reportLocation('page')
@@ -213,15 +257,18 @@ export class FixedRenderer extends HTMLElement {
         }
     }
     #goRight() {
-        if (this.#center || this.#right?.blank) return
-        if (this.#portrait && this.#right?.element?.style?.display === 'none') {
+        if (this.#canShow(this.#right)) {
             this.#side = 'right'
             this.#render()
             this.#reportLocation('page')
             return true
         }
     }
-    open(book) {
+    #canShow(frame: Frame | null | undefined) {
+        return !this.#center && !frame?.blank && this.#portrait
+            && frame?.element.style.display === 'none'
+    }
+    open(book: Book) {
         this.book = book
         const { rendition } = book
         this.spread = rendition?.spread
@@ -233,11 +280,11 @@ export class FixedRenderer extends HTMLElement {
 
         if (rendition?.spread === 'none')
             this.#spreads = book.sections.map(section => ({ center: section }))
-        else this.#spreads = book.sections.reduce((arr, section, i) => {
+        else this.#spreads = book.sections.reduce<Spread[]>((arr, section, i) => {
             const last = arr[arr.length - 1]
             const { pageSpread } = section
             const newSpread = () => {
-                const spread = {}
+                const spread: Spread = {}
                 arr.push(spread)
                 return spread
             }
@@ -270,13 +317,13 @@ export class FixedRenderer extends HTMLElement {
         const spread = this.#spreads[this.#index]
         const section = spread?.center ?? (this.#side === 'left'
             ? spread.left ?? spread.right : spread.right ?? spread.left)
-        return this.book.sections.indexOf(section)
+        return section ? this.book.sections.indexOf(section) : -1
     }
-    #reportLocation(reason) {
+    #reportLocation(reason?: string) {
         this.dispatchEvent(new CustomEvent('relocate', { detail:
             { reason, index: this.index, fraction: 0, size: 1 } }))
     }
-    #getSpreadOf(section) {
+    #getSpreadOf(section: BookSection): { index: number, side: SpreadSide } | undefined {
         const spreads = this.#spreads
         for (let index = 0; index < spreads.length; index++) {
             const { left, right, center } = spreads[index]
@@ -285,13 +332,13 @@ export class FixedRenderer extends HTMLElement {
             if (center === section) return { index, side: 'center' }
         }
     }
-    #unloadSpread(spread, keep = {}) {
+    #unloadSpread(spread?: Spread, keep: Spread = {}) {
         const retained = new Set([keep.left, keep.right, keep.center])
         for (const section of [spread?.left, spread?.right, spread?.center]) {
             if (section && !retained.has(section)) section.unload?.()
         }
     }
-    async #goToSpread(index, side, reason) {
+    async #goToSpread(index: number, side?: SpreadSide, reason?: string) {
         if (index < 0 || index > this.#spreads.length - 1) return
         if (index === this.#index) {
             this.#side = side ?? this.#side
@@ -309,8 +356,8 @@ export class FixedRenderer extends HTMLElement {
                 const src = await spread.center?.load?.()
                 await this.#showSpread({ center: { index, src } })
             } else {
-                const indexL = this.book.sections.indexOf(spread.left)
-                const indexR = this.book.sections.indexOf(spread.right)
+                const indexL = spread.left ? this.book.sections.indexOf(spread.left) : -1
+                const indexR = spread.right ? this.book.sections.indexOf(spread.right) : -1
                 const srcL = await spread.left?.load?.()
                 const srcR = await spread.right?.load?.()
                 const left = { index: indexL, src: srcL }
@@ -327,37 +374,67 @@ export class FixedRenderer extends HTMLElement {
         this.#unloadSpread(previousSpread, spread)
         this.#reportLocation(reason)
     }
-    async goTo(target) {
+    #enqueue(task: () => Promise<void>) {
+        const result = this.#navigation.then(() => {
+            if (this.#destroyed) throw new DOMException('Fixed layout destroyed', 'AbortError')
+            return task()
+        })
+        this.#navigation = result.catch(() => undefined)
+        return result
+    }
+    goTo(target: Resolved) {
+        return this.#enqueue(() => this.#goTo(target))
+    }
+    async #goTo(target: Resolved) {
         const { book } = this
-        const resolved = await target
-        const section = book.sections[resolved.index]
+        const section = book.sections[target.index]
         if (!section) return
-        const { index, side } = this.#getSpreadOf(section)
-        await this.#goToSpread(index, side)
-        if (resolved.select && typeof resolved.anchor === 'function') {
-            const content = this.getContents().find(item => item.index === resolved.index)
-            const Range = content?.doc?.defaultView?.Range
-            const range = content?.doc && resolved.anchor(content.doc)
+        const spread = this.#getSpreadOf(section)
+        if (!spread) return
+        const { index, side } = spread
+        await this.#goToSpread(index, side, target.select ? 'selection' : 'navigation')
+        if (target.select && typeof target.anchor === 'function') {
+            const content = this.getContents().find(item => item.index === target.index)
+            const doc = content?.doc
+            const Range = doc?.defaultView?.Range
+            const range = doc && target.anchor(doc)
             if (Range && range instanceof Range) {
-                const selection = content.doc.defaultView.getSelection()
-                selection.removeAllRanges()
-                selection.addRange(range)
+                const selection = doc.defaultView?.getSelection()
+                selection?.removeAllRanges()
+                selection?.addRange(range)
             }
         }
     }
-    async next() {
-        const s = this.rtl ? this.#goLeft() : this.#goRight()
-        if (!s) return this.#goToSpread(this.#index + 1, this.rtl ? 'right' : 'left', 'page')
+    next() {
+        return this.#enqueue(async () => {
+            const shown = this.rtl ? this.#goLeft() : this.#goRight()
+            if (!shown) await this.#goToSpread(
+                this.#index + 1, this.rtl ? 'right' : 'left', 'page')
+        })
     }
-    async prev() {
-        const s = this.rtl ? this.#goRight() : this.#goLeft()
-        if (!s) return this.#goToSpread(this.#index - 1, this.rtl ? 'left' : 'right', 'page')
+    prev() {
+        return this.#enqueue(async () => {
+            const shown = this.rtl ? this.#goRight() : this.#goLeft()
+            if (!shown) await this.#goToSpread(
+                this.#index - 1, this.rtl ? 'left' : 'right', 'page')
+        })
     }
-    getContents() {
+    get atStart() {
+        const canMoveWithinSpread = this.rtl
+            ? this.#canShow(this.#right) : this.#canShow(this.#left)
+        return this.#index <= 0 && !canMoveWithinSpread
+    }
+    get atEnd() {
+        const canMoveWithinSpread = this.rtl
+            ? this.#canShow(this.#left) : this.#canShow(this.#right)
+        return this.#index >= this.#spreads.length - 1 && !canMoveWithinSpread
+    }
+    getContents(): Content[] {
         return Array.from(this.#root.querySelectorAll('iframe')).flatMap(frame => {
             const index = Number(frame.dataset.index)
-            return Number.isInteger(index) && index >= 0
-                ? [{ doc: frame.contentDocument, index }]
+            const doc = frame.contentDocument
+            return Number.isInteger(index) && index >= 0 && doc
+                ? [{ doc, index }]
                 : []
         })
     }
@@ -369,6 +446,7 @@ export class FixedRenderer extends HTMLElement {
     destroy() {
         if (this.#destroyed) return
         this.#destroyed = true
+        this.#lifecycle.abort(new DOMException('Fixed layout destroyed', 'AbortError'))
         this.#observer.disconnect()
         this.#unloadDocuments()
         this.#unloadSpread(this.#spreads?.[this.#index])

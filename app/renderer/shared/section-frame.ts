@@ -1,11 +1,16 @@
 import { Overlay } from "./overlay";
+import { loadFrameDocument } from "./frame-document";
 import { getVisibleRange } from "./visible-range";
 
 export type SectionDirection = {
-  background?: string;
   rtl: boolean;
   vertical: boolean;
+  writingMode: "horizontal-tb" | "vertical-lr" | "vertical-rl";
 };
+
+export function sameSectionDirection(a: SectionDirection, b: SectionDirection) {
+  return a.rtl === b.rtl && a.writingMode === b.writingMode;
+}
 
 type SectionLayoutBase = {
   gap: number;
@@ -55,13 +60,17 @@ export function getDocumentBackground(doc: Document) {
 
 function getDirection(doc: Document): SectionDirection {
   const view = doc.defaultView;
-  if (!view) return { rtl: false, vertical: false };
+  if (!view) return { rtl: false, vertical: false, writingMode: "horizontal-tb" };
   const { writingMode, direction } = view.getComputedStyle(doc.body);
   const vertical = writingMode === "vertical-rl" || writingMode === "vertical-lr";
   const rtl = doc.body.dir === "rtl"
     || direction === "rtl"
     || doc.documentElement.dir === "rtl";
-  return { background: getDocumentBackground(doc), rtl, vertical };
+  return {
+    rtl,
+    vertical,
+    writingMode: vertical ? writingMode : "horizontal-tb",
+  };
 }
 
 function setStylesImportant(element: ElementCSSInlineStyle, styles: Record<string, string>) {
@@ -78,6 +87,7 @@ export class SectionFrame {
   readonly #observer = new ResizeObserver(() => this.#scheduleExpand());
   readonly #element = document.createElement("div");
   readonly #iframe = document.createElement("iframe");
+  readonly #lifecycle = new AbortController();
   readonly #contentRange = document.createRange();
   readonly #mediaLimits = new WeakMap<StyledMedia, MediaLimits>();
   readonly #onExpand: () => void;
@@ -91,6 +101,11 @@ export class SectionFrame {
   #columnStep = 0;
   #contentColumns = 1;
   #contentExtent = 1;
+  #direction: SectionDirection = {
+    rtl: false,
+    vertical: false,
+    writingMode: "horizontal-tb",
+  };
   #layout?: SectionLayout;
   #destroyed = false;
 
@@ -132,6 +147,8 @@ export class SectionFrame {
   get columnCount() { return this.#columnCount; }
   get columnStep() { return this.#columnStep; }
   get contentColumns() { return this.#contentColumns; }
+  get direction() { return this.#direction; }
+  get margin() { return this.#layout?.margin ?? 0; }
   get extent() {
     return this.#layout?.kind === "columns"
       ? this.#contentColumns * this.#columnStep
@@ -140,34 +157,26 @@ export class SectionFrame {
 
   async load(source: string, afterLoad?: AfterLoad, resolveLayout?: ResolveLayout) {
     if (typeof source !== "string") throw new TypeError("Section source must be a string");
-    await new Promise<void>((resolve, reject) => {
-      this.#iframe.addEventListener("load", async () => {
-        try {
-          const doc = this.document;
-          this.#iframe.style.display = "block";
-          await afterLoad?.(doc);
-          this.#throwIfDestroyed();
+    await loadFrameDocument(this.#iframe, source, this.#lifecycle.signal, async (doc, signal) => {
+      this.#iframe.style.display = "block";
+      await afterLoad?.(doc);
+      signal.throwIfAborted();
 
-          const direction = getDirection(doc);
-          this.#iframe.style.display = "none";
-          this.#vertical = direction.vertical;
-          this.#rtl = direction.rtl;
-          this.#contentRange.selectNodeContents(doc.body);
+      const direction = getDirection(doc);
+      this.#direction = direction;
+      this.#iframe.style.display = "none";
+      this.#vertical = direction.vertical;
+      this.#rtl = direction.rtl;
+      this.#contentRange.selectNodeContents(doc.body);
 
-          const layout = resolveLayout?.(direction);
-          this.#iframe.style.display = "block";
-          if (layout) this.render(layout);
-          this.#observer.observe(doc.body);
+      const layout = resolveLayout?.(direction);
+      this.#iframe.style.display = "block";
+      if (layout) this.render(layout);
+      this.#observer.observe(doc.body);
 
-          await doc.fonts.ready;
-          this.#throwIfDestroyed();
-          this.expand();
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      }, { once: true });
-      this.#iframe.src = source;
+      await doc.fonts.ready;
+      signal.throwIfAborted();
+      this.expand();
     });
   }
 
@@ -341,7 +350,9 @@ export class SectionFrame {
       const size = this.#element.getBoundingClientRect()[this.#vertical ? "width" : "height"];
       const margin = this.#layout?.margin ?? 0;
       if (this.#vertical) {
-        return { left: size - rect.right - margin, right: size - rect.left - margin };
+        return this.#direction.writingMode === "vertical-rl"
+          ? { left: size - rect.right - margin, right: size - rect.left - margin }
+          : { left: rect.left + margin, right: rect.right + margin };
       }
       return { left: rect.top + margin, right: rect.bottom + margin };
     }
@@ -358,15 +369,13 @@ export class SectionFrame {
   destroy() {
     if (this.#destroyed) return;
     this.#destroyed = true;
+    this.#lifecycle.abort(new DOMException("Section frame destroyed", "AbortError"));
     if (this.#expandFrame !== undefined) cancelAnimationFrame(this.#expandFrame);
     this.#observer.disconnect();
     this.#media = undefined;
     this.#overlay = undefined;
   }
 
-  #throwIfDestroyed() {
-    if (this.#destroyed) throw new DOMException("Section frame destroyed", "AbortError");
-  }
 }
 
 function validLimit(value: string) {

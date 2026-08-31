@@ -7,6 +7,7 @@ import {
   createReadingPosition,
   readingEdgeRange,
   resolveReadingPosition,
+  uncollapseRange,
 } from "../app/renderer/shared/navigation.ts";
 
 test("normalizes every reading position to a section fraction", () => {
@@ -58,4 +59,39 @@ test("uses a collapsed clone as the transferable reading edge", () => {
   assert.equal(readingEdgeRange(range), clone);
   assert.equal(collapsed, true);
   assert.equal(readingEdgeRange(undefined), undefined);
+});
+
+test("expands a collapsed text range by the adjacent character", () => {
+  const previousNode = globalThis.Node;
+  Object.defineProperty(globalThis, "Node", {
+    configurable: true,
+    value: { ELEMENT_NODE: 1 },
+  });
+  try {
+    const text = { nodeType: 3, nodeValue: "ab" } as Node;
+    let end = -1;
+    const forward = {
+      collapsed: true,
+      endContainer: text,
+      endOffset: 1,
+      setEnd: (_node: Node, offset: number) => end = offset,
+      startContainer: text,
+    } as unknown as Range;
+    assert.equal(uncollapseRange(forward), forward);
+    assert.equal(end, 2);
+
+    let start = -1;
+    const backward = {
+      collapsed: true,
+      endContainer: text,
+      endOffset: 2,
+      setStart: (_node: Node, offset: number) => start = offset,
+      startContainer: text,
+    } as unknown as Range;
+    assert.equal(uncollapseRange(backward), backward);
+    assert.equal(start, 1);
+  } finally {
+    if (previousNode) Object.defineProperty(globalThis, "Node", { configurable: true, value: previousNode });
+    else delete (globalThis as { Node?: unknown }).Node;
+  }
 });

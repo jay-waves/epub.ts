@@ -9,6 +9,8 @@ export type {
   Annotation,
   Anchor,
   Book,
+  BookMetadata,
+  BookRendition,
   BookSection,
   Content,
   Decoration,
@@ -17,11 +19,14 @@ export type {
   Renderer,
   Resolved,
   TocItem,
+  Contributor,
+  Identifier,
+  LocalizedText,
   View,
   ReaderView,
 } from "./reader-view.js";
 
-export async function createView<Item extends import("./reader-view.js").Annotation = import("./reader-view.js").Annotation>() {
+export async function createView() {
   await import("./reader-view.js");
-  return document.createElement("epub-view") as BaseView<Item>;
+  return document.createElement("epub-view") as BaseView;
 }

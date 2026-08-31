@@ -3,11 +3,10 @@ import type { RenderMode } from "./shared/flow-geometry";
 
 export type RendererStyles = string | [string, string];
 
-export interface Renderer {
-  readonly element: HTMLElement;
+export interface Renderer extends HTMLElement {
   readonly mode: RenderMode;
-  atEnd?: boolean;
-  atStart?: boolean;
+  readonly atEnd: boolean;
+  readonly atStart: boolean;
   beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void;
   cancelNavigation?(): void;
   capturePosition?(): void;

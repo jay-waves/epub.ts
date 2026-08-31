@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import { emitViewerEvent, emitViewerSignal, VIEWER_EVENTS } from "../../events";
 import type { SearchUpdateDetail } from "../../events";
 import { Button, Tooltip } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
@@ -33,7 +33,7 @@ export function SearchBar() {
   };
 
   const clearSearch = () => {
-    emitViewerEvent(VIEWER_EVENTS.searchClear);
+    emitViewerSignal(VIEWER_EVENTS.searchClear);
   };
 
   return (
@@ -42,7 +42,7 @@ export function SearchBar() {
         <Button
           aria-label="Previous result"
           disabled={!canNavigate}
-          onClick={() => emitViewerEvent(VIEWER_EVENTS.searchPrevious)}
+          onClick={() => emitViewerSignal(VIEWER_EVENTS.searchPrevious)}
         >
           <ChevronLeft size={20} aria-hidden="true" />
         </Button>
@@ -54,7 +54,7 @@ export function SearchBar() {
         <Button
           aria-label="Next result"
           disabled={!canNavigate}
-          onClick={() => emitViewerEvent(VIEWER_EVENTS.searchNext)}
+          onClick={() => emitViewerSignal(VIEWER_EVENTS.searchNext)}
         >
           <ChevronRight size={20} aria-hidden="true"/>
         </Button>

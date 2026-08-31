@@ -19,6 +19,7 @@ type SpineOptions = {
   layout: () => void;
   layoutFor: (direction: SectionDirection) => SectionLayout;
   layoutRevision?: () => number;
+  canJoinWindow?: (current: SectionFrame, candidate: SectionFrame) => boolean;
   navigation: NavigationTransaction;
   onClear?: () => void;
   restoreViewport: (offset: number) => void;
@@ -34,10 +35,10 @@ type SpineOptions = {
 export class ReflowableSpine {
   readonly track: SpineTrack<SectionFrame>;
   readonly #buffer: SpineBuffer<SectionFrame>;
+  readonly #events = new AbortController();
   readonly #options: SpineOptions;
   readonly #styleMap = new WeakMap<Document, [HTMLStyleElement, HTMLStyleElement]>();
   readonly #mediaQuery = matchMedia("(prefers-color-scheme: dark)");
-  readonly #mediaQueryListener = () => this.#updateBackground();
   #book?: Book;
   #cacheFrame?: number;
   #currentView?: SectionFrame;
@@ -48,7 +49,9 @@ export class ReflowableSpine {
   constructor(options: SpineOptions) {
     this.#options = options;
     this.track = options.track;
-    this.#mediaQuery.addEventListener("change", this.#mediaQueryListener);
+    this.#mediaQuery.addEventListener("change", () => this.#updateBackground(), {
+      signal: this.#events.signal,
+    });
     this.#buffer = new SpineBuffer({
       create: index => this.#create(index),
       destroy: (index, view) => {
@@ -147,6 +150,7 @@ export class ReflowableSpine {
   activate(entry: SpineEntry<SectionFrame>) {
     if (!this.entries.includes(entry)) throw new DOMException("Stale spine entry", "AbortError");
     this.#currentView = entry.view;
+    this.#updateBackground();
   }
 
   removeOtherThanCurrent() {
@@ -178,10 +182,34 @@ export class ReflowableSpine {
     this.#loading = true;
     try {
       const viewport = this.#options.viewport();
-      const change = await this.#buffer.reconcile({
+      let change = await this.#buffer.reconcile({
         ...viewport,
         adjacent: (index, direction) => this.adjacent(index, direction),
       });
+      const current = this.#currentView;
+      const canJoin = this.#options.canJoinWindow;
+      if (current && canJoin) {
+        const accepted: SpineEntry<SectionFrame>[] = [];
+        const acceptUntilMismatch = (entries: readonly SpineEntry<SectionFrame>[]) => {
+          for (const entry of entries) {
+            if (!canJoin(current, entry.view)) break;
+            accepted.push(entry);
+          }
+        }
+        acceptUntilMismatch(change.added
+          .filter(entry => entry.index < viewport.activeIndex)
+          .sort((a, b) => b.index - a.index));
+        acceptUntilMismatch(change.added
+          .filter(entry => entry.index > viewport.activeIndex)
+          .sort((a, b) => a.index - b.index));
+        if (accepted.length !== change.added.length) {
+          change = {
+            ...change,
+            added: accepted.sort((a, b) => a.index - b.index),
+            needsMore: false,
+          };
+        }
+      }
       if (revision && layoutRevision !== revision()) {
         this.scheduleCache();
         return;
@@ -190,7 +218,7 @@ export class ReflowableSpine {
         if (revision && layoutRevision !== revision()) return false;
         this.commit(change);
         return true;
-      }, this.#options.scheduleRender);
+      });
       if (!committed || change.needsMore) this.scheduleCache();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") this.scheduleCache();
@@ -212,10 +240,11 @@ export class ReflowableSpine {
   }
 
   getContents(): Content[] {
-    return this.entries.flatMap(({ index, view }) => {
-      const doc = view.document;
-      return doc ? [{ index, overlay: view.overlay, doc } satisfies Content] : [];
-    });
+    return this.entries.map(({ index, view }) => ({
+      index,
+      overlay: view.overlay,
+      doc: view.document,
+    }));
   }
 
   clear() {
@@ -228,7 +257,7 @@ export class ReflowableSpine {
 
   destroy() {
     this.clear();
-    this.#mediaQuery.removeEventListener("change", this.#mediaQueryListener);
+    this.#events.abort();
     this.#book = undefined;
     this.#openingEnd = 0;
   }

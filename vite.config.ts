@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import packageJson from "./package.json";
 
 const outputDir = "release/web";
+const browserTargets = ["chrome129", "edge129", "firefox147", "safari26", "ios26"];
 const builtAt = new Date().toISOString();
 const iconFiles = ["icon.png", ...[16, 32, 48, 128].map((size) => `icon-${size}.png`)];
 const fontFiles = [
@@ -48,8 +49,9 @@ export default defineConfig({
     },
   ],
   build: {
-    target: ["chrome120", "edge120", "firefox121", "safari17.2"],
-    cssTarget: ["chrome120", "edge120", "firefox121", "safari17.2"],
+    target: browserTargets,
+    cssTarget: browserTargets,
+    modulePreload: { polyfill: false },
     outDir: outputDir,
     emptyOutDir: true,
     rollupOptions: {

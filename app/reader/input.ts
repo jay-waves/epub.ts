@@ -11,6 +11,7 @@ import {
   consumeReaderPointerClaim,
   resolveReaderPointerIntent,
 } from "./interaction-arbiter";
+import { getReaderTapRegion } from "./tap-region";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
 const SECTION_EDGE_EPSILON = 2;
@@ -21,9 +22,7 @@ const WHEEL_SWIPE_MIN_DISTANCE = 42;
 const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
-const TOUCH_EDGE_RATIO = 0.22;
 const TOUCH_AXIS_RATIO = 1.2;
-const TOUCH_CENTER_INSET_RATIO = 0.25;
 
 const STEP_COMMANDS = {
   left: "step-left",
@@ -295,22 +294,19 @@ export function createViewerInput(options: ViewerInputOptions) {
   const tapRegion = (sourceDocument: Document, clientX: number, clientY: number) => {
     const point = readerPoint(sourceDocument, clientX, clientY);
     if (!point) return null;
-    if (point.x <= point.width * TOUCH_EDGE_RATIO) return "left" as const;
-    if (point.x >= point.width * (1 - TOUCH_EDGE_RATIO)) return "right" as const;
-    if (point.x >= point.width * TOUCH_CENTER_INSET_RATIO
-      && point.x <= point.width * (1 - TOUCH_CENTER_INSET_RATIO)
-      && point.y >= point.height * TOUCH_CENTER_INSET_RATIO
-      && point.y <= point.height * (1 - TOUCH_CENTER_INSET_RATIO)) return "center" as const;
-    return null;
+    if (point.y < 0 || point.y > point.height) return null;
+    return getReaderTapRegion(point.x, point.width);
   };
 
   const bindPointerInput = (target: EventTarget, sourceDocument: Document) => {
     type PointerSession = {
       claimEvent: PointerEvent;
+      events: AbortController;
       longPressTimer?: number;
       motion: PointerMotion;
       selecting: boolean;
     };
+    const events = new AbortController();
     const targetWindow = sourceDocument.defaultView ?? window;
     let session: PointerSession | null = null;
     const clearLongPress = (current: PointerSession) => {
@@ -322,7 +318,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       if (!eventBelongsToReader(click) || resolveReaderPointerIntent(click.target) !== "content") return;
       if ("pointerType" in click && (click as PointerEvent).pointerType !== "mouse") return;
       const region = tapRegion(sourceDocument, click.clientX, click.clientY);
-      if (region !== "left" && region !== "right") return;
+      if (options.getFlow() !== "paginated" || (region !== "left" && region !== "right")) return;
 
       const selection = sourceDocument.defaultView?.getSelection();
       if (selection && !selection.isCollapsed) return;
@@ -330,11 +326,6 @@ export function createViewerInput(options: ViewerInputOptions) {
       dispatchStep(region);
     };
 
-    const removeWindowListeners = () => {
-      targetWindow.removeEventListener("pointermove", handlePointerMove, { capture: true });
-      targetWindow.removeEventListener("pointerup", handlePointerEnd, { capture: true });
-      targetWindow.removeEventListener("pointercancel", handlePointerEnd, { capture: true });
-    };
     const handlePointerDown = (event: PointerEvent) => {
       if (!eventBelongsToReader(event) || !event.isPrimary || event.pointerType === "mouse") return;
       if (resolveReaderPointerIntent(event.target) !== "content") return;
@@ -342,6 +333,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       claimReaderPointer(event, "content");
       const current: PointerSession = {
         claimEvent: event,
+        events: new AbortController(),
         motion: new PointerMotion(event.clientX, event.clientY, event.timeStamp, {
           axisRatio: TOUCH_AXIS_RATIO,
           threshold: TOUCH_PAN_THRESHOLD_PX,
@@ -355,9 +347,14 @@ export function createViewerInput(options: ViewerInputOptions) {
           if (session === current && !current.motion.moved) current.selecting = true;
         }, TOUCH_LONG_PRESS_DELAY_MS);
       }
-      targetWindow.addEventListener("pointermove", handlePointerMove, { capture: true, passive: false });
-      targetWindow.addEventListener("pointerup", handlePointerEnd, { capture: true });
-      targetWindow.addEventListener("pointercancel", handlePointerEnd, { capture: true });
+      const signal = AbortSignal.any([events.signal, current.events.signal]);
+      targetWindow.addEventListener("pointermove", handlePointerMove, {
+        capture: true,
+        passive: false,
+        signal,
+      });
+      targetWindow.addEventListener("pointerup", handlePointerEnd, { capture: true, signal });
+      targetWindow.addEventListener("pointercancel", handlePointerEnd, { capture: true, signal });
     };
     const handlePointerMove = (event: PointerEvent) => {
       const current = session;
@@ -377,7 +374,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       const current = session;
       if (!current || event.pointerId !== current.claimEvent.pointerId) return;
       session = null;
-      removeWindowListeners();
+      current.events.abort();
       clearLongPress(current);
       consumeReaderPointerClaim(current.claimEvent);
       if (current.selecting) return;
@@ -395,6 +392,7 @@ export function createViewerInput(options: ViewerInputOptions) {
         if (selection && !selection.isCollapsed) return;
         const region = tapRegion(sourceDocument, event.clientX, event.clientY);
         if (!region) return;
+        if (region !== "center" && flow !== "paginated") return;
         consumeReaderEvent(event, "stop");
         if (region === "center") options.dispatchCommand("toggle-dock");
         else dispatchStep(region);
@@ -408,17 +406,19 @@ export function createViewerInput(options: ViewerInputOptions) {
       else inertia.start(velocityY);
     };
 
-    target.addEventListener("click", handleMouseClick, { capture: true });
-    target.addEventListener("pointerdown", handlePointerDown as EventListener, { capture: true });
+    target.addEventListener("click", handleMouseClick, { capture: true, signal: events.signal });
+    target.addEventListener("pointerdown", handlePointerDown as EventListener, {
+      capture: true,
+      signal: events.signal,
+    });
     return () => {
       if (session) {
+        session.events.abort();
         clearLongPress(session);
         consumeReaderPointerClaim(session.claimEvent);
         session = null;
       }
-      removeWindowListeners();
-      target.removeEventListener("click", handleMouseClick, { capture: true });
-      target.removeEventListener("pointerdown", handlePointerDown as EventListener, { capture: true });
+      events.abort();
     };
   };
 
@@ -489,8 +489,9 @@ export function createViewerInput(options: ViewerInputOptions) {
   };
 
   const bindSideButtonNavigation = (targetDocument: Document) => {
+    const events = new AbortController();
     let pressedButton: 3 | 4 | null = null;
-    let trackingMove = false;
+    let tracking: AbortController | null = null;
 
     function stopSideButtonEvent(event: MouseEvent | PointerEvent) {
       if (event.button !== 3 && event.button !== 4) return;
@@ -501,15 +502,17 @@ export function createViewerInput(options: ViewerInputOptions) {
       else stopTracking();
     }
     function startTracking() {
-      if (trackingMove) return;
-      trackingMove = true;
-      targetDocument.addEventListener("pointermove", handlePointerMove, { capture: true });
+      if (tracking) return;
+      tracking = new AbortController();
+      targetDocument.addEventListener("pointermove", handlePointerMove, {
+        capture: true,
+        signal: AbortSignal.any([events.signal, tracking.signal]),
+      });
     }
     function stopTracking() {
       pressedButton = null;
-      if (!trackingMove) return;
-      trackingMove = false;
-      targetDocument.removeEventListener("pointermove", handlePointerMove, { capture: true });
+      tracking?.abort();
+      tracking = null;
     }
     function handleMouseDown(event: MouseEvent) {
       if (event.button !== 3 && event.button !== 4) return;
@@ -528,27 +531,26 @@ export function createViewerInput(options: ViewerInputOptions) {
     }
     const targetWindow = targetDocument.defaultView;
 
-    targetDocument.addEventListener("mousedown", handleMouseDown, { capture: true });
-    targetDocument.addEventListener("mouseup", handleMouseUp, { capture: true });
-    targetDocument.addEventListener("auxclick", stopSideButtonEvent, { capture: true });
-    targetWindow?.addEventListener("blur", stopTracking);
+    const signal = events.signal;
+    targetDocument.addEventListener("mousedown", handleMouseDown, { capture: true, signal });
+    targetDocument.addEventListener("mouseup", handleMouseUp, { capture: true, signal });
+    targetDocument.addEventListener("auxclick", stopSideButtonEvent, { capture: true, signal });
+    targetWindow?.addEventListener("blur", stopTracking, { signal });
     return () => {
       stopTracking();
-      targetDocument.removeEventListener("mousedown", handleMouseDown, { capture: true });
-      targetDocument.removeEventListener("mouseup", handleMouseUp, { capture: true });
-      targetDocument.removeEventListener("auxclick", stopSideButtonEvent, { capture: true });
-      targetWindow?.removeEventListener("blur", stopTracking);
+      events.abort();
     };
   };
 
   const bindInputTarget = (targetDocument: Document) => {
     if (inputTargets.has(targetDocument)) return;
+    const events = new AbortController();
     const touchStyle = targetDocument === document ? null : targetDocument.createElement("style");
     if (touchStyle) {
       touchStyle.textContent = "html { touch-action: pinch-zoom !important; }";
       targetDocument.head?.append(touchStyle);
     }
-    targetDocument.addEventListener("keydown", handleKeyDown);
+    targetDocument.addEventListener("keydown", handleKeyDown, { signal: events.signal });
     const stopPointer = targetDocument === document
       ? () => {}
       : bindPointerInput(targetDocument, targetDocument);
@@ -558,7 +560,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       stopPointer();
       stopWheel();
       stopSideButtons();
-      targetDocument.removeEventListener("keydown", handleKeyDown);
+      events.abort();
       touchStyle?.remove();
     });
   };
