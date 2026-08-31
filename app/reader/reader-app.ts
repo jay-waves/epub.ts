@@ -82,13 +82,7 @@ const runtime: ViewerRuntime = {
 const advancedSettings = createAdvancedSettingsController(applyAdvancedSettings);
 
 console.log(`[epub.ts] v${__EPUB_TS_VERSION__} · built ${__EPUB_TS_BUILD_TIME__}`);
-if (advancedSettings.logStatus()) {
-  console.log(
-    "[epub.ts] Configure with epub.settings.setSerifFont(...), setSansFont(...), setMonoFont(...), "
-      + "epub.settings.setTextAlignment('auto' | 'start' | 'justify'), "
-      + "setSourceLanguage(...), setTranslationTargetLanguage(...), or epub.settings.reset().",
-  );
-}
+advancedSettings.logStatus();
 
 const getView = () => runtime.reader?.view ?? null;
 const getNavigation = () => runtime.reader?.navigation ?? null;

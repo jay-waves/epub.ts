@@ -1,5 +1,6 @@
 import { Overlay } from "./overlay";
 import { loadFrameDocument } from "./frame-document";
+import { getAnchorRect, uncollapseRange } from "./navigation";
 import { getVisibleRange } from "./visible-range";
 
 export type SectionDirection = {
@@ -107,6 +108,7 @@ export class SectionFrame {
     writingMode: "horizontal-tb",
   };
   #layout?: SectionLayout;
+  #navigationCue?: SVGElement;
   #destroyed = false;
 
   constructor({ onExpand }: SectionFrameOptions) {
@@ -366,12 +368,85 @@ export class SectionFrame {
     return getVisibleRange(this.document, start, end, (rect) => this.mapRect(rect));
   }
 
+  showNavigationCue(target: Node | Range | undefined) {
+    this.#navigationCue?.remove();
+    this.#navigationCue = undefined;
+    if (!target || !this.#overlay || !this.#layout) return;
+
+    const expanded = "startContainer" in target
+      ? uncollapseRange(target.cloneRange())
+      : uncollapseRange(target);
+    const targetRect = getAnchorRect(expanded);
+    if (!targetRect) return;
+
+    const doc = this.document;
+    const node = "startContainer" in target ? target.startContainer : target;
+    const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+    const style = element && doc.defaultView?.getComputedStyle(element);
+    const lineHeight = Number.parseFloat(style?.lineHeight ?? "") || 0;
+    const bodyRect = doc.body.getBoundingClientRect();
+    const { gap } = this.#layout;
+
+    let { height, left, top, width } = targetRect;
+    if (this.#vertical) {
+      width = Math.max(width, lineHeight);
+      left -= Math.max(0, width - targetRect.width) / 2;
+      if (this.#layout.kind === "columns") {
+        top = Math.floor(Math.max(0, targetRect.top) / this.#columnStep) * this.#columnStep
+          + gap / 2;
+        height = this.#layout.columnWidth;
+      } else {
+        top = bodyRect.top;
+        height = bodyRect.height;
+      }
+    } else {
+      height = Math.max(height, lineHeight);
+      top -= Math.max(0, height - targetRect.height) / 2;
+      if (this.#layout.kind === "columns") {
+        left = Math.floor(Math.max(0, targetRect.left) / this.#columnStep) * this.#columnStep
+          + gap / 2;
+        width = this.#layout.columnWidth;
+      } else {
+        left = bodyRect.left;
+        width = bodyRect.width;
+      }
+    }
+
+    const band = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    const accent = doc.defaultView?.getComputedStyle(doc.documentElement)
+      .getPropertyValue("--reader-accent-primary").trim() || "#2563eb";
+    band.setAttribute("x", String(left));
+    band.setAttribute("y", String(top));
+    band.setAttribute("width", String(Math.max(1, width)));
+    band.setAttribute("height", String(Math.max(1, height)));
+    band.setAttribute("fill", `color-mix(in srgb, ${accent} 16%, transparent)`);
+    this.#overlay.element.append(band);
+    this.#navigationCue = band;
+
+    const remove = () => {
+      if (this.#navigationCue === band) this.#navigationCue = undefined;
+      band.remove();
+    };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setTimeout(remove, 700);
+    } else {
+      const animation = band.animate([
+        { opacity: 0 },
+        { opacity: 1, offset: 0.12 },
+        { opacity: 1, offset: 0.55 },
+        { opacity: 0 },
+      ], { duration: 900, easing: "linear" });
+      void animation.finished.then(remove, remove);
+    }
+  }
+
   destroy() {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#lifecycle.abort(new DOMException("Section frame destroyed", "AbortError"));
     if (this.#expandFrame !== undefined) cancelAnimationFrame(this.#expandFrame);
     this.#observer.disconnect();
+    this.#navigationCue?.remove();
     this.#media = undefined;
     this.#overlay = undefined;
   }

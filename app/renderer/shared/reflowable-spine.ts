@@ -92,6 +92,13 @@ export class ReflowableSpine {
   entryForView(view: SectionFrame | null | undefined = this.#currentView) {
     return this.entries.find(entry => entry.view === view);
   }
+  showNavigationCue(target: Node | Range | undefined) {
+    if (!target) return;
+    const doc = "startContainer" in target
+      ? target.startContainer.ownerDocument
+      : target.ownerDocument;
+    this.entries.find(({ view }) => view.document === doc)?.view.showNavigationCue(target);
+  }
   adjacent(from: number, direction: -1 | 1) {
     const sections = this.#book?.sections;
     if (!sections) return;

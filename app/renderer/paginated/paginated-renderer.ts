@@ -235,6 +235,9 @@ export class PaginatedRenderer extends HTMLElement {
                 else if (typeof this.#targetAnchor === 'number')
                     setSelectionTarget(detail.range, -1)
                 else setSelectionTarget(this.#targetAnchor, -1)
+                const cueTarget = typeof this.#targetAnchor === 'number'
+                    ? detail.range : this.#targetAnchor
+                this.#spine.showNavigationCue(cueTarget)
             }
         }) as EventListener)
         const checkPointerSelection = debounce((range: Range, sel: Selection) => {
@@ -402,9 +405,12 @@ export class PaginatedRenderer extends HTMLElement {
             }), false)
         }
         this.#layoutEntries()
+        // Position restoration must use the geometry produced by this reflow,
+        // not the page pitch retained from before the viewport resize.
+        if (entry) this.#activateEntry(entry)
         // Clear overflow accidentally retained on the inactive axis.
         this.#container[this.#vertical ? 'scrollLeft' : 'scrollTop'] = 0
-        void this.#scrollToAnchor(anchor, 'anchor', entry).catch(error => {
+        void this.#restoreAfterReflow(anchor, entry).catch(error => {
             if (!this.#destroyed) console.warn('Failed to restore paginated reading position.', error)
         })
     }
@@ -613,39 +619,35 @@ export class PaginatedRenderer extends HTMLElement {
         entry = this.#entryForView()) {
         if (!entry) return false
         this.#targetAnchor = anchor
+        const projection = this.#resolveAnchorProjection(anchor, entry)
+        if (!projection) return false
+        return this.#projectTarget(entry, projection.localOffset, reason, projection.target)
+    }
+    #resolveAnchorProjection(anchor: NavigationAnchor, entry: SpineEntry<SectionFrame>) {
         const rect = typeof anchor === 'number' ? undefined : getAnchorRect(uncollapseRange(anchor))
-        // if anchor is an element or a range
         if (rect) {
             const mapped = this.#getRectMapper(entry.view)(rect)
-            return this.#projectTarget(entry, mapped.left, reason, anchor)
+            return { localOffset: mapped.left, target: anchor }
         }
-        if (typeof anchor !== 'number') return false
-        // if anchor is a fraction
-        const localOffset = anchor * Math.max(0, entry.view.extent - 1)
-        const landed = await this.#projectTarget(entry, localOffset, reason)
-        if (landed && reason === 'navigation' && anchor === 0) {
-            const heading = entry.view.document.querySelector('h1, h2, h3, h4, h5, h6')
-            if (heading) this.#emphasizeTarget(heading)
+        if (typeof anchor === 'number') return {
+            localOffset: anchor * Math.max(0, entry.view.extent - 1),
         }
-        return landed
+    }
+    async #restoreAfterReflow(anchor: NavigationAnchor,
+        entry = this.#entryForView()) {
+        if (!entry) return false
+        this.#targetAnchor = anchor
+        const projection = this.#resolveAnchorProjection(anchor, entry)
+        if (!projection) return false
+        return this.#projectAlignedTarget(
+            entry, projection.localOffset, 'anchor', projection.target)
     }
     #targetRange(anchor: NavigationAnchor) {
         if (typeof anchor === 'number') return undefined
         if ('startContainer' in anchor) return anchor as Range
-        if (!('nodeType' in anchor)) return undefined
         const range = anchor.ownerDocument?.createRange()
-        range?.selectNode(anchor as Node)
+        range?.selectNode(anchor)
         return range
-    }
-    #emphasizeTarget(anchor: NavigationAnchor) {
-        if (typeof anchor === 'number') return
-        const node = 'startContainer' in anchor ? anchor.startContainer : anchor
-        const element = node?.nodeType === Node.ELEMENT_NODE
-            ? node as Element : node?.parentElement
-        element?.animate([
-            { backgroundColor: 'color-mix(in srgb, currentColor 18%, transparent)' },
-            { backgroundColor: 'transparent' },
-        ], { duration: 900, easing: 'ease-out' })
     }
     async #projectTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
         reason: string | null, anchor?: NavigationAnchor) {
@@ -656,8 +658,17 @@ export class PaginatedRenderer extends HTMLElement {
             range: anchor === undefined ? undefined : this.#targetRange(anchor),
         }
         if (target >= this.start && target < this.end) {
-            if (reason === 'navigation' && anchor !== undefined) this.#emphasizeTarget(anchor)
             return this.#scrollTo(this.#container[this.scrollProp], reason, false, preferred)
+        }
+
+        return this.#projectAlignedTarget(entry, localOffset, reason, anchor)
+    }
+    #projectAlignedTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
+        reason: string | null, anchor?: NavigationAnchor) {
+        const preferred = {
+            entry,
+            fraction: Math.min(1, Math.max(0, localOffset / entry.view.extent)),
+            range: anchor === undefined ? undefined : this.#targetRange(anchor),
         }
 
         const columnStep = Math.max(1, entry.view.columnStep)

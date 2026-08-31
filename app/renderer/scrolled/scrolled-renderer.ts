@@ -155,6 +155,9 @@ export class ScrolledRenderer extends HTMLElement {
                 else if (typeof this.#targetAnchor === 'number')
                     setSelectionTarget(detail.range, -1)
                 else setSelectionTarget(this.#targetAnchor, -1)
+                const cueTarget = typeof this.#targetAnchor === 'number'
+                    ? detail.range : this.#targetAnchor
+                this.#spine.showNavigationCue(cueTarget)
             }
         }) as EventListener)
     }
