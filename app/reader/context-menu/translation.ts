@@ -93,6 +93,12 @@ export function createTranslation(options: {
     }
   };
 
+  const invalidateCachedTranslator = (session: Translator | null | undefined) => {
+    if (!session || cachedTranslator?.session !== session) return;
+    release(session);
+    cachedTranslator = null;
+  };
+
   const cancel = () => {
     activeController?.abort();
     activeController = null;
@@ -120,6 +126,7 @@ export function createTranslation(options: {
       x,
       y,
     };
+    let usedTranslator: Translator | null = null;
 
     emitViewerEvent(VIEWER_EVENTS.translationOpen, {
       ...baseDetail,
@@ -156,6 +163,7 @@ export function createTranslation(options: {
       let translator = cachedTranslator?.languagePairKey === languagePairKey
         ? cachedTranslator.session
         : undefined;
+      usedTranslator = translator ?? null;
       const canDownload = downloadApproved || hasDownloadConsent(languagePairKey);
       if (!translator && !canDownload) {
         const availability = await withTimeout(
@@ -216,6 +224,7 @@ export function createTranslation(options: {
         }
         release(cachedTranslator?.session);
         cachedTranslator = { languagePairKey, session: translator };
+        usedTranslator = translator;
         grantDownloadConsent(languagePairKey);
       }
 
@@ -240,6 +249,10 @@ export function createTranslation(options: {
       });
     } catch (error) {
       if (controller.signal.aborted) return;
+      // A timed-out translate() can leave the built-in AI session unusable.
+      // Do not keep reusing that session or every later request will fail with
+      // the same timed-out signal error.
+      invalidateCachedTranslator(usedTranslator);
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
         message: error instanceof Error ? error.message : "Translation failed.",

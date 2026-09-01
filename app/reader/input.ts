@@ -23,6 +23,9 @@ const WHEEL_SWIPE_MIN_VELOCITY = 0.32;
 const TOUCH_PAN_THRESHOLD_PX = 8;
 const TOUCH_LONG_PRESS_DELAY_MS = 500;
 const TOUCH_AXIS_RATIO = 1.2;
+// A double-click selects a word only after its second click. Keep a content
+// click pending long enough for that selection to win over page turning.
+const DOUBLE_CLICK_DELAY_MS = 150;
 
 const STEP_COMMANDS = {
   left: "step-left",
@@ -309,6 +312,77 @@ export function createViewerInput(options: ViewerInputOptions) {
     const events = new AbortController();
     const targetWindow = sourceDocument.defaultView ?? window;
     let session: PointerSession | null = null;
+    let mouseSelection: {
+      pointerId: number;
+      startX: number;
+      startY: number;
+      moved: boolean;
+    } | null = null;
+    let suppressMouseClick = false;
+    let suppressMouseClickTimer: number | undefined;
+    let pendingMouseClick: { event: MouseEvent; region: "left" | "right" } | null = null;
+    let pendingMouseClickTimer: number | undefined;
+    const clearPendingMouseClick = () => {
+      if (pendingMouseClickTimer !== undefined) window.clearTimeout(pendingMouseClickTimer);
+      pendingMouseClickTimer = undefined;
+      pendingMouseClick = null;
+    };
+    const turnPendingMouseClick = () => {
+      const pending = pendingMouseClick;
+      clearPendingMouseClick();
+      if (!pending) return;
+      const selection = sourceDocument.defaultView?.getSelection();
+      if (selection && !selection.isCollapsed) return;
+      consumeReaderEvent(pending.event, "stop");
+      dispatchStep(pending.region);
+    };
+    const clickHitsSelectableText = (event: MouseEvent) => {
+      const pointDocument = sourceDocument as Document & {
+        caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node } | null;
+        caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      };
+      const range = pointDocument.caretRangeFromPoint?.(event.clientX, event.clientY);
+      const node = range?.startContainer
+        ?? pointDocument.caretPositionFromPoint?.(event.clientX, event.clientY)?.offsetNode;
+      if (!node || node.nodeType !== 3 || !node.textContent?.trim()) return false;
+      const parent = node.parentElement;
+      return Boolean(parent && sourceDocument.defaultView?.getComputedStyle(parent).userSelect !== "none");
+    };
+    const queueMouseClick = (event: MouseEvent, region: "left" | "right") => {
+      if (pendingMouseClick) turnPendingMouseClick();
+      pendingMouseClick = { event, region };
+      pendingMouseClickTimer = window.setTimeout(turnPendingMouseClick, DOUBLE_CLICK_DELAY_MS);
+    };
+    const suppressNextMouseClick = () => {
+      suppressMouseClick = true;
+      if (suppressMouseClickTimer !== undefined) window.clearTimeout(suppressMouseClickTimer);
+      suppressMouseClickTimer = window.setTimeout(() => {
+        suppressMouseClick = false;
+        suppressMouseClickTimer = undefined;
+      }, 0);
+    };
+    const handleMousePointerDown = (event: PointerEvent) => {
+      if (!eventBelongsToReader(event) || !event.isPrimary || event.pointerType !== "mouse") return;
+      if (event.button !== 0 || resolveReaderPointerIntent(event.target) !== "content") return;
+      mouseSelection = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+      };
+    };
+    const handleMousePointerMove = (event: PointerEvent) => {
+      if (!mouseSelection || event.pointerId !== mouseSelection.pointerId) return;
+      mouseSelection.moved ||= Math.max(
+        Math.abs(event.clientX - mouseSelection.startX),
+        Math.abs(event.clientY - mouseSelection.startY),
+      ) >= 4;
+    };
+    const handleMousePointerEnd = (event: PointerEvent) => {
+      if (!mouseSelection || event.pointerId !== mouseSelection.pointerId) return;
+      if (mouseSelection.moved) suppressNextMouseClick();
+      mouseSelection = null;
+    };
     const clearLongPress = (current: PointerSession) => {
       if (current.longPressTimer !== undefined) window.clearTimeout(current.longPressTimer);
       current.longPressTimer = undefined;
@@ -317,17 +391,39 @@ export function createViewerInput(options: ViewerInputOptions) {
       const click = event as MouseEvent;
       if (!eventBelongsToReader(click) || resolveReaderPointerIntent(click.target) !== "content") return;
       if ("pointerType" in click && (click as PointerEvent).pointerType !== "mouse") return;
+      if (suppressMouseClick) {
+        suppressMouseClick = false;
+        if (suppressMouseClickTimer !== undefined) window.clearTimeout(suppressMouseClickTimer);
+        suppressMouseClickTimer = undefined;
+        clearPendingMouseClick();
+        return;
+      }
       const region = tapRegion(sourceDocument, click.clientX, click.clientY);
       if (options.getFlow() !== "paginated" || (region !== "left" && region !== "right")) return;
 
+      // The second click of a double-click arrives with detail=2. Cancel the
+      // queued single-click before the browser creates the text selection.
+      if (click.detail > 1) {
+        clearPendingMouseClick();
+        return;
+      }
       const selection = sourceDocument.defaultView?.getSelection();
       if (selection && !selection.isCollapsed) return;
-      consumeReaderEvent(click, "stop");
-      dispatchStep(region);
+      if (!clickHitsSelectableText(click)) {
+        clearPendingMouseClick();
+        consumeReaderEvent(click, "stop");
+        dispatchStep(region);
+        return;
+      }
+      queueMouseClick(click, region);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!eventBelongsToReader(event) || !event.isPrimary || event.pointerType === "mouse") return;
+      if (!eventBelongsToReader(event) || !event.isPrimary) return;
+      if (event.pointerType === "mouse") {
+        handleMousePointerDown(event);
+        return;
+      }
       if (resolveReaderPointerIntent(event.target) !== "content") return;
       if (session) return;
       claimReaderPointer(event, "content");
@@ -411,6 +507,15 @@ export function createViewerInput(options: ViewerInputOptions) {
       capture: true,
       signal: events.signal,
     });
+    targetWindow.addEventListener("pointermove", handleMousePointerMove, {
+      capture: true,
+      signal: events.signal,
+    });
+    targetWindow.addEventListener("pointerup", handleMousePointerEnd, { capture: true, signal: events.signal });
+    targetWindow.addEventListener("pointercancel", handleMousePointerEnd, {
+      capture: true,
+      signal: events.signal,
+    });
     return () => {
       if (session) {
         session.events.abort();
@@ -418,6 +523,11 @@ export function createViewerInput(options: ViewerInputOptions) {
         consumeReaderPointerClaim(session.claimEvent);
         session = null;
       }
+      mouseSelection = null;
+      if (suppressMouseClickTimer !== undefined) window.clearTimeout(suppressMouseClickTimer);
+      suppressMouseClickTimer = undefined;
+      suppressMouseClick = false;
+      clearPendingMouseClick();
       events.abort();
     };
   };
