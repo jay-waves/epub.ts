@@ -59,9 +59,8 @@ Automatic daemon startup is opt-in. Copy
 
 ## macOS
 
-Run `pnpm package:macos` on macOS after `pnpm compile` to build separate Intel and
-Apple Silicon applications and disk images. Use `pnpm package:macos:amd64` or
-`pnpm package:macos:arm64` to build one architecture.
+Run `pnpm package:macos` on Apple Silicon macOS after `pnpm compile` to build the
+arm64 application and disk image. Intel macOS is intentionally unsupported.
 
 The app bundle and DMG packaging step runs only on macOS and uses the system
 `sips`, `iconutil`, `ditto`, and `hdiutil` commands; there is no third-party

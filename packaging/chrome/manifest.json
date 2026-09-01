@@ -3,7 +3,7 @@
   "name": "EPUB Viewer",
   "version": "0.2.9",
   "description": "Open local EPUB files in a focused Chrome extension reader.",
-  "minimum_chrome_version": "120",
+  "minimum_chrome_version": "152",
   "permissions": [
     "tabs"
   ],

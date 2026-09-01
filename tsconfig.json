@@ -1,12 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2024",
+    "target": "ES2025",
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "lib": ["DOM", "DOM.Iterable", "ES2025"],
     "strict": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedSideEffectImports": true,
     "skipLibCheck": true,
     "noEmit": true,
     "noUnusedLocals": true,
@@ -14,7 +17,7 @@
     "paths": {
       "#platform": ["./app/platform/browser.ts"]
     },
-    "types": ["chrome"]
+    "types": ["chrome", "dom-chromium-ai"]
   },
   "include": ["app"]
 }

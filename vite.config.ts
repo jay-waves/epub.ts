@@ -3,10 +3,10 @@ import { cpSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import packageJson from "./package.json";
+import packageJson from "./package.json" with { type: "json" };
 
 const outputDir = "release/web";
-const browserTargets = ["chrome129", "edge129", "firefox147", "safari26", "ios26"];
+const browserTargets = ["chrome152", "edge152", "firefox154", "safari26", "ios26"];
 const builtAt = new Date().toISOString();
 const iconFiles = ["icon.png", ...[16, 32, 48, 128].map((size) => `icon-${size}.png`)];
 const fontFiles = [
@@ -24,8 +24,8 @@ export default defineConfig({
   publicDir: false,
   resolve: {
     alias: {
-      "@mathjax/src/mjs": resolve(__dirname, "node_modules/@mathjax/src/mjs"),
-      "#platform": resolve(__dirname, "app/platform/browser.ts"),
+      "@mathjax/src/mjs": resolve(import.meta.dirname, "node_modules/@mathjax/src/mjs"),
+      "#platform": resolve(import.meta.dirname, "app/platform/browser.ts"),
     },
   },
   plugins: [
@@ -34,16 +34,16 @@ export default defineConfig({
     {
       name: "viewer-assets",
       writeBundle() {
-        const resolvedOutputDir = resolve(__dirname, outputDir);
+        const resolvedOutputDir = resolve(import.meta.dirname, outputDir);
         writeFileSync(
           resolve(resolvedOutputDir, "build-metadata.json"),
           `${JSON.stringify({ builtAt, version: packageJson.version })}\n`,
         );
         for (const filename of iconFiles) {
-          cpSync(resolve(__dirname, "assets", filename), resolve(resolvedOutputDir, filename));
+          cpSync(resolve(import.meta.dirname, "assets", filename), resolve(resolvedOutputDir, filename));
         }
         for (const filename of fontFiles) {
-          cpSync(resolve(__dirname, "public", filename), resolve(resolvedOutputDir, filename));
+          cpSync(resolve(import.meta.dirname, "public", filename), resolve(resolvedOutputDir, filename));
         }
       },
     },
@@ -54,15 +54,16 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     outDir: outputDir,
     emptyOutDir: true,
-    rollupOptions: {
-      input: { index: "index.html" },
+    rolldownOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes("/node_modules/@zip.js/zip.js/")) return "zip";
+        codeSplitting: {
+          groups: [
+            {
+              name: "zip",
+              test: /node_modules[\\/]@zip\.js[\\/]zip\.js/,
+            },
+          ],
         },
-        entryFileNames: "assets/[name]-[hash].js",
-        chunkFileNames: "assets/[name]-[hash].js",
-        assetFileNames: "assets/[name]-[hash][extname]",
       },
     },
   },

@@ -1,39 +1,7 @@
 import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
 import { baseLanguage, translationModelLanguage } from "./translation-language";
 
-type BuiltInAiAvailability = "available" | "downloadable" | "downloading" | "unavailable";
-
-type BuiltInAiMonitor = {
-  addEventListener: (
-    type: "downloadprogress",
-    listener: (event: { loaded: number }) => void,
-  ) => void;
-};
-
-type TranslationLanguagePair = {
-  sourceLanguage: string;
-  targetLanguage: string;
-};
-
-type TranslatorConstructor = {
-  availability(options: TranslationLanguagePair): Promise<BuiltInAiAvailability>;
-  create(options: TranslationLanguagePair & {
-    monitor?: (monitor: BuiltInAiMonitor) => void;
-    signal?: AbortSignal;
-  }): Promise<TranslatorSession>;
-};
-
-type TranslationResource = {
-  destroy?: () => void;
-};
-
-type TranslatorSession = TranslationResource & {
-  translate(text: string, options?: { signal?: AbortSignal }): Promise<string>;
-};
-
-type BuiltInAiGlobals = typeof globalThis & {
-  Translator?: TranslatorConstructor;
-};
+type TranslationResource = Pick<Translator, "destroy">;
 
 type TranslationRequest = {
   sourceText: string;
@@ -108,12 +76,11 @@ export function createTranslation(options: {
   getSourceLanguage: () => string | undefined;
   getTargetLanguage: () => string;
 }) {
-  const builtInAi = globalThis as BuiltInAiGlobals;
   let activeController: AbortController | null = null;
   let pendingDownload: (() => void) | null = null;
   let cachedTranslator: {
     languagePairKey: string;
-    session: TranslatorSession;
+    session: Translator;
   } | null = null;
   let documentLanguage = Promise.resolve<string | undefined>(undefined);
 
@@ -132,7 +99,7 @@ export function createTranslation(options: {
     pendingDownload = null;
   };
 
-  const ensureUsable = (availability: BuiltInAiAvailability, modelName: string) => {
+  const ensureUsable = (availability: Availability, modelName: string) => {
     if (availability === "unavailable") {
       throw new Error(`${modelName} is not available in this browser.`);
     }
@@ -162,8 +129,7 @@ export function createTranslation(options: {
     });
 
     try {
-      const { Translator } = builtInAi;
-      if (!Translator) {
+      if (!("Translator" in globalThis)) {
         throw new Error("Built-in translation is not available in this browser.");
       }
 
