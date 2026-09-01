@@ -9,7 +9,6 @@ type TranslationRequest = {
   y: number;
 };
 
-const operationTimeoutMs = 60 * 1000;
 const availabilityTimeoutMs = 5 * 1000;
 const downloadConsentStorageKey = "epub.ts:translation-download-consent";
 
@@ -38,19 +37,18 @@ function grantDownloadConsent(languagePairKey: string) {
 }
 
 async function withTimeout<Result>(
-  task: (signal: AbortSignal) => Promise<Result>,
+  task: () => Promise<Result>,
   controller: AbortController,
   message: string,
-  timeoutMs = operationTimeoutMs,
 ) {
-  const timeout = AbortSignal.timeout(timeoutMs);
+  const timeout = AbortSignal.timeout(availabilityTimeoutMs);
   const signal = AbortSignal.any([controller.signal, timeout]);
   signal.throwIfAborted();
   const aborted = Promise.withResolvers<never>();
   const reject = () => aborted.reject(signal.reason);
   signal.addEventListener("abort", reject, { once: true });
   try {
-    return await Promise.race([task(signal), aborted.promise]);
+    return await Promise.race([task(), aborted.promise]);
   } catch (error) {
     if (timeout.aborted) {
       throw new ModelTimeoutError(message);
@@ -160,6 +158,10 @@ export function createTranslation(options: {
 
       const languagePair = { sourceLanguage, targetLanguage };
       const languagePairKey = `${sourceLanguage}\u0000${targetLanguage}`;
+      if (cachedTranslator?.languagePairKey !== languagePairKey) {
+        release(cachedTranslator?.session);
+        cachedTranslator = null;
+      }
       let translator = cachedTranslator?.languagePairKey === languagePairKey
         ? cachedTranslator.session
         : undefined;
@@ -170,7 +172,6 @@ export function createTranslation(options: {
           () => Translator.availability(languagePair),
           controller,
           "The browser did not report translation model availability.",
-          availabilityTimeoutMs,
         );
         controller.signal.throwIfAborted();
         ensureUsable(availability, "The built-in translation model");
@@ -197,32 +198,26 @@ export function createTranslation(options: {
           message: "Preparing the built-in translation model...",
           sourceLanguage,
         });
-        translator = await withTimeout(
-          (signal) => Translator.create({
-            ...languagePair,
-            signal,
-            monitor(monitor) {
-              monitor.addEventListener("downloadprogress", ({ loaded }) => {
-                if (signal.aborted) return;
-                emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
-                  ...baseDetail,
-                  message: loaded >= 1
-                    ? "Preparing the built-in translation model..."
-                    : "Downloading the built-in translation model...",
-                  progress: Math.max(0, Math.min(1, loaded)),
-                  sourceLanguage,
-                });
+        translator = await Translator.create({
+          ...languagePair,
+          monitor(monitor) {
+            monitor.addEventListener("downloadprogress", ({ loaded }) => {
+              if (controller.signal.aborted) return;
+              emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+                ...baseDetail,
+                message: loaded >= 1
+                  ? "Preparing the built-in translation model..."
+                  : "Downloading the built-in translation model...",
+                progress: Math.max(0, Math.min(1, loaded)),
+                sourceLanguage,
               });
-            },
-          }),
-          controller,
-          "The built-in translation model took too long to become ready.",
-        );
+            });
+          },
+        });
         if (controller.signal.aborted) {
           release(translator);
           return;
         }
-        release(cachedTranslator?.session);
         cachedTranslator = { languagePairKey, session: translator };
         usedTranslator = translator;
         grantDownloadConsent(languagePairKey);
@@ -234,11 +229,7 @@ export function createTranslation(options: {
         sourceLanguage,
       });
 
-      const translatedText = await withTimeout(
-        (signal) => translator.translate(sourceText, { signal }),
-        controller,
-        "Translation took too long.",
-      );
+      const translatedText = await translator.translate(sourceText, { signal: controller.signal });
       controller.signal.throwIfAborted();
 
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
@@ -249,9 +240,7 @@ export function createTranslation(options: {
       });
     } catch (error) {
       if (controller.signal.aborted) return;
-      // A timed-out translate() can leave the built-in AI session unusable.
-      // Do not keep reusing that session or every later request will fail with
-      // the same timed-out signal error.
+      // Do not retain a session after a non-cancellation failure.
       invalidateCachedTranslator(usedTranslator);
       emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
         ...baseDetail,
