@@ -24,6 +24,7 @@
     --reader-danger-hover-bg: color-mix(in srgb, #a65f5f 9%, transparent);
     --reader-danger-hover-fg: #8f4f4f;
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
+    --reader-surface-secondary: var(--reader-field-bg);
     --reader-field-placeholder: #94a3b8;
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
   }
@@ -37,7 +38,8 @@
       0 30px 72px rgb(15 23 42 / 8%),
       inset 0 1px 0 rgb(255 255 255 / 88%);
     --reader-glass-filter: blur(18px) saturate(145%);
-    --reader-field-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 5%, white);
+    --reader-surface-secondary: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, white);
+    --reader-field-bg: var(--reader-surface-secondary);
     --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, white);
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 6%, white);
   }
@@ -730,7 +732,7 @@
 
   .book-info-stat {
     @apply grid min-w-0 gap-1 rounded-lg px-3 py-2;
-    background-color: var(--reader-field-bg);
+    background-color: var(--reader-surface-secondary);
   }
 
   .book-info-stat-value {

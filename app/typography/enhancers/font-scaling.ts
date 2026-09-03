@@ -4,13 +4,18 @@ const scaledDocuments = new WeakSet<Document>();
 type FontMeasurement = {
   element: HTMLElement;
   size: number;
-  parentSize: number;
 };
+
+const MIN_PUBLISHER_FONT_SIZE = "12px";
+const MIN_PUBLISHER_FONT_SCALE = 0.72;
 
 /**
  * Preserves the publisher's computed font-size hierarchy while routing its
- * overall scale through --reader-font-size. Measurements happen without the
- * reader stylesheet so fixed px/pt sizes and relative em/% sizes behave alike.
+ * overall scale through --reader-font-size. Each size is anchored directly to
+ * the publication body so deeply nested relative sizes do not compound after
+ * reader styles are applied. Publisher small text also receives a readable
+ * floor. Measurements happen without the reader stylesheet so fixed px/pt
+ * sizes and relative em/% sizes behave alike.
  */
 export function preservePublisherFontScale(doc: Document) {
   if (scaledDocuments.has(doc) || !doc.body || !doc.defaultView) return;
@@ -22,33 +27,30 @@ export function preservePublisherFontScale(doc: Document) {
   for (const style of readerStyles) style.disabled = true;
 
   const elements = [doc.body, ...doc.body.querySelectorAll<HTMLElement>("*")];
-  const sizes = new Map<HTMLElement, number>();
   const measurements: FontMeasurement[] = [];
+  let bodySize = 0;
 
   try {
-    for (const element of elements) {
-      const size = Number.parseFloat(doc.defaultView.getComputedStyle(element).fontSize);
-      if (Number.isFinite(size) && size > 0) sizes.set(element, size);
-    }
-
-    const bodySize = sizes.get(doc.body);
-    if (!bodySize) return;
-    measurements.push({ element: doc.body, size: bodySize, parentSize: bodySize });
+    bodySize = Number.parseFloat(doc.defaultView.getComputedStyle(doc.body).fontSize);
+    if (!Number.isFinite(bodySize) || bodySize <= 0) return;
+    measurements.push({ element: doc.body, size: bodySize });
 
     for (const element of elements.slice(1)) {
-      const size = sizes.get(element);
-      const parent = element.parentElement;
-      const parentSize = parent ? sizes.get(parent) : undefined;
-      if (size && parentSize) measurements.push({ element, size, parentSize });
+      const size = Number.parseFloat(doc.defaultView.getComputedStyle(element).fontSize);
+      if (Number.isFinite(size) && size > 0) measurements.push({ element, size });
     }
   } finally {
     for (const style of readerStyles) style.disabled = false;
   }
 
-  for (const { element, size, parentSize } of measurements) {
+  for (const { element, size } of measurements) {
+    const scale = Number((size / bodySize).toFixed(5));
+    const scaledSize = `calc(var(--reader-font-size) * ${scale})`;
     const value = element === doc.body
       ? "var(--reader-font-size)"
-      : `${Number((size / parentSize * 100).toFixed(5))}%`;
+      : scale < 1
+        ? `max(${MIN_PUBLISHER_FONT_SIZE}, calc(var(--reader-font-size) * ${MIN_PUBLISHER_FONT_SCALE}), ${scaledSize})`
+        : scaledSize;
     element.style.setProperty("font-size", value, "important");
   }
 }
