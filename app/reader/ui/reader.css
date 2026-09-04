@@ -532,14 +532,6 @@
     @apply size-3.5 shrink-0;
   }
 
-  .reader-text-popover-title svg {
-    color: var(--reader-accent-secondary, #f4c430);
-  }
-
-  .reader-translation-popover .reader-text-popover-title svg {
-    color: inherit;
-  }
-
   .reader-context-menu-item:hover,
   .reader-context-menu-item:focus-visible {
     background-color: var(--reader-control-hover-bg);
@@ -770,7 +762,7 @@
   .toc-link[data-selected="true"] {
     @apply font-semibold;
     color: var(--reader-accent-primary, #2563eb);
-    background: var(--reader-selection-bg);
+    background: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 10%, transparent);
     backdrop-filter: blur(10px) saturate(140%);
     -webkit-backdrop-filter: blur(10px) saturate(140%);
   }

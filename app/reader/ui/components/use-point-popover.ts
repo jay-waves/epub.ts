@@ -25,13 +25,20 @@ export function usePointPopover({
   useLayoutEffect(() => {
     const popover = popoverRef.current;
     if (!popover) return;
-    const handleToggle = (event: Event) => {
+    const handleDismiss = (event: Event) => {
       if ((event as ToggleEvent).newState === "closed" && openRef.current) {
+        // Guard the following `toggle` event and make light-dismiss synchronous
+        // so consumers can persist their latest state before the popover closes.
+        openRef.current = false;
         onDismissRef.current();
       }
     };
-    popover.addEventListener("toggle", handleToggle);
-    return () => popover.removeEventListener("toggle", handleToggle);
+    popover.addEventListener("beforetoggle", handleDismiss);
+    popover.addEventListener("toggle", handleDismiss);
+    return () => {
+      popover.removeEventListener("beforetoggle", handleDismiss);
+      popover.removeEventListener("toggle", handleDismiss);
+    };
   }, [open]);
 
   useLayoutEffect(() => {

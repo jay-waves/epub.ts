@@ -52,7 +52,7 @@ export function TranslationPopover() {
     <section
         aria-label="Translation"
         aria-live="polite"
-        className="reader-text-popover reader-translation-popover"
+        className="reader-text-popover"
         popover="auto"
         ref={popover.setPopover}
         role="dialog"

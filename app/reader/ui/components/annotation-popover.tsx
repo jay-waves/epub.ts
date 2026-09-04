@@ -27,11 +27,9 @@ export function AnnotationPopover() {
   const deletingRef = useRef(false);
 
   const updateState = (update: (current: AnnotationState) => AnnotationState) => {
-    setState((current) => {
-      const next = update(current);
-      stateRef.current = next;
-      return next;
-    });
+    const next = update(stateRef.current);
+    stateRef.current = next;
+    setState(next);
   };
 
   useViewerEvent(VIEWER_EVENTS.annotationOpen, (detail) => {
