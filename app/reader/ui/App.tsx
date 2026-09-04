@@ -126,7 +126,9 @@ function Welcome({
       >
         <img className="welcome-logo" src="./icon.png" alt="" />
         <h1>EPUB.ts</h1>
-        <p className="welcome-prompt">Click to choose or drop an EPUB</p>
+        <p className="welcome-prompt">A quiet place for your books</p>
+        <span className="welcome-action">Choose EPUB</span>
+        <p className="welcome-hint">or drop a file here</p>
         <input
           ref={inputRef}
           className="welcome-input"

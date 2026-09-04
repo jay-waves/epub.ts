@@ -11,10 +11,28 @@
     --popover: 40 33% 98%;
     --popover-foreground: 213 24% 16%;
     --radius: 0.5rem;
-    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, transparent);
-    --reader-glass-border: rgb(255 255 255 / 45%);
-    --reader-glass-shadow: 0 14px 34px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
-    --reader-glass-filter: blur(14px) saturate(135%);
+    --reader-glass-thin-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, transparent);
+    --reader-glass-regular-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, transparent);
+    --reader-glass-thick-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, transparent);
+    --reader-glass-thin-filter: blur(24px) saturate(180%) contrast(92%);
+    --reader-glass-regular-filter: blur(38px) saturate(160%) contrast(90%);
+    --reader-glass-thick-filter: blur(52px) saturate(150%) contrast(88%);
+    --reader-glass-border: rgb(255 255 255 / 58%);
+    --reader-glass-highlight: rgb(255 255 255 / 72%);
+    --reader-glass-thin-shadow:
+      0 1px 1px rgb(15 23 42 / 5%),
+      0 10px 40px rgb(15 23 42 / 10%),
+      inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-regular-shadow:
+      0 1px 1px rgb(15 23 42 / 6%),
+      0 10px 28px rgb(15 23 42 / 11%),
+      0 30px 72px rgb(15 23 42 / 8%),
+      inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-thick-shadow:
+      0 1px 2px rgb(15 23 42 / 7%),
+      0 18px 48px rgb(15 23 42 / 14%),
+      0 42px 96px rgb(15 23 42 / 8%),
+      inset 0 1px 0 var(--reader-glass-highlight);
     --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
     --reader-control-fg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 64%, transparent);
     --reader-control-strong-fg: var(--reader-chrome-fg, #1f2933);
@@ -25,30 +43,48 @@
     --reader-danger-hover-fg: #8f4f4f;
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
     --reader-surface-secondary: var(--reader-field-bg);
+    --reader-selection-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 10%, transparent);
     --reader-field-placeholder: #94a3b8;
     --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
   }
 
   html[data-reader-theme="light"] {
-    --reader-glass-bg: rgb(248 250 252 / 94%);
-    --reader-glass-border: rgb(100 116 139 / 22%);
-    --reader-glass-shadow:
-      0 1px 2px rgb(15 23 42 / 9%),
-      0 12px 32px rgb(15 23 42 / 16%),
-      0 30px 72px rgb(15 23 42 / 8%),
-      inset 0 1px 0 rgb(255 255 255 / 88%);
-    --reader-glass-filter: blur(18px) saturate(145%);
-    --reader-surface-secondary: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, white);
-    --reader-field-bg: var(--reader-surface-secondary);
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, white);
-    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 6%, white);
+    --reader-glass-thin-bg: rgb(245 245 247 / 72%);
+    --reader-glass-regular-bg: rgb(247 247 249 / 89%);
+    --reader-glass-thick-bg: rgb(248 248 250 / 95%);
+    --reader-glass-border: rgb(15 23 42 / 7%);
+    --reader-glass-highlight: rgb(255 255 255 / 92%);
+    --reader-surface-secondary: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 96%, var(--reader-chrome-fg, #1f2933));
+    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 94%, var(--reader-chrome-fg, #1f2933));
+    --reader-selection-bg: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 93%, var(--reader-chrome-fg, #1f2933)) 78%,
+      transparent
+    );
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, var(--reader-chrome-fg, #1f2933));
+    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 97%, var(--reader-chrome-fg, #1f2933));
   }
 
   html[data-reader-mode="dark"] {
-    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
-    --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 12%, transparent);
-    --reader-glass-shadow: 0 14px 34px rgb(0 0 0 / 25%);
-    --reader-glass-filter: blur(14px) saturate(130%);
+    --reader-glass-thin-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 74%, transparent);
+    --reader-glass-regular-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 88%, transparent);
+    --reader-glass-thick-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
+    --reader-glass-border: rgb(255 255 255 / 14%);
+    --reader-glass-highlight: rgb(255 255 255 / 17%);
+    --reader-glass-thin-shadow:
+      0 1px 1px rgb(0 0 0 / 16%),
+      0 10px 40px rgb(0 0 0 / 28%),
+      inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-regular-shadow:
+      0 1px 1px rgb(0 0 0 / 18%),
+      0 14px 36px rgb(0 0 0 / 32%),
+      0 32px 80px rgb(0 0 0 / 20%),
+      inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-thick-shadow:
+      0 1px 2px rgb(0 0 0 / 22%),
+      0 20px 52px rgb(0 0 0 / 38%),
+      0 44px 100px rgb(0 0 0 / 22%),
+      inset 0 1px 0 var(--reader-glass-highlight);
     --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
     --reader-control-fg: #d8dee9;
     --reader-control-strong-fg: #e5ebf3;
@@ -63,9 +99,14 @@
   }
 
   html[data-reader-theme="gruvbox"] {
-    --reader-glass-bg: rgb(50 48 47 / 95%);
-    --reader-glass-border: #504945;
-    --reader-glass-shadow: 0 14px 34px rgb(0 0 0 / 30%);
+    --reader-glass-thin-bg: rgb(50 48 47 / 74%);
+    --reader-glass-regular-bg: rgb(50 48 47 / 88%);
+    --reader-glass-thick-bg: rgb(50 48 47 / 95%);
+    --reader-glass-border: rgb(235 219 178 / 15%);
+    --reader-glass-highlight: rgb(249 245 215 / 12%);
+    --reader-glass-thin-shadow: 0 10px 40px rgb(0 0 0 / 28%), inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-regular-shadow: 0 14px 38px rgb(0 0 0 / 32%), inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-thick-shadow: 0 22px 56px rgb(0 0 0 / 38%), inset 0 1px 0 var(--reader-glass-highlight);
     --reader-border-subtle: #3c3836;
     --reader-control-fg: #d5c4a1;
     --reader-control-strong-fg: #ebdbb2;
@@ -114,8 +155,12 @@
     width: max-content;
     max-width: 14rem;
     padding: 0.375rem 0.625rem;
-    border-radius: calc(var(--radius) - 2px);
-    background: hsl(var(--popover-foreground));
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 0.55rem;
+    background: color-mix(in srgb, hsl(var(--popover-foreground)) 88%, transparent);
+    box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
     color: hsl(var(--popover));
     content: attr(data-tip);
     font-size: 0.75rem;
@@ -164,11 +209,20 @@
   }
 
   .reader-modal::backdrop {
-    background: transparent;
+    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 7%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .reader-modal[open],
+  .search-nav:not([hidden]),
+  .reader-context-menu:popover-open,
+  .reader-text-popover:popover-open {
+    animation: reader-surface-enter 260ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .ui-button {
-    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-sm font-medium text-current outline-none transition-colors duration-150;
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-transparent p-0 text-sm font-medium text-current outline-none transition-[background-color,color,transform,box-shadow] duration-150;
   }
 
   .ui-button:focus-visible {
@@ -185,6 +239,10 @@
     color: var(--reader-control-hover-fg);
   }
 
+  .ui-button:active {
+    transform: scale(0.94);
+  }
+
   .reader-app {
     @apply min-h-screen;
     color: var(--reader-chrome-fg, #1f2933);
@@ -199,20 +257,40 @@
   .search-nav,
   .toc-modal-box,
   .reader-context-menu,
-  .reader-text-popover {
+  .reader-text-popover,
+  #theme-modal.reader-modal {
+    --reader-surface-bg: var(--reader-glass-regular-bg);
+    --reader-surface-filter: var(--reader-glass-regular-filter);
+    --reader-surface-shadow: var(--reader-glass-regular-shadow);
     border-color: var(--reader-glass-border);
-    background-color: var(--reader-glass-bg);
-    box-shadow: var(--reader-glass-shadow);
-    backdrop-filter: var(--reader-glass-filter);
+    background-color: var(--reader-surface-bg);
+    box-shadow: var(--reader-surface-shadow);
+    backdrop-filter: var(--reader-surface-filter);
+    -webkit-backdrop-filter: var(--reader-surface-filter);
+  }
+
+  .reader-dock {
+    --reader-surface-bg: var(--reader-glass-thin-bg);
+    --reader-surface-filter: var(--reader-glass-thin-filter);
+    --reader-surface-shadow: var(--reader-glass-thin-shadow);
+  }
+
+  .toc-modal-box,
+  .reader-context-menu,
+  .reader-text-popover,
+  #theme-modal.reader-modal {
+    --reader-surface-bg: var(--reader-glass-thick-bg);
+    --reader-surface-filter: var(--reader-glass-thick-filter);
+    --reader-surface-shadow: var(--reader-glass-thick-shadow);
   }
 
   .reader-dock {
     @apply pointer-events-auto relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
     opacity: 0;
-    transform: translateX(calc(-100% + 0.5rem)) translateY(-4vh);
+    transform: translateX(calc(-100% + 0.5rem)) translateY(-4vh) scale(0.96);
     transition:
-      opacity 200ms ease,
-      transform 200ms ease;
+      opacity 220ms ease,
+      transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .reader-dock::after {
@@ -227,12 +305,21 @@
   .reader-dock-shell:focus-within .reader-dock,
   .reader-dock-shell.is-touch-open .reader-dock {
     opacity: 1;
-    transform: translateX(0.75rem) translateY(-4vh);
+    transform: translateX(0.9rem) translateY(-4vh) scale(1);
   }
 
   .reader-dock button {
     @apply relative grid place-items-center rounded-lg transition-all duration-200;
     color: var(--reader-control-fg);
+  }
+
+  .reader-dock button:hover {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 25%), 0 4px 12px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    transform: scale(1.05);
+  }
+
+  .reader-dock button:active {
+    transform: scale(0.94);
   }
 
   .dock-button-content {
@@ -337,16 +424,28 @@
     to { opacity: 0.7; }
   }
 
+  @keyframes reader-surface-enter {
+    from {
+      opacity: 0;
+      scale: 0.97;
+      translate: 0 0.4rem;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+    }
+  }
+
   .reader-progress-shell {
-    @apply fixed bottom-8 left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 items-center px-2;
+    @apply fixed left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 items-center px-2;
+    bottom: max(2rem, env(safe-area-inset-bottom));
   }
 
   .reader-progress-float {
-    @apply flex w-full items-center gap-2 opacity-60;
-    transform: translateY(0);
-    transition:
-      opacity 420ms ease,
-      transform 420ms cubic-bezier(0.2, 0, 0.2, 1);
+    @apply flex h-full w-full items-center gap-2 px-3;
+    opacity: 0.58;
+    transition: opacity 180ms ease;
   }
 
   .reader-progress {
@@ -364,23 +463,29 @@
   }
 
   .reader-progress-track {
-    @apply relative h-1.5 min-w-0 flex-1 overflow-visible rounded-md transition-all duration-200 ease-out;
-    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 22%, transparent);
+    @apply relative h-1 min-w-0 flex-1 overflow-visible rounded-full transition-[height,background-color] duration-200 ease-out;
+    background: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 18%, transparent);
   }
 
   .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress.is-dragging)) .reader-progress-float {
-    opacity: 0.96;
-    transform: translateY(-0.55rem);
+    opacity: 1;
   }
 
   .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-track {
-    @apply h-2 rounded-lg;
-    box-shadow: 0 6px 14px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 9%, transparent);
+    height: 5px;
   }
 
   .reader-progress-fill {
-    @apply absolute top-1/2 left-0 z-[2] h-1.5 -translate-y-1/2 rounded-md transition-[width] duration-300 ease-out;
-    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 68%, transparent);
+    @apply absolute top-1/2 left-0 z-[2] h-full -translate-y-1/2 rounded-full transition-[width,height] duration-300 ease-out;
+    background: color-mix(
+      in srgb,
+      var(--reader-accent-primary, #2563eb) 58%,
+      var(--reader-chrome-fg, #1f2933)
+    );
+  }
+
+  .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-fill {
+    height: 4.5px;
   }
 
   .reader-progress-thumb {
@@ -390,7 +495,7 @@
   }
 
   .reader-progress-history-marker {
-    @apply relative z-[5] inline-flex h-1.5 w-1.5 shrink-0 cursor-pointer appearance-none items-center justify-center rounded-full border-0 p-0 opacity-0 outline-none transition-[background-color,height,opacity,width] duration-200 ease-out;
+    @apply relative z-[5] inline-flex h-1.5 w-1.5 shrink-0 cursor-pointer appearance-none items-center justify-center rounded-full border-0 p-0 opacity-0 outline-none transition-[background-color,opacity] duration-200 ease-out;
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 62%, transparent);
     pointer-events: none;
   }
@@ -412,14 +517,14 @@
   }
 
   .reader-context-menu {
-    @apply fixed grid min-w-32 gap-0.5 rounded-md border p-1;
+    @apply fixed grid min-w-36 gap-0.5 rounded-xl border p-1.5;
     inset: auto;
     margin: 0;
     color: var(--reader-chrome-fg, #1f2933);
   }
 
   .reader-context-menu-item {
-    @apply flex h-7 w-full items-center gap-2 rounded px-2.5 text-left text-xs font-medium outline-none transition-colors duration-100;
+    @apply flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium outline-none transition-all duration-150;
     color: var(--reader-control-fg);
   }
 
@@ -435,6 +540,7 @@
   .reader-context-menu-item:focus-visible {
     background-color: var(--reader-control-hover-bg);
     color: var(--reader-control-hover-fg);
+    transform: translateX(1px);
   }
 
   .reader-context-menu-item.is-destructive {
@@ -448,7 +554,7 @@
   }
 
   .reader-text-popover {
-    @apply fixed w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border p-1.5;
+    @apply fixed w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border p-2;
     inset: auto;
     margin: 0;
     color: var(--reader-chrome-fg, #1f2933);
@@ -561,7 +667,7 @@
   }
 
   .search-nav {
-    @apply fixed top-3 left-1/2 z-20 flex w-[min(32rem,calc(100vw-1.5rem))] -translate-x-1/2 items-center gap-1 rounded-xl border p-1.5;
+    @apply fixed inset-x-0 top-3 z-20 mx-auto flex w-[min(32rem,calc(100vw-1.5rem))] items-center gap-1 rounded-2xl border p-1.5;
     color: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
   }
 
@@ -578,7 +684,7 @@
   .search-nav button.search-mode-active,
   .search-nav button.search-mode-active:hover {
     color: var(--reader-accent-primary, #2563eb);
-    background-color: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 12%, transparent);
+    background-color: var(--reader-selection-bg);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 42%, transparent);
   }
 
@@ -660,9 +766,9 @@
   .toc-link[data-selected="true"] {
     @apply font-semibold;
     color: var(--reader-accent-primary, #2563eb);
-    text-decoration-line: underline;
-    text-decoration-thickness: 0.08em;
-    text-underline-offset: 0.24em;
+    background: var(--reader-selection-bg);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
   }
 
   .toc-link-label {
@@ -674,7 +780,7 @@
   }
 
   .toc-modal-box {
-    @apply w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border p-1.5;
+    @apply w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[1.35rem] border p-2;
     color: var(--reader-control-strong-fg);
     transform: translateY(-4vh);
   }
@@ -751,10 +857,7 @@
   }
 
   #theme-modal.reader-modal {
-    @apply h-fit w-[min(23rem,calc(100vw-2rem))] rounded-lg border;
-    border-color: var(--reader-border-subtle);
-    background: var(--reader-chrome-bg);
-    box-shadow: 0 8px 24px color-mix(in srgb, black 18%, transparent);
+    @apply h-fit w-[min(23rem,calc(100vw-2rem))] rounded-[1.35rem] border;
   }
 
   .theme-dialog-header {
@@ -780,20 +883,22 @@
   }
 
   .theme-option {
-    @apply relative grid min-w-0 cursor-pointer gap-2 rounded border border-transparent bg-transparent p-1 text-inherit outline-none;
+    @apply relative grid min-w-0 cursor-pointer gap-2 rounded-xl border border-transparent bg-transparent p-1.5 text-inherit outline-none transition-[background-color,border-color,transform,box-shadow] duration-150;
   }
 
   .theme-option:hover {
     background: var(--reader-control-hover-bg);
+    transform: translateY(-1px);
   }
 
   .theme-option:focus-visible,
   .theme-option[data-state="checked"] {
     border-color: var(--reader-accent-primary);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--reader-accent-primary) 12%, transparent);
   }
 
   .theme-preview {
-    @apply flex h-9 overflow-hidden rounded-sm;
+    @apply flex h-10 overflow-hidden rounded-lg;
   }
 
   .theme-preview > span {
@@ -840,7 +945,10 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--reader-chrome-bg, #fffefd);
+  background:
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--reader-accent-primary, #2563eb) 13%, transparent), transparent 34%),
+    radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--reader-accent-secondary, #f4c430) 11%, transparent), transparent 36%),
+    var(--reader-chrome-bg, #fffefd);
   color: var(--reader-chrome-fg, #1f2933);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -849,33 +957,50 @@
   box-sizing: border-box;
   display: grid;
   width: min(520px, 100%);
-  padding: 42px;
+  padding: 46px 42px 40px;
   justify-items: center;
-  gap: 12px;
-  border: 1px dashed var(--reader-control-fg, #64748b);
-  border-radius: var(--radius);
-  background: transparent;
+  gap: 10px;
+  border: 1px solid var(--reader-glass-border);
+  border-radius: 28px;
+  background: var(--reader-glass-regular-bg);
+  box-shadow: var(--reader-glass-thick-shadow);
+  backdrop-filter: var(--reader-glass-regular-filter);
+  -webkit-backdrop-filter: var(--reader-glass-regular-filter);
   cursor: pointer;
   outline: none;
   text-align: center;
+  transform: translateY(0) scale(1);
+  transition:
+    border-color 180ms ease,
+    box-shadow 280ms ease,
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: reader-welcome-enter 440ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .welcome-frame:hover,
 .welcome-frame:focus-visible,
 .welcome-frame.is-dragging {
   border-color: var(--reader-accent-primary, #2563eb);
+  box-shadow:
+    var(--reader-glass-thick-shadow),
+    0 0 0 4px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 12%, transparent);
+  transform: translateY(-3px) scale(1.01);
 }
 
 .welcome-logo {
   display: block;
-  width: 54px;
-  height: 54px;
-  margin: 0 0 6px;
+  width: 62px;
+  height: 62px;
+  margin: 0 0 8px;
+  border-radius: 15px;
+  filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 22%, transparent));
 }
 
 .welcome h1 {
   margin: 0;
-  font-size: 25px;
+  font-size: 27px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
@@ -883,7 +1008,42 @@
   margin: 0;
   color: var(--reader-control-fg, #475569);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.welcome-action {
+  display: inline-flex;
+  min-width: 132px;
+  height: 38px;
+  margin-top: 12px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--reader-accent-primary, #2563eb);
+  box-shadow:
+    0 8px 22px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 28%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 25%);
+  color: white;
+  font-size: 13px;
+  font-weight: 650;
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.welcome-frame:hover .welcome-action,
+.welcome-frame:focus-visible .welcome-action {
+  filter: brightness(1.06);
+  transform: scale(1.025);
+}
+
+.welcome-frame:active .welcome-action {
+  transform: scale(0.97);
+}
+
+.welcome-hint {
+  margin: 0;
+  color: color-mix(in srgb, var(--reader-control-fg, #475569) 72%, transparent);
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .welcome-input {
@@ -898,6 +1058,63 @@
   margin: 0;
   color: #dc2626;
   font-size: 12px;
+}
+
+@keyframes reader-welcome-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  :root {
+    --reader-glass-thin-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-regular-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-thick-bg: var(--reader-chrome-bg, #fffefd);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --reader-glass-thin-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-regular-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-thick-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 36%, transparent);
+  }
+
+  .reader-dock,
+  .search-nav,
+  .toc-modal-box,
+  .reader-context-menu,
+  .reader-text-popover,
+  #theme-modal.reader-modal,
+  .reader-progress-float,
+  .welcome-frame {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-modal[open],
+  .search-nav:not([hidden]),
+  .reader-context-menu:popover-open,
+  .reader-text-popover:popover-open,
+  .welcome-frame {
+    animation: none;
+  }
+
+  .reader-dock,
+  .reader-progress-float,
+  .theme-option,
+  .welcome-frame {
+    transition-duration: 0.01ms;
+  }
 }
 
 @media (max-width: 540px) {
