@@ -7,6 +7,7 @@ import {
   createReadingPosition,
   readingEdgeRange,
   resolveReadingPosition,
+  resolveSemanticTarget,
   uncollapseRange,
 } from "../app/renderer/shared/navigation.ts";
 
@@ -59,6 +60,20 @@ test("uses a collapsed clone as the transferable reading edge", () => {
   assert.equal(readingEdgeRange(range), clone);
   assert.equal(collapsed, true);
   assert.equal(readingEdgeRange(undefined), undefined);
+});
+
+test("transfers layout modes by semantic CFI without a geometry fallback", () => {
+  const anchor = () => null;
+  const resolve = (cfi: string) => cfi === "epubcfi(/6/8)"
+    ? { index: 3, anchor }
+    : undefined;
+
+  assert.deepEqual(resolveSemanticTarget(3, "epubcfi(/6/8)", resolve), {
+    index: 3,
+    anchor,
+  });
+  assert.deepEqual(resolveSemanticTarget(3, "invalid", resolve), { index: 3 });
+  assert.deepEqual(resolveSemanticTarget(3, undefined, resolve), { index: 3 });
 });
 
 test("expands a collapsed text range by the adjacent character", () => {

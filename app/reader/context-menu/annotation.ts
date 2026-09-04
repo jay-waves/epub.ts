@@ -246,13 +246,6 @@ export function createAnnotations(options: AnnotationOptions) {
     });
   };
 
-  const addCurrentAnnotationsToOverlay = (view: ReaderView, index: number) => {
-    for (const annotation of annotationRepository.forSection(index)) {
-      const added = view.addAnnotation?.(annotation);
-      if (added) run(added, "Failed to draw restored highlight.");
-    }
-  };
-
   const restore = async (view: ReaderView, bookKey: string) => {
     const savedHighlights = await annotationRepository.load(bookKey);
     if (options.getView() !== view || options.getBookKey() !== bookKey) return;
@@ -420,7 +413,6 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   return {
-    addCurrentAnnotationsToOverlay,
     close: textContext.close,
     dismiss: textContext.dismiss,
     drawAnnotation,

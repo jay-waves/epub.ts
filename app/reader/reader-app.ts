@@ -233,12 +233,13 @@ function wireReaderEvents(reader: Reader) {
 
   view.addEventListener("relocate", (event) => {
     const detail = reader.navigation.location(event.detail);
+    const preserveSemanticLocation = detail.reason === "anchor" || detail.reason === "switch";
 
     let currentItem: typeof session.tocItem;
     if (detail.reason === "navigation" && session.tocIntent) {
       currentItem = session.tocIntent;
       session.tocIntent = null;
-    } else if (detail.reason === "anchor") {
+    } else if (preserveSemanticLocation) {
       // Font/image reflow restores the same logical position and must not
       // override a directory item explicitly selected by the user.
       currentItem = session.tocItem;
@@ -250,17 +251,14 @@ function wireReaderEvents(reader: Reader) {
       session.tocItem = currentItem;
       emitTocUpdate();
     }
-    session.progress = detail.fraction;
+    if (!preserveSemanticLocation) session.progress = detail.fraction;
     emitViewerEvent(VIEWER_EVENTS.progressUpdate, {
       fraction: session.progress,
       index: detail.index,
     });
-    queuePositionSave(detail);
-  }, listenerOptions);
-
-  view.addEventListener("create-overlay", (event) => {
-    const { index } = event.detail;
-    annotationState.addCurrentAnnotationsToOverlay(view, index);
+    queuePositionSave(preserveSemanticLocation
+      ? { ...detail, fraction: session.progress }
+      : detail);
   }, listenerOptions);
 
   view.addEventListener("draw-annotation", (event) => {

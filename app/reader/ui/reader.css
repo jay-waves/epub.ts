@@ -536,6 +536,10 @@
     color: var(--reader-accent-secondary, #f4c430);
   }
 
+  .reader-translation-popover .reader-text-popover-title svg {
+    color: inherit;
+  }
+
   .reader-context-menu-item:hover,
   .reader-context-menu-item:focus-visible {
     background-color: var(--reader-control-hover-bg);

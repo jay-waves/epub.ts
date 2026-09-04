@@ -34,6 +34,15 @@ export function readingEdgeRange(range: Range | undefined) {
   return edge;
 }
 
+/** Resolves a mode-switch target without reusing geometry from the old layout. */
+export function resolveSemanticTarget<Target extends { index: number }>(
+  index: number,
+  cfi: string | undefined,
+  resolve: (cfi: string) => Target | undefined,
+): Target | { index: number } {
+  return cfi ? resolve(cfi) ?? { index } : { index };
+}
+
 export function rangeBelongsToDocument(range: Range | undefined, doc: Document) {
   if (!range || range.startContainer.ownerDocument !== doc
     || range.endContainer.ownerDocument !== doc) return false;

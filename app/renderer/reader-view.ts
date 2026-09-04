@@ -1,6 +1,7 @@
 import { Overlay } from './shared/overlay.js'
 import type { OverlayDraw, OverlayDrawOptions } from './shared/overlay.js'
-import { readingEdgeRange } from './shared/navigation.js'
+import { AnnotationCache } from './shared/annotation-cache.js'
+import { readingEdgeRange, resolveSemanticTarget } from './shared/navigation.js'
 import type { RelocateDetail } from './shared/navigation.js'
 import { createRenderer, rendererModeForBook } from './renderer-factory.js'
 import type { Renderer, RendererStyles } from './renderer.js'
@@ -123,6 +124,8 @@ export class ReaderView extends HTMLElement {
     #root = this.attachShadow({ mode: 'closed' })
     #events?: AbortController
     #contents = new Map<Document, AbortController>()
+    #annotations = new AnnotationCache<Annotation>()
+    #readingCfis = new Map<number, string>()
     #destroyed = false
     #opened = false
     #decorations = new Map<number, Map<string, Decoration>>()
@@ -179,6 +182,8 @@ export class ReaderView extends HTMLElement {
         renderer.addEventListener('relocate', e => {
             const detail = (e as CustomEvent<RelocateDetail>).detail
             this.#relocations.set(renderer, detail)
+            const cfi = this.#readingCfi(detail)
+            if (cfi) this.#readingCfis.set(detail.index, cfi)
             if (renderer === this.renderer) this.#emit('relocate', detail)
         }, { signal: rendererSignal })
         renderer.addEventListener('request-overlay', event => {
@@ -249,20 +254,26 @@ export class ReaderView extends HTMLElement {
         this.#rendererEvents.delete(current)
         current.remove()
         const relocation = this.#relocations.get(next)
-        if (relocation) this.#emit('relocate', relocation)
+        if (relocation) this.#emit('relocate', { ...relocation, reason: 'anchor' })
     }
     #readingTarget(renderer: Renderer): Resolved | undefined {
         const location = this.#relocations.get(renderer)
         if (!location) return
-        const { fraction, index, range } = location
+        const { index } = location
         try {
-            const readingEdge = readingEdgeRange(range)
-            const cfi = readingEdge && this.navigation!.cfi?.(index, readingEdge)
-            return cfi ? this.navigation!.resolve(cfi) ?? { index, anchor: fraction }
-                : { index, anchor: fraction }
+            const cfi = this.#readingCfi(location) ?? this.#readingCfis.get(index)
+            return resolveSemanticTarget(index, cfi, value => this.navigation!.resolve(value))
         } catch (error) {
             console.warn('Could not transfer the exact reading position.', error)
-            return { index, anchor: fraction }
+            return { index }
+        }
+    }
+    #readingCfi({ index, range }: Pick<RelocateDetail, 'index' | 'range'>) {
+        try {
+            const readingEdge = readingEdgeRange(range)
+            return readingEdge ? this.navigation?.cfi?.(index, readingEdge) : undefined
+        } catch {
+            return undefined
         }
     }
     #copyRendererAttributes(source: Renderer, target: Renderer) {
@@ -282,6 +293,8 @@ export class ReaderView extends HTMLElement {
         this.#contents.clear()
         this.renderer?.destroy()
         this.renderer?.remove()
+        this.#annotations.clear()
+        this.#readingCfis.clear()
         this.#decorations.clear()
         this.navigation = undefined
         this.book = undefined
@@ -304,8 +317,15 @@ export class ReaderView extends HTMLElement {
         const resolved = target
             ? { index: target.index, anchor: () => target.range }
             : navigation.resolve(value)
-        if (!resolved) return
-        const { index, anchor } = resolved
+        const index = resolved?.index ?? (remove ? this.#annotations.indexOf(value) : undefined)
+        if (index === undefined) return
+        if (remove) this.#annotations.delete(value)
+        else this.#annotations.set(index, annotation)
+        const anchor = resolved?.anchor
+        return this.#paintAnnotation(annotation, index, anchor, remove)
+    }
+    #paintAnnotation(annotation: Annotation, index: number, anchor?: Anchor, remove = false) {
+        const { value } = annotation
         const obj = this.#getOverlay(index)
         if (obj) {
             const { overlay, doc } = obj
@@ -318,13 +338,13 @@ export class ReaderView extends HTMLElement {
                     console.warn('Could not restore annotation range.', error)
                 }
                 const Range = doc.defaultView?.Range
-                if (!Range || !(range instanceof Range)) return { index, label: navigation.label(index) }
+                if (!Range || !(range instanceof Range)) return { index, label: this.navigation?.label(index) ?? '' }
                 const draw = <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, opts?: Options) =>
                     overlay.add(value, range, func, opts)
                 this.#emit('draw-annotation', { draw, annotation, doc, range })
             }
         }
-        const label = navigation.label(index)
+        const label = this.navigation?.label(index) ?? ''
         return { index, label }
     }
     deleteAnnotation(annotation: Annotation) {
@@ -358,6 +378,11 @@ export class ReaderView extends HTMLElement {
     #announceOverlay(overlay: Overlay, index: number) {
         if (this.#announcedOverlays.has(overlay)) return
         this.#announcedOverlays.add(overlay)
+        for (const annotation of this.#annotations.forSection(index)) {
+            const resolved = this.navigation?.resolve(annotation.value)
+            if (resolved?.index === index)
+                this.#paintAnnotation(annotation, index, resolved.anchor)
+        }
         this.#emit('create-overlay', { index })
     }
     addDecoration(index: number, decoration: Decoration) {
