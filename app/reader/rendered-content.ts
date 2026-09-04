@@ -1,5 +1,4 @@
-import type { Content } from "../renderer";
-import type { ReaderView } from "./model";
+import type { Content, ReaderView } from "../renderer";
 
 export type RenderedContentBinding = (content: Content, signal: AbortSignal) => void;
 
@@ -14,7 +13,7 @@ class RenderedContents {
   readonly #events = new AbortController();
 
   constructor(readonly view: ReaderView) {
-    view.renderer?.getContents?.().forEach((content) => {
+    view.renderer?.getContents().forEach((content) => {
       this.#contents.set(content.doc, content);
     });
     view.addEventListener("load", (event) => {

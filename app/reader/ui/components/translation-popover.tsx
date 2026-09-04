@@ -50,14 +50,14 @@ export function TranslationPopover() {
   if (!state.open) return null;
   return (
     <section
-        aria-label="Translation"
-        aria-live="polite"
-        className="reader-text-popover"
-        popover="auto"
-        ref={popover.setPopover}
-        role="dialog"
-        style={popover.popoverStyle}
-      >
+      aria-label="Translation"
+      aria-live="polite"
+      className="reader-text-popover"
+      popover="auto"
+      ref={popover.setPopover}
+      role="dialog"
+      style={popover.popoverStyle}
+    >
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">
           <Languages size={16} aria-hidden="true" />

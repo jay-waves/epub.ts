@@ -56,7 +56,7 @@ export class ReflowableSpine {
       create: index => this.#create(index),
       destroy: (index, view) => {
         this.#destroy(view);
-        this.#book?.sections[index]?.unload?.();
+        this.#book?.sections[index]?.unload();
       },
       getExtent: view => view.extent,
     });
@@ -67,9 +67,10 @@ export class ReflowableSpine {
     const tocTargets = (book.toc ?? []).flatMap(({ href }) => {
       if (!href) return [];
       try {
-        const index = book.resolveHref?.(href)?.index;
-        return Number.isInteger(index) && index! > 0 && index! < book.sections.length
-          ? [index!] : [];
+        const index = book.resolveHref(href)?.index;
+        return index !== undefined && Number.isInteger(index)
+          && index > 0 && index < book.sections.length
+          ? [index] : [];
       } catch {
         return [];
       }
@@ -92,7 +93,7 @@ export class ReflowableSpine {
   entryForView(view: SectionFrame | null | undefined = this.#currentView) {
     return this.entries.find(entry => entry.view === view);
   }
-  showNavigationCue(target: Node | Range | undefined) {
+  showNavigationCue(target: Element | Range | undefined) {
     if (!target) return;
     const doc = "startContainer" in target
       ? target.startContainer.ownerDocument
@@ -280,7 +281,7 @@ export class ReflowableSpine {
     });
     this.#options.trackElement.append(view.element);
     try {
-      const source = await section.load?.();
+      const source = await section.load();
       if (!source) throw new Error(`Failed to load spine section ${index}`);
       await view.load(source, async doc => {
         if (doc.head) {
@@ -296,7 +297,7 @@ export class ReflowableSpine {
       }, this.#options.layoutFor);
     } catch (error) {
       this.#destroy(view);
-      section.unload?.();
+      section.unload();
       throw error;
     }
     return view;
@@ -330,11 +331,9 @@ export class ReflowableSpine {
     const targets = this.#styleMap.get(doc);
     if (!targets || styles == null) return false;
     const [beforeStyle, style] = targets;
-    if (Array.isArray(styles)) {
-      const [before, main] = styles;
-      if (beforeStyle.textContent !== before) beforeStyle.textContent = before;
-      if (style.textContent !== main) style.textContent = main;
-    } else if (style.textContent !== styles) style.textContent = styles;
+    const [before, main] = styles;
+    if (beforeStyle.textContent !== before) beforeStyle.textContent = before;
+    if (style.textContent !== main) style.textContent = main;
     return true;
   }
 

@@ -60,15 +60,22 @@ function parseOverlayFile(value: string): ReaderAnnotation[] {
 export function normalizeAnnotation(value: unknown): ReaderAnnotation | null {
   if (!value || typeof value !== "object") return null;
   const annotation = value as Partial<ReaderAnnotation>;
+  const finiteNumber = (candidate: unknown) =>
+    typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
+  const createdAt = finiteNumber(annotation.createdAt);
   if (typeof annotation.value !== "string"
     || typeof annotation.color !== "string"
-    || typeof annotation.createdAt !== "number") return null;
+    || createdAt === undefined) return null;
+  const index = finiteNumber(annotation.index);
+  const fraction = finiteNumber(annotation.fraction);
   return {
     ...annotation,
     id: typeof annotation.id === "string" && annotation.id
-      ? annotation.id : `legacy:${annotation.createdAt}:${annotation.value}`,
-    updatedAt: typeof annotation.updatedAt === "number"
-      ? annotation.updatedAt : annotation.createdAt,
+      ? annotation.id : `legacy:${createdAt}:${annotation.value}`,
+    createdAt,
+    ...(index === undefined ? { index: undefined } : { index }),
+    ...(fraction === undefined ? { fraction: undefined } : { fraction }),
+    updatedAt: finiteNumber(annotation.updatedAt) ?? createdAt,
   } as ReaderAnnotation;
 }
 
@@ -83,7 +90,7 @@ export async function getEpubBlob(sourceUrl: string) {
 }
 
 export async function readEmbeddedAnnotations(book: Book) {
-  const text = await book.loadText?.(OVERLAY_ENTRY);
+  const text = await book.loadText(OVERLAY_ENTRY);
   return text == null ? null : parseOverlayFile(text);
 }
 

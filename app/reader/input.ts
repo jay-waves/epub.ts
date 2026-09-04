@@ -1,5 +1,6 @@
 import { WheelGestures } from "wheel-gestures";
-import type { ReaderView, StepDirection } from "./model";
+import type { ReadingDirection, StepDirection } from "./model";
+import type { ReaderView } from "../renderer";
 import type { Navigation } from "./navigation";
 import { observeRenderedContent } from "./rendered-content";
 import { KineticScroller } from "./kinetic-scroller";
@@ -49,8 +50,8 @@ type ViewerInputOptions = {
   getNavigation: () => Navigation | null;
   getFlow: () => "paginated" | "scrolled";
   canTurnPage: () => boolean;
-  onChapterBoundary: (direction: number, pending: boolean) => void;
-  onScrollEdge: (direction: number) => void;
+  onChapterBoundary: (direction: ReadingDirection, pending: boolean) => void;
+  onScrollEdge: (direction: ReadingDirection) => void;
   dispatchCommand: (command: ReaderCommand) => void;
   dispatchProgressReturn: () => void;
   dispatchProgressSeek: (progress: number) => void;
@@ -65,7 +66,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     stopShellDrag: () => void;
   }>();
   let wheelBoundaryConsumed = false;
-  let wheelBoundaryDirection: number | null = null;
+  let wheelBoundaryDirection: ReadingDirection | null = null;
   let progressPrefix = "";
   const activeWheelTargets = new Set<Document>();
   const dispatchStep = (direction: StepDirection) => options.dispatchCommand(STEP_COMMANDS[direction]);
@@ -76,7 +77,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (!activeWheelTargets.size) wheelBoundaryConsumed = false;
   };
 
-  const crossWheelBoundary = (direction: number, distance: number) => {
+  const crossWheelBoundary = (direction: ReadingDirection, distance: number) => {
     if (wheelBoundaryConsumed) return;
     wheelBoundaryConsumed = true;
     wheelBoundaryDirection = direction;
@@ -90,8 +91,8 @@ export function createViewerInput(options: ViewerInputOptions) {
 
   const getSectionScrollMetrics = () => {
     const renderer = options.getView()?.renderer;
-    const { end, start, viewSize } = renderer ?? {};
-    if (!renderer || typeof end !== "number" || typeof start !== "number" || typeof viewSize !== "number") return null;
+    if (!renderer || renderer.mode === "fixed") return null;
+    const { end, start, viewSize } = renderer;
     return { end, renderer, start, viewSize };
   };
 
@@ -104,7 +105,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     return Boolean(view && (target === view || view.contains(target)));
   };
 
-  const signalScrollEdge = (direction: number) => {
+  const signalScrollEdge = (direction: ReadingDirection) => {
     if (options.getFlow() === "scrolled") options.onScrollEdge(direction);
   };
 
@@ -112,8 +113,8 @@ export function createViewerInput(options: ViewerInputOptions) {
     if (options.getFlow() !== "scrolled") return false;
     const metrics = getSectionScrollMetrics();
     if (!metrics) return false;
-    const direction = Math.sign(delta);
-    if (!direction) return false;
+    if (!delta) return false;
+    const direction: ReadingDirection = delta < 0 ? -1 : 1;
     const remaining = direction < 0 ? metrics.start : metrics.viewSize - metrics.end;
     if (remaining <= SECTION_EDGE_EPSILON) {
       const atBookEdge = direction < 0 ? metrics.renderer.atStart : metrics.renderer.atEnd;
@@ -130,7 +131,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     scrollBy: scrollWheelBy,
   });
 
-  const scrollCurrentSectionWithBounds = (direction: number, distance: number) => {
+  const scrollCurrentSectionWithBounds = (direction: ReadingDirection, distance: number) => {
     const metrics = getSectionScrollMetrics();
     if (!metrics) return;
 
@@ -148,7 +149,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       : navigation?.next(Math.min(distance, remaining)));
   };
 
-  const turnInReadingOrder = (direction: -1 | 1, wholePage = false) => {
+  const turnInReadingOrder = (direction: ReadingDirection, wholePage = false) => {
     if (!options.canTurnPage()) return;
     const renderer = options.getView()?.renderer;
     if (!renderer) return;
@@ -170,9 +171,9 @@ export function createViewerInput(options: ViewerInputOptions) {
     turnInReadingOrder(forward ? 1 : -1);
   };
 
-  const executePaginate = (direction: -1 | 1) => turnInReadingOrder(direction, true);
+  const executePaginate = (direction: ReadingDirection) => turnInReadingOrder(direction, true);
 
-  const scrollByKey = (direction: number) => {
+  const scrollByKey = (direction: ReadingDirection) => {
     scrollCurrentSectionWithBounds(direction, getKeyboardScrollDistance());
   };
 
@@ -364,6 +365,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     const handleMousePointerDown = (event: PointerEvent) => {
       if (!eventBelongsToReader(event) || !event.isPrimary || event.pointerType !== "mouse") return;
       if (event.button !== 0 || resolveReaderPointerIntent(event.target) !== "content") return;
+      claimReaderPointer(event, "content");
       mouseSelection = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -380,7 +382,8 @@ export function createViewerInput(options: ViewerInputOptions) {
     };
     const handleMousePointerEnd = (event: PointerEvent) => {
       if (!mouseSelection || event.pointerId !== mouseSelection.pointerId) return;
-      if (mouseSelection.moved) suppressNextMouseClick();
+      const owner = consumeReaderPointerClaim(event);
+      if (owner !== "content" || mouseSelection.moved) suppressNextMouseClick();
       mouseSelection = null;
     };
     const clearLongPress = (current: PointerSession) => {
@@ -472,7 +475,8 @@ export function createViewerInput(options: ViewerInputOptions) {
       session = null;
       current.events.abort();
       clearLongPress(current);
-      consumeReaderPointerClaim(current.claimEvent);
+      const owner = consumeReaderPointerClaim(event);
+      if (owner !== "content") return;
       if (current.selecting) return;
 
       const flow = options.getFlow();

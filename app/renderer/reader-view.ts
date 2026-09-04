@@ -1,14 +1,19 @@
 import { Overlay } from './shared/overlay.js'
 import type { OverlayDraw, OverlayDrawOptions } from './shared/overlay.js'
 import { AnnotationCache } from './shared/annotation-cache.js'
-import { readingEdgeRange, resolveSemanticTarget } from './shared/navigation.js'
-import type { RelocateDetail } from './shared/navigation.js'
+import { rangeBelongsToDocument, readingEdgeRange, resolveSemanticTarget } from './shared/navigation.js'
+import type {
+    DocumentAnchorResolver,
+    RelocateDetail,
+    SectionAnchor,
+} from './shared/navigation.js'
 import { createRenderer, rendererModeForBook } from './renderer-factory.js'
 import type { Renderer, RendererStyles } from './renderer.js'
 import type { RenderMode } from './shared/flow-geometry.js'
+import type { ReaderAnnotation } from '../epub/annotation.js'
 
 export type { Renderer } from './renderer.js'
-export type { ReadingPosition, RelocateDetail } from './shared/navigation.js'
+export type { ReadingPosition, RelocateDetail, RelocationReason } from './shared/navigation.js'
 
 export type TocItem = {
     label?: string
@@ -17,62 +22,81 @@ export type TocItem = {
 }
 
 export type LocalizedText = string | Record<string, string>
-export type Contributor = string | { name?: LocalizedText, [key: string]: unknown }
+export type ContributorDetails = {
+    code?: string
+    name?: LocalizedText
+    role?: string[]
+    scheme?: string
+    sortAs?: LocalizedText
+}
+export type Contributor = LocalizedText | ContributorDetails
 export type Identifier = string | { scheme?: string, value?: string }
+export type Collection = LocalizedText | { name?: LocalizedText, position?: number | string }
+export type PublicationViewport = string | { height: number | string, width: number | string }
 
 export type BookMetadata = {
     altIdentifier?: Identifier | Identifier[]
     title?: LocalizedText
     author?: Contributor | Contributor[]
-    contributor?: unknown
-    description?: unknown
-    identifier?: string | string[] | Record<string, string> | Array<string | Record<string, string>>
+    belongsTo?: { collection?: Collection | Collection[], series?: Collection | Collection[] }
+    contributor?: Contributor | Contributor[]
+    description?: string
+    identifier?: string
     language?: string | string[]
-    modified?: unknown
-    publisher?: unknown
-    published?: unknown
-    subject?: unknown
-    [key: string]: unknown
+    modified?: string
+    pageBreakSource?: string
+    published?: string
+    publisher?: Contributor | Contributor[]
+    rights?: string
+    sortAs?: LocalizedText
+    source?: Identifier | Identifier[]
+    subject?: Contributor | Contributor[]
+    subtitle?: string
 }
 
 export type BookRendition = {
+    flow?: string
     layout?: string
+    orientation?: string
     spread?: string
-    viewport?: unknown
-    [key: string]: unknown
+    viewport?: PublicationViewport
 }
 
 export type BookSection = {
-    cfi?: string
-    createDocument?: () => Promise<Document>
-    id?: number | string
+    cfi: string
+    createDocument: () => Promise<Document>
+    id: string
     linear?: string
-    load?: () => Promise<string | null>
+    load: () => Promise<string | null>
     pageSpread?: string
-    resolveHref?: (href: string) => string
-    size?: number
-    unload?: () => void
+    resolveHref: (href: string) => string
+    size: number
+    unload: () => void
 }
 
-export type Anchor = number | ((doc: Document) => Node | Range | number | null)
-export type Resolved = { anchor?: Anchor, index: number, select?: boolean }
+export type { DocumentAnchorResolver, SectionAnchor } from './shared/navigation.js'
+export type ResolvedNavigationTarget = {
+    anchor?: SectionAnchor
+    index: number
+    select?: boolean
+}
 
 export type Book = {
     dir?: string
-    destroy?: () => void | Promise<void>
-    getTOCFragment?: (doc: Document, id?: string) => Element | null
-    isExternal?: (href: string) => boolean
+    destroy: () => void | Promise<void>
+    getTOCFragment: (doc: Document, id?: string) => Element | null
+    isExternal: (href: string) => boolean
     landmarks?: Array<{ href?: string, type: string[] }>
-    loadText?: (path: string) => Promise<string | null>
+    loadText: (path: string) => Promise<string | null>
     metadata?: BookMetadata
     pageList?: TocItem[]
-    rendition?: BookRendition
-    resolveCFI?: (cfi: string, filter?: (node: Node) => number) => Resolved
-    resolveHref?: (href: string) => Resolved | null
+    rendition: BookRendition
+    resolveCFI: (cfi: string, filter?: (node: Node) => number) => ResolvedNavigationTarget
+    resolveHref: (href: string) => ResolvedNavigationTarget | null
     sections: BookSection[]
-    splitTOCHref?: (href?: string) => [unknown, string?] | Promise<[unknown, string?]>
+    splitTOCHref: (href?: string) => [path: string, fragment?: string]
     toc?: TocItem[]
-    transformTarget?: EventTarget
+    transformTarget: EventTarget
 }
 
 export type Content = {
@@ -82,26 +106,18 @@ export type Content = {
 }
 
 type ViewNavigation = {
-    attach?(renderer: Renderer): void
-    cfi?(index: number, range?: Range): string
-    go(target: string, options?: { select?: boolean }): Promise<Resolved | undefined>
+    attach(renderer: Renderer): void
+    cfi(index: number, range?: Range): string
+    go(target: string, options?: { select?: boolean }): Promise<ResolvedNavigationTarget>
     label(index: number): string
-    resolve(target: string): Resolved | undefined
-}
-
-export type Annotation = {
-    value: string
-    color?: string
-    note?: string
-    text?: string
-    [key: string]: unknown
+    resolve(target: string): ResolvedNavigationTarget | undefined
 }
 
 export type Decoration = {
     draw: OverlayDraw
     drawOptions?: OverlayDrawOptions
     key: string
-    target: string | Anchor
+    target: string | DocumentAnchorResolver
 }
 
 type LoadedContent = Content & { overlay: Overlay }
@@ -109,7 +125,7 @@ type LoadedContent = Content & { overlay: Overlay }
 type ViewEvents = {
     'create-overlay': { index: number }
     'draw-annotation': {
-        annotation: Annotation
+        annotation: ReaderAnnotation
         doc: Document
         draw: <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, options?: Options) => void
         range: Range
@@ -124,7 +140,7 @@ export class ReaderView extends HTMLElement {
     #root = this.attachShadow({ mode: 'closed' })
     #events?: AbortController
     #contents = new Map<Document, AbortController>()
-    #annotations = new AnnotationCache<Annotation>()
+    #annotations = new AnnotationCache<ReaderAnnotation>()
     #readingCfis = new Map<number, string>()
     #destroyed = false
     #opened = false
@@ -243,7 +259,7 @@ export class ReaderView extends HTMLElement {
         }
 
         this.renderer = next
-        this.navigation!.attach?.(next)
+        this.navigation!.attach(next)
         for (const { index, overlay } of next.getContents()) {
             if (overlay) this.#announceOverlay(overlay, index)
         }
@@ -256,7 +272,7 @@ export class ReaderView extends HTMLElement {
         const relocation = this.#relocations.get(next)
         if (relocation) this.#emit('relocate', { ...relocation, reason: 'anchor' })
     }
-    #readingTarget(renderer: Renderer): Resolved | undefined {
+    #readingTarget(renderer: Renderer): ResolvedNavigationTarget | undefined {
         const location = this.#relocations.get(renderer)
         if (!location) return
         const { index } = location
@@ -271,7 +287,7 @@ export class ReaderView extends HTMLElement {
     #readingCfi({ index, range }: Pick<RelocateDetail, 'index' | 'range'>) {
         try {
             const readingEdge = readingEdgeRange(range)
-            return readingEdge ? this.navigation?.cfi?.(index, readingEdge) : undefined
+            return readingEdge ? this.navigation?.cfi(index, readingEdge) : undefined
         } catch {
             return undefined
         }
@@ -299,7 +315,11 @@ export class ReaderView extends HTMLElement {
         this.navigation = undefined
         this.book = undefined
     }
-    #emit(name: string, detail: unknown, cancelable = false) {
+    #emit<EventName extends keyof ViewEvents>(
+        name: EventName,
+        detail: ViewEvents[EventName],
+        cancelable = false,
+    ) {
         return this.dispatchEvent(new CustomEvent(name, { detail, cancelable }))
     }
     #onLoad({ doc, index }: { doc: Document, index: number }) {
@@ -310,35 +330,43 @@ export class ReaderView extends HTMLElement {
         this.#contents.delete(detail.doc)
         this.#emit('unload', detail)
     }
-    async addAnnotation(annotation: Annotation, remove = false, target?: { index: number, range: Range }) {
+    async addAnnotation(annotation: ReaderAnnotation, remove = false, target?: { index: number, range: Range }) {
         const navigation = this.navigation
         if (!navigation) return
         const { value } = annotation
-        const resolved = target
+        const currentIndex = this.#annotations.indexOf(value)
+        const hasVisibleRange = currentIndex !== undefined
+            && Boolean(this.#getOverlay(currentIndex)?.overlay.getRange(value))
+        const resolved: ResolvedNavigationTarget | undefined = target
             ? { index: target.index, anchor: () => target.range }
+            : currentIndex !== undefined && (remove || hasVisibleRange)
+                ? { index: currentIndex }
             : navigation.resolve(value)
-        const index = resolved?.index ?? (remove ? this.#annotations.indexOf(value) : undefined)
+        const index = resolved?.index ?? currentIndex
         if (index === undefined) return
         if (remove) this.#annotations.delete(value)
         else this.#annotations.set(index, annotation)
         const anchor = resolved?.anchor
         return this.#paintAnnotation(annotation, index, anchor, remove)
     }
-    #paintAnnotation(annotation: Annotation, index: number, anchor?: Anchor, remove = false) {
+    #paintAnnotation(annotation: ReaderAnnotation, index: number, anchor?: SectionAnchor, remove = false) {
         const { value } = annotation
         const obj = this.#getOverlay(index)
         if (obj) {
             const { overlay, doc } = obj
-            overlay.remove(value)
-            if (!remove) {
-                let range = null
-                try {
-                    range = typeof anchor === 'function' ? anchor(doc) : null
-                } catch (error) {
-                    console.warn('Could not restore annotation range.', error)
+            if (remove) overlay.remove(value)
+            else {
+                let range: Element | Range | null = overlay.getRange(value) ?? null
+                if (!range) {
+                    try {
+                        range = typeof anchor === 'function' ? anchor(doc) : null
+                    } catch (error) {
+                        console.warn('Could not restore annotation range.', error)
+                    }
                 }
                 const Range = doc.defaultView?.Range
-                if (!Range || !(range instanceof Range)) return { index, label: this.navigation?.label(index) ?? '' }
+                if (!Range || !(range instanceof Range) || !rangeBelongsToDocument(range, doc))
+                    return { index, label: this.navigation?.label(index) ?? '' }
                 const draw = <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, opts?: Options) =>
                     overlay.add(value, range, func, opts)
                 this.#emit('draw-annotation', { draw, annotation, doc, range })
@@ -347,7 +375,7 @@ export class ReaderView extends HTMLElement {
         const label = this.navigation?.label(index) ?? ''
         return { index, label }
     }
-    deleteAnnotation(annotation: Annotation) {
+    deleteAnnotation(annotation: ReaderAnnotation) {
         return this.addAnnotation(annotation, true)
     }
     #getOverlay(index: number): LoadedContent | undefined {
@@ -432,7 +460,5 @@ export interface ReaderView {
         options?: boolean | AddEventListenerOptions,
     ): void
 }
-
-export type View = ReaderView
 
 customElements.define('epub-view', ReaderView)

@@ -141,7 +141,7 @@ const READER_BOOK_FOUNDATION_STYLES = `
   }
 `;
 
-export function createBookStyles(options: ReaderBookStyleOptions): [string, string] {
+export function createBookStyles(options: ReaderBookStyleOptions): readonly [string, string] {
   const { fonts, fontSize, layout, layoutLevel, textAlignment, theme } = options;
   const cacheKey = `${theme.id}|${fonts.serif}|${fonts.sans}|${fonts.mono}|${fontSize}|${layoutLevel}|${textAlignment}`;
   if (cachedBookStyles?.key === cacheKey) return cachedBookStyles.value;

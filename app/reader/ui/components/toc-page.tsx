@@ -40,6 +40,7 @@ export function TocPage() {
   return (
     <Dialog
       id="toc-modal"
+      aria-label="Table of contents"
       className="toc-modal-box"
       ref={dialogRef}
     >
@@ -60,7 +61,7 @@ export function TocPage() {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">Open a book to show its table of contents.</p>
+          <p className="reader-empty-state">Open a book to show its table of contents.</p>
         )}
       </div>
     </Dialog>

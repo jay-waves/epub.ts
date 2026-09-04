@@ -129,20 +129,20 @@ function Welcome({
         <p className="welcome-prompt">A quiet place for your books</p>
         <span className="welcome-action">Choose EPUB</span>
         <p className="welcome-hint">or drop a file here</p>
-        <input
-          ref={inputRef}
-          className="welcome-input"
-          type="file"
-          accept="application/epub+zip,.epub"
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            selectFile(file);
-          }}
-        />
         {selectionError ? <p className="welcome-error" role="alert">{selectionError}</p> : null}
       </section>
+      <input
+        ref={inputRef}
+        accept="application/epub+zip,.epub"
+        className="welcome-input"
+        tabIndex={-1}
+        type="file"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          selectFile(file);
+        }}
+      />
     </main>
   );
 }

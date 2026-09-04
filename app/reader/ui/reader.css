@@ -7,88 +7,69 @@
   }
 
   :root {
-    --muted-foreground: 215 16% 47%;
-    --popover: 40 33% 98%;
-    --popover-foreground: 213 24% 16%;
-    --radius: 0.5rem;
-    --reader-glass-thin-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 72%, transparent);
-    --reader-glass-regular-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, transparent);
-    --reader-glass-thick-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, transparent);
-    --reader-glass-thin-filter: blur(24px) saturate(180%) contrast(92%);
-    --reader-glass-regular-filter: blur(38px) saturate(160%) contrast(90%);
-    --reader-glass-thick-filter: blur(52px) saturate(150%) contrast(88%);
+    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 94%, transparent);
+    --reader-glass-filter: blur(52px) saturate(150%) contrast(90%);
     --reader-glass-border: rgb(255 255 255 / 58%);
     --reader-glass-highlight: rgb(255 255 255 / 72%);
-    --reader-glass-thin-shadow:
-      0 1px 1px rgb(15 23 42 / 5%),
-      0 10px 40px rgb(15 23 42 / 10%),
-      inset 0 1px 0 var(--reader-glass-highlight);
-    --reader-glass-regular-shadow:
+    --reader-glass-shadow:
       0 1px 1px rgb(15 23 42 / 6%),
       0 10px 28px rgb(15 23 42 / 11%),
       0 30px 72px rgb(15 23 42 / 8%),
       inset 0 1px 0 var(--reader-glass-highlight);
-    --reader-glass-thick-shadow:
-      0 1px 2px rgb(15 23 42 / 7%),
-      0 18px 48px rgb(15 23 42 / 14%),
-      0 42px 96px rgb(15 23 42 / 8%),
-      inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-control-filter: blur(12px) saturate(125%);
     --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
     --reader-control-fg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 64%, transparent);
     --reader-control-strong-fg: var(--reader-chrome-fg, #1f2933);
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 12%, transparent);
     --reader-control-hover-fg: var(--reader-chrome-fg, #1f2933);
     --reader-danger-fg: #a65f5f;
     --reader-danger-hover-bg: color-mix(in srgb, #a65f5f 9%, transparent);
     --reader-danger-hover-fg: #8f4f4f;
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
-    --reader-surface-secondary: var(--reader-field-bg);
     --reader-selection-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 10%, transparent);
     --reader-field-placeholder: #94a3b8;
-    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, white 8%);
+    --reader-toc-hover-bg: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, var(--reader-chrome-fg, #1f2933)) 84%,
+      transparent
+    );
   }
 
   html[data-reader-theme="light"] {
-    --reader-glass-thin-bg: rgb(245 245 247 / 72%);
-    --reader-glass-regular-bg: rgb(247 247 249 / 89%);
-    --reader-glass-thick-bg: rgb(248 248 250 / 95%);
+    --reader-glass-bg: rgb(248 248 250 / 94%);
     --reader-glass-border: rgb(15 23 42 / 7%);
     --reader-glass-highlight: rgb(255 255 255 / 92%);
-    --reader-surface-secondary: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 96%, var(--reader-chrome-fg, #1f2933));
     --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 94%, var(--reader-chrome-fg, #1f2933));
     --reader-selection-bg: color-mix(
       in srgb,
       color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 93%, var(--reader-chrome-fg, #1f2933)) 78%,
       transparent
     );
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 95%, var(--reader-chrome-fg, #1f2933));
-    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 97%, var(--reader-chrome-fg, #1f2933));
+    --reader-control-hover-bg: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 90%, var(--reader-chrome-fg, #1f2933)) 88%,
+      transparent
+    );
+    --reader-toc-hover-bg: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 93%, var(--reader-chrome-fg, #1f2933)) 86%,
+      transparent
+    );
   }
 
   html[data-reader-mode="dark"] {
-    --reader-glass-thin-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 74%, transparent);
-    --reader-glass-regular-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 88%, transparent);
-    --reader-glass-thick-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 95%, transparent);
+    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 94%, transparent);
     --reader-glass-border: rgb(255 255 255 / 14%);
     --reader-glass-highlight: rgb(255 255 255 / 17%);
-    --reader-glass-thin-shadow:
-      0 1px 1px rgb(0 0 0 / 16%),
-      0 10px 40px rgb(0 0 0 / 28%),
-      inset 0 1px 0 var(--reader-glass-highlight);
-    --reader-glass-regular-shadow:
+    --reader-glass-shadow:
       0 1px 1px rgb(0 0 0 / 18%),
       0 14px 36px rgb(0 0 0 / 32%),
       0 32px 80px rgb(0 0 0 / 20%),
       inset 0 1px 0 var(--reader-glass-highlight);
-    --reader-glass-thick-shadow:
-      0 1px 2px rgb(0 0 0 / 22%),
-      0 20px 52px rgb(0 0 0 / 38%),
-      0 44px 100px rgb(0 0 0 / 22%),
-      inset 0 1px 0 var(--reader-glass-highlight);
     --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
     --reader-control-fg: #d8dee9;
     --reader-control-strong-fg: #e5ebf3;
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 10%, transparent);
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 14%, transparent);
     --reader-control-hover-fg: white;
     --reader-danger-fg: #d09a9a;
     --reader-danger-hover-bg: rgb(208 154 154 / 11%);
@@ -99,27 +80,29 @@
   }
 
   html[data-reader-theme="gruvbox"] {
-    --reader-glass-thin-bg: rgb(50 48 47 / 74%);
-    --reader-glass-regular-bg: rgb(50 48 47 / 88%);
-    --reader-glass-thick-bg: rgb(50 48 47 / 95%);
+    --reader-glass-bg: rgb(50 48 47 / 94%);
     --reader-glass-border: rgb(235 219 178 / 15%);
     --reader-glass-highlight: rgb(249 245 215 / 12%);
-    --reader-glass-thin-shadow: 0 10px 40px rgb(0 0 0 / 28%), inset 0 1px 0 var(--reader-glass-highlight);
-    --reader-glass-regular-shadow: 0 14px 38px rgb(0 0 0 / 32%), inset 0 1px 0 var(--reader-glass-highlight);
-    --reader-glass-thick-shadow: 0 22px 56px rgb(0 0 0 / 38%), inset 0 1px 0 var(--reader-glass-highlight);
+    --reader-glass-shadow: 0 14px 38px rgb(0 0 0 / 32%), inset 0 1px 0 var(--reader-glass-highlight);
     --reader-border-subtle: #3c3836;
     --reader-control-fg: #d5c4a1;
     --reader-control-strong-fg: #ebdbb2;
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-accent-primary) 10%, #3c3836);
+    --reader-control-hover-bg: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--reader-accent-primary) 10%, #3c3836) 86%,
+      transparent
+    );
     --reader-control-hover-fg: #f9f5d7;
     --reader-field-bg: #3c3836;
     --reader-field-placeholder: #a89984;
-    --reader-toc-hover-bg: #3c3836;
+    --reader-toc-hover-bg: rgb(60 56 54 / 76%);
   }
 
   html,
-  body {
-    min-height: 100%;
+  body,
+  #app {
+    height: 100%;
+    min-height: 0;
     margin: 0;
   }
 
@@ -139,8 +122,9 @@
 }
 
 @layer components {
-  .text-muted-foreground {
-    color: hsl(var(--muted-foreground));
+  .reader-empty-state {
+    @apply m-0 text-sm;
+    color: var(--reader-control-fg);
   }
 
   .reader-tooltip {
@@ -157,11 +141,11 @@
     padding: 0.375rem 0.625rem;
     border: 1px solid rgb(255 255 255 / 12%);
     border-radius: 0.55rem;
-    background: color-mix(in srgb, hsl(var(--popover-foreground)) 88%, transparent);
+    background: rgb(31 41 51 / 88%);
     box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
-    backdrop-filter: blur(16px) saturate(140%);
-    -webkit-backdrop-filter: blur(16px) saturate(140%);
-    color: hsl(var(--popover));
+    backdrop-filter: var(--reader-control-filter);
+    -webkit-backdrop-filter: var(--reader-control-filter);
+    color: #fffefd;
     content: attr(data-tip);
     font-size: 0.75rem;
     font-weight: 500;
@@ -201,7 +185,7 @@
   }
 
   .reader-modal {
-    @apply fixed inset-0 z-40 m-auto max-h-none max-w-none border-0 bg-transparent p-0 text-inherit;
+    @apply fixed inset-0 z-40 m-auto max-h-none max-w-none border-0 bg-transparent p-0 text-inherit outline-none;
   }
 
   .reader-modal:not([open]) {
@@ -244,7 +228,9 @@
   }
 
   .reader-app {
-    @apply min-h-screen;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
     color: var(--reader-chrome-fg, #1f2933);
   }
 
@@ -258,30 +244,23 @@
   .toc-modal-box,
   .reader-context-menu,
   .reader-text-popover,
-  #theme-modal.reader-modal {
-    --reader-surface-bg: var(--reader-glass-regular-bg);
-    --reader-surface-filter: var(--reader-glass-regular-filter);
-    --reader-surface-shadow: var(--reader-glass-regular-shadow);
+  .theme-modal-box {
     border-color: var(--reader-glass-border);
-    background-color: var(--reader-surface-bg);
-    box-shadow: var(--reader-surface-shadow);
-    backdrop-filter: var(--reader-surface-filter);
-    -webkit-backdrop-filter: var(--reader-surface-filter);
+    background-color: var(--reader-glass-bg);
+    box-shadow: var(--reader-glass-shadow);
+    backdrop-filter: var(--reader-glass-filter);
+    -webkit-backdrop-filter: var(--reader-glass-filter);
   }
 
-  .reader-dock {
-    --reader-surface-bg: var(--reader-glass-thin-bg);
-    --reader-surface-filter: var(--reader-glass-thin-filter);
-    --reader-surface-shadow: var(--reader-glass-thin-shadow);
-  }
-
-  .toc-modal-box,
-  .reader-context-menu,
-  .reader-text-popover,
-  #theme-modal.reader-modal {
-    --reader-surface-bg: var(--reader-glass-thick-bg);
-    --reader-surface-filter: var(--reader-glass-thick-filter);
-    --reader-surface-shadow: var(--reader-glass-thick-shadow);
+  .ui-button:hover,
+  .reader-context-menu-item:is(:hover, :focus-visible),
+  .reader-text-popover-actions button:is(:hover, :focus-visible),
+  .reader-text-popover-download:is(:hover, :focus-visible),
+  .toc-link:is(:hover, :focus-visible, [aria-current="page"], [data-selected="true"]),
+  .theme-option:hover,
+  .book-info-stat {
+    backdrop-filter: var(--reader-control-filter);
+    -webkit-backdrop-filter: var(--reader-control-filter);
   }
 
   .reader-dock {
@@ -309,7 +288,7 @@
   }
 
   .reader-dock button {
-    @apply relative grid place-items-center rounded-lg transition-all duration-200;
+    @apply relative grid place-items-center rounded-lg transition-[background-color,color,transform,box-shadow] duration-200;
     color: var(--reader-control-fg);
   }
 
@@ -327,11 +306,15 @@
   }
 
   .reader-stage {
-    @apply flex min-h-screen;
+    @apply flex;
+    height: 100%;
+    min-height: 0;
   }
 
   .reader-frame {
-    @apply min-h-screen flex-1 overflow-hidden;
+    @apply flex-1 overflow-hidden;
+    height: 100%;
+    min-height: 0;
     position: relative;
   }
 
@@ -442,7 +425,7 @@
     bottom: max(2rem, env(safe-area-inset-bottom));
   }
 
-  .reader-progress-float {
+  .reader-progress-row {
     @apply flex h-full w-full items-center gap-2 px-3;
     opacity: 0.58;
     transition: opacity 180ms ease;
@@ -453,39 +436,41 @@
     position: relative;
   }
 
-  .reader-progress:focus-visible,
-  .reader-progress.is-dragging {
-    @apply outline-none;
-  }
-
-  .reader-progress-join {
+  .reader-progress-track-wrap {
     @apply relative flex w-full items-center;
   }
 
   .reader-progress-track {
-    @apply relative h-1 min-w-0 flex-1 overflow-visible rounded-full transition-[height,background-color] duration-200 ease-out;
+    @apply relative min-w-0 flex-1 overflow-visible rounded-full transition-[height,box-shadow] duration-200 ease-out;
     background: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 18%, transparent);
+    height: 4px;
   }
 
-  .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress.is-dragging)) .reader-progress-float {
+  .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress:active)) .reader-progress-row {
     opacity: 1;
   }
 
-  .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-track {
-    height: 5px;
+  .reader-progress:is(:hover, :focus-within, :active) .reader-progress-track {
+    height: 5.5px;
   }
 
-  .reader-progress-fill {
-    @apply absolute top-1/2 left-0 z-[2] h-full -translate-y-1/2 rounded-full transition-[width,height] duration-300 ease-out;
+  .reader-progress:focus-within .reader-progress-track {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 20%, transparent);
+  }
+
+  .reader-progress-read {
+    @apply absolute top-1/2 left-0 z-[2] -translate-y-1/2 rounded-full transition-[width,height,left] duration-200 ease-out;
     background: color-mix(
       in srgb,
       var(--reader-accent-primary, #2563eb) 58%,
       var(--reader-chrome-fg, #1f2933)
     );
+    height: 4px;
   }
 
-  .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-fill {
-    height: 4.5px;
+  .reader-progress:is(:hover, :focus-within, :active) .reader-progress-read {
+    height: 8px;
+    left: -1px;
   }
 
   .reader-progress-thumb {
@@ -495,8 +480,12 @@
   }
 
   .reader-progress-history-marker {
-    @apply relative z-[5] inline-flex h-1.5 w-1.5 shrink-0 cursor-pointer appearance-none items-center justify-center rounded-full border-0 p-0 opacity-0 outline-none transition-[background-color,opacity] duration-200 ease-out;
-    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 62%, transparent);
+    @apply relative z-[5] inline-flex h-1.5 w-1.5 shrink-0 cursor-pointer appearance-none items-center justify-center rounded-full border-0 p-0 opacity-0 outline-none transition-[width,height,background-color,box-shadow,opacity] duration-200 ease-out;
+    background: color-mix(
+      in srgb,
+      var(--reader-accent-primary, #2563eb) 58%,
+      var(--reader-chrome-fg, #1f2933)
+    );
     pointer-events: none;
   }
 
@@ -513,7 +502,15 @@
 
   .reader-progress-history-marker:hover,
   .reader-progress-history-marker:focus-visible {
-    background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 82%, transparent);
+    background: color-mix(
+      in srgb,
+      var(--reader-accent-primary, #2563eb) 72%,
+      var(--reader-chrome-fg, #1f2933)
+    );
+  }
+
+  .reader-progress-history-marker:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 22%, transparent);
   }
 
   .reader-context-menu {
@@ -524,7 +521,7 @@
   }
 
   .reader-context-menu-item {
-    @apply flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium outline-none transition-all duration-150;
+    @apply flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium outline-none transition-[background-color,color,transform] duration-150;
     color: var(--reader-control-fg);
   }
 
@@ -610,6 +607,13 @@
     @apply block w-full resize-none border-0 outline-none;
   }
 
+  textarea.reader-text-popover-source:focus-visible,
+  textarea.reader-text-popover-result:focus-visible {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 58%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 12%, transparent);
+  }
+
   textarea.reader-text-popover-source {
     min-height: 7rem;
   }
@@ -650,16 +654,12 @@
     color: var(--reader-danger-fg);
   }
 
-  .reader-progress:is(:hover, :focus-visible, .is-dragging) .reader-progress-fill {
-    @apply h-3 rounded-lg;
-  }
-
-  .reader-progress.is-dragging .reader-progress-fill {
+  .reader-progress:active .reader-progress-read {
     transition-duration: 0ms;
   }
 
-  .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress.is-dragging)) .reader-progress-history-marker {
-    @apply h-2.5 w-2.5;
+  .reader-progress-shell:is(:hover, :focus-within, :has(.reader-progress:active)) .reader-progress-history-marker {
+    @apply h-2 w-2;
   }
 
   .search-nav {
@@ -747,24 +747,25 @@
   }
 
   .toc-link {
-    @apply flex h-auto min-h-0 w-full cursor-pointer items-center rounded-md border border-transparent bg-transparent py-2 pe-3 ps-3 text-left text-[13px] font-medium leading-snug no-underline outline-none transition-all duration-150;
+    @apply flex h-auto min-h-0 w-full cursor-pointer items-center rounded-md bg-transparent py-2 pe-3 ps-3 text-left text-[13px] font-medium leading-snug no-underline outline-none transition-colors duration-150;
     color: var(--reader-control-fg);
   }
 
-  .toc-link:hover {
+  .toc-link:hover,
+  .toc-link:focus-visible {
     color: var(--reader-control-hover-fg);
     background-color: var(--reader-toc-hover-bg);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 5%, transparent);
-    transform: translateY(-0.5px);
+  }
+
+  .toc-link:focus-visible {
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 32%, transparent);
   }
 
   .toc-link[aria-current="page"],
   .toc-link[data-selected="true"] {
     @apply font-semibold;
     color: var(--reader-accent-primary, #2563eb);
-    background: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 10%, transparent);
-    backdrop-filter: blur(10px) saturate(140%);
-    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    background: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 14%, transparent);
   }
 
   .toc-link-label {
@@ -777,19 +778,10 @@
 
   .toc-modal-box {
     @apply w-fit min-w-[min(44rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[1.35rem] border p-2;
-    color: var(--reader-control-strong-fg);
-    transform: translateY(-4vh);
-  }
-
-  #toc-modal {
-    outline: none;
-  }
-
-  #toc-modal.reader-modal,
-  #book-info-modal.reader-modal {
-    width: fit-content;
     height: fit-content;
     max-height: calc(100vh - 2rem);
+    color: var(--reader-control-strong-fg);
+    transform: translateY(-4vh);
   }
 
   .book-info-modal-box {
@@ -822,11 +814,6 @@
     overflow-wrap: anywhere;
   }
 
-  .book-info-section-title {
-    @apply m-0 text-xs font-semibold;
-    color: var(--reader-control-strong-fg);
-  }
-
   .book-info-stats {
     @apply grid grid-cols-3 gap-2;
     grid-auto-flow: dense;
@@ -834,7 +821,12 @@
 
   .book-info-stat {
     @apply grid min-w-0 gap-1 rounded-lg px-3 py-2;
-    background-color: var(--reader-surface-secondary);
+    background-color: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 91%, var(--reader-chrome-fg, #1f2933)) 88%,
+      transparent
+    );
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--reader-glass-highlight) 42%, transparent);
   }
 
   .book-info-stat-value {
@@ -852,7 +844,7 @@
     @apply col-span-2;
   }
 
-  #theme-modal.reader-modal {
+  .theme-modal-box {
     @apply h-fit w-[min(23rem,calc(100vw-2rem))] rounded-[1.35rem] border;
   }
 
@@ -958,10 +950,10 @@
   gap: 10px;
   border: 1px solid var(--reader-glass-border);
   border-radius: 28px;
-  background: var(--reader-glass-regular-bg);
-  box-shadow: var(--reader-glass-thick-shadow);
-  backdrop-filter: var(--reader-glass-regular-filter);
-  -webkit-backdrop-filter: var(--reader-glass-regular-filter);
+  background: var(--reader-glass-bg);
+  box-shadow: var(--reader-glass-shadow);
+  backdrop-filter: var(--reader-glass-filter);
+  -webkit-backdrop-filter: var(--reader-glass-filter);
   cursor: pointer;
   outline: none;
   text-align: center;
@@ -978,7 +970,7 @@
 .welcome-frame.is-dragging {
   border-color: var(--reader-accent-primary, #2563eb);
   box-shadow:
-    var(--reader-glass-thick-shadow),
+    var(--reader-glass-shadow),
     0 0 0 4px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 12%, transparent);
   transform: translateY(-3px) scale(1.01);
 }
@@ -1069,47 +1061,34 @@
 
 @supports not (backdrop-filter: blur(1px)) {
   :root {
-    --reader-glass-thin-bg: var(--reader-chrome-bg, #fffefd);
-    --reader-glass-regular-bg: var(--reader-chrome-bg, #fffefd);
-    --reader-glass-thick-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-filter: none;
+    --reader-control-filter: none;
   }
 }
 
 @media (prefers-contrast: more) {
   :root {
-    --reader-glass-thin-bg: var(--reader-chrome-bg, #fffefd);
-    --reader-glass-regular-bg: var(--reader-chrome-bg, #fffefd);
-    --reader-glass-thick-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-glass-bg: var(--reader-chrome-bg, #fffefd);
     --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 36%, transparent);
-  }
-
-  .reader-dock,
-  .search-nav,
-  .toc-modal-box,
-  .reader-context-menu,
-  .reader-text-popover,
-  #theme-modal.reader-modal,
-  .reader-progress-float,
-  .welcome-frame {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    --reader-glass-filter: none;
+    --reader-control-filter: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reader-modal[open],
-  .search-nav:not([hidden]),
-  .reader-context-menu:popover-open,
-  .reader-text-popover:popover-open,
-  .welcome-frame {
-    animation: none;
-  }
-
-  .reader-dock,
-  .reader-progress-float,
-  .theme-option,
-  .welcome-frame {
-    transition-duration: 0.01ms;
+  .reader-app,
+  .reader-app *,
+  .reader-app *::before,
+  .reader-app *::after,
+  .welcome,
+  .welcome *,
+  .welcome *::before,
+  .welcome *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

@@ -9,7 +9,6 @@ export type OverlayDrawOptions = {
   src?: string;
   width?: number;
   writingMode?: string;
-  [key: string]: unknown;
 };
 
 export type OverlayDraw<T extends OverlayDrawOptions = OverlayDrawOptions> = (
@@ -50,18 +49,25 @@ export class Overlay {
     return this.#element;
   }
 
+  getRange(key: string) {
+    return this.#items.get(key)?.range;
+  }
+
   add<T extends OverlayDrawOptions>(
     key: string,
     target: Range | ((root: Node) => Range),
     draw: OverlayDraw<T>,
     options?: T,
   ) {
-    if (this.#items.has(key)) this.remove(key);
     const range = typeof target === "function" ? target(this.#element.getRootNode()) : target;
     const rects = range.getClientRects();
+    if (rects.length === 0) return false;
     const element = draw(rects, options, range);
-    this.#element.append(element);
+    const previous = this.#items.get(key);
+    if (previous?.element.parentNode === this.#element) previous.element.replaceWith(element);
+    else this.#element.append(element);
     this.#items.set(key, { draw, element, options, range, rects } as Item);
+    return true;
   }
 
   remove(key: string) {
@@ -72,13 +78,18 @@ export class Overlay {
   }
 
   redraw() {
-    for (const item of this.#items.values()) {
-      item.element.remove();
-      const rects = item.range.getClientRects();
-      const element = item.draw(rects, item.options, item.range);
-      this.#element.append(element);
-      item.element = element;
-      item.rects = rects;
+    for (const [key, item] of this.#items) {
+      try {
+        const rects = item.range.getClientRects();
+        if (rects.length === 0) continue;
+        const element = item.draw(rects, item.options, item.range);
+        if (item.element.parentNode === this.#element) item.element.replaceWith(element);
+        else this.#element.append(element);
+        item.element = element;
+        item.rects = rects;
+      } catch (error) {
+        console.warn(`Could not redraw overlay item ${key}.`, error);
+      }
     }
   }
 
@@ -191,11 +202,14 @@ export class Overlay {
     group.style.opacity = "var(--reader-highlight-opacity, .3)";
     group.style.mixBlendMode = "var(--reader-highlight-blend-mode, normal)";
     for (const { left, top, height, width } of rects) {
+      const inset = Math.min(1.5, Math.max(0.5, height * 0.08));
+      const radius = Math.min(2, Math.max(0.75, height * 0.1));
       const rect = svg("rect");
       rect.setAttribute("x", String(left));
-      rect.setAttribute("y", String(top));
-      rect.setAttribute("height", String(height));
+      rect.setAttribute("y", String(top + inset));
+      rect.setAttribute("height", String(Math.max(1, height - inset * 2)));
       rect.setAttribute("width", String(width));
+      rect.setAttribute("rx", String(radius));
       group.append(rect);
     }
     return group;

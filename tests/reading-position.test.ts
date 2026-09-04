@@ -5,7 +5,10 @@ import {
   anchorForPosition,
   clampFraction,
   createReadingPosition,
+  fractionAnchor,
+  isFractionAnchor,
   readingEdgeRange,
+  resolveSectionAnchor,
   resolveReadingPosition,
   resolveSemanticTarget,
   uncollapseRange,
@@ -16,6 +19,18 @@ test("normalizes every reading position to a section fraction", () => {
   assert.equal(clampFraction(1.5), 1);
   assert.equal(clampFraction(Number.NaN, 0.25), 0.25);
   assert.deepEqual(createReadingPosition(3, undefined), { index: 3, fraction: 0 });
+});
+
+test("keeps fractional and DOM anchors distinct while resolving navigation", () => {
+  const doc = {} as Document;
+  const element = {} as Element;
+
+  assert.deepEqual(fractionAnchor(-0.5), { kind: "fraction", fraction: 0 });
+  assert.deepEqual(fractionAnchor(1.5), { kind: "fraction", fraction: 1 });
+  assert.equal(isFractionAnchor(fractionAnchor(0.4)), true);
+  assert.deepEqual(resolveSectionAnchor(undefined, doc), fractionAnchor(0));
+  assert.equal(resolveSectionAnchor(() => element, doc), element);
+  assert.deepEqual(resolveSectionAnchor(() => null, doc), fractionAnchor(0));
 });
 
 test("uses a DOM range only for its owning live section document", () => {
@@ -33,8 +48,11 @@ test("uses a DOM range only for its owning live section document", () => {
   const position = createReadingPosition(2, 0.4, range);
 
   assert.equal(anchorForPosition(position, 2, document), clone);
-  assert.equal(anchorForPosition(position, 1, document), 0);
-  assert.equal(anchorForPosition(position, 2, { contains: () => false } as Document), 0.4);
+  assert.deepEqual(anchorForPosition(position, 1, document), fractionAnchor(0));
+  assert.deepEqual(
+    anchorForPosition(position, 2, { contains: () => false } as Document),
+    fractionAnchor(0.4),
+  );
 });
 
 test("keeps a measured range when navigation prefers only a fraction", () => {

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
-import type { ReaderTheme, ReaderThemeId } from "../../model";
+import type { TypographyTheme, TypographyThemeId } from "../../../typography/model";
 import { getReaderThemeOptions } from "../../settings";
 import { Dialog } from "./ui";
 import { useViewerEvent } from "./use-viewer-event";
@@ -20,7 +21,7 @@ function ThemeCard({
   active: boolean;
   label: string;
   onSelect(): void;
-  theme: ReaderTheme;
+  theme: TypographyTheme;
 }) {
   const preview = [
     theme.background,
@@ -34,6 +35,7 @@ function ThemeCard({
       data-state={active ? "checked" : "unchecked"}
       onClick={onSelect}
       role="radio"
+      tabIndex={active ? 0 : -1}
       type="button"
     >
       <span className="theme-preview" aria-hidden="true">
@@ -46,13 +48,31 @@ function ThemeCard({
 
 export function ThemeDialog() {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [selected, setSelected] = useState<ReaderThemeId>("light");
+  const [selected, setSelected] = useState<TypographyThemeId>("light");
 
   useViewerEvent(VIEWER_EVENTS.themeOpen, (theme) => {
     setSelected(theme);
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
   });
+
+  const handleThemeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home"].includes(event.key)) return;
+    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    const current = (event.target as HTMLElement).closest<HTMLButtonElement>('[role="radio"]');
+    const currentIndex = current ? options.indexOf(current) : -1;
+    if (currentIndex < 0 || !options.length) return;
+
+    event.preventDefault();
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : (currentIndex + (event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1) + options.length)
+          % options.length;
+    options[nextIndex]?.focus();
+    options[nextIndex]?.click();
+  };
 
   return (
     <Dialog
@@ -64,10 +84,15 @@ export function ThemeDialog() {
       <header className="theme-dialog-header">
         <h2 id="theme-dialog-title">Themes</h2>
       </header>
-      <div className="theme-dialog-form">
+      <div
+        aria-label="Themes"
+        className="theme-dialog-form"
+        onKeyDown={handleThemeKeyDown}
+        role="radiogroup"
+      >
         {THEME_GROUPS.map((group) => (
-          <div className="theme-group" key={group.mode}>
-            <div className="theme-options" role="radiogroup" aria-label={`${group.label} themes`}>
+          <div aria-label={`${group.label} themes`} className="theme-group" key={group.mode} role="group">
+            <div className="theme-options">
               {THEME_OPTIONS
                 .filter(({ theme }) => theme.mode === group.mode)
                 .map(({ label, theme }) => (

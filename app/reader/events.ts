@@ -1,6 +1,6 @@
 import type { TocItem } from "../renderer";
 import type { BookInfo } from "./book-info";
-import type { ReaderThemeId } from "./model";
+import type { TypographyThemeId } from "../typography/model";
 import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
@@ -151,8 +151,8 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.tocClose]: void;
   [VIEWER_EVENTS.tocNavigate]: TocNavigateDetail;
   [VIEWER_EVENTS.tocUpdate]: TocUpdateDetail;
-  [VIEWER_EVENTS.themeOpen]: ReaderThemeId;
-  [VIEWER_EVENTS.themeSelect]: ReaderThemeId;
+  [VIEWER_EVENTS.themeOpen]: TypographyThemeId;
+  [VIEWER_EVENTS.themeSelect]: TypographyThemeId;
   [VIEWER_EVENTS.welcomeOpen]: void;
 };
 

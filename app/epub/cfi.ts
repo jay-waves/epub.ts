@@ -2,8 +2,8 @@
 
 type CFIStep = {
   index: number;
-  id?: string | null;
-  offset?: number | null;
+  id?: string;
+  offset?: number;
   temporal?: number;
   spatial?: number[];
   text?: string[];
@@ -23,9 +23,14 @@ export type ParsedCFI = CFIPath | CFIRange;
 type CFIFilter = (node: Node) => number;
 
 type TokenType = "/" | ":" | "~" | "@" | "[" | ";s" | "!" | ",";
-type Token = [type: TokenType, value?: string | number];
+type Token =
+  | [type: "/" | ":" | "~" | "@", value: number]
+  | [type: "[" | ";s", value: string]
+  | [type: "!" | ","];
 type IndexedNode = Node | Node[] | "first" | "last" | "before" | "after" | null;
-type NodePosition = { node: Node; offset?: number; before?: boolean; after?: boolean };
+type NodePosition =
+  | { kind: "offset"; node: Node; offset: number }
+  | { kind: "boundary"; node: Node; side: "before" | "after" };
 
 const splitAt = <T>(items: T[], indices: number[]) => {
   let start = 0;
@@ -37,6 +42,8 @@ const splitAt = <T>(items: T[], indices: number[]) => {
 };
 
 const isNumber = /\d/;
+const isTokenStart = (value: string): value is "/" | ":" | "~" | "@" | "[" | "!" | "," =>
+  value.length === 1 && "/:~@[!,".includes(value);
 export const isCFI = /^epubcfi\((.*)\)$/;
 const escapeCFI = (value: string) => value.replace(/[\^[\](),;=]/g, "^$&");
 const wrap = (value: string) => isCFI.test(value) ? value : `epubcfi(${value})`;
@@ -47,13 +54,24 @@ export const joinIndir = (...parts: string[]) =>
 
 const tokenize = (value: string) => {
   const tokens: Token[] = [];
-  let state: string | undefined;
+  let state: TokenType | ";" | `;${string}` | undefined;
   let escaped = false;
   let buffer = "";
-  const push = (type: TokenType, tokenValue?: string | number) => {
-    tokens.push([type, tokenValue]);
+  const pushed = () => {
     state = undefined;
     buffer = "";
+  };
+  const pushNumber = (type: "/" | ":" | "~" | "@", value: number) => {
+    tokens.push([type, value]);
+    pushed();
+  };
+  const pushText = (type: "[" | ";s", value: string) => {
+    tokens.push([type, value]);
+    pushed();
+  };
+  const pushSeparator = (type: "!" | ",") => {
+    tokens.push([type]);
+    pushed();
   };
   const append = (char: string) => {
     buffer += char;
@@ -65,23 +83,23 @@ const tokenize = (value: string) => {
       escaped = true;
       continue;
     }
-    if (state === "!") push("!");
-    else if (state === ",") push(",");
+    if (state === "!") pushSeparator("!");
+    else if (state === ",") pushSeparator(",");
     else if (state === "/" || state === ":") {
       if (isNumber.test(char)) {
         append(char);
         continue;
       }
-      push(state, Number.parseInt(buffer));
+      pushNumber(state, Number.parseInt(buffer));
     } else if (state === "~") {
       if (isNumber.test(char) || char === ".") {
         append(char);
         continue;
       }
-      push("~", Number.parseFloat(buffer));
+      pushNumber("~", Number.parseFloat(buffer));
     } else if (state === "@") {
       if (char === ":") {
-        push("@", Number.parseFloat(buffer));
+        pushNumber("@", Number.parseFloat(buffer));
         state = "@";
         continue;
       }
@@ -89,15 +107,15 @@ const tokenize = (value: string) => {
         append(char);
         continue;
       }
-      push("@", Number.parseFloat(buffer));
+      pushNumber("@", Number.parseFloat(buffer));
     } else if (state === "[") {
       if (char === ";" && !escaped) {
-        push("[", buffer);
+        pushText("[", buffer);
         state = ";";
       } else if (char === "," && !escaped) {
-        push("[", buffer);
+        pushText("[", buffer);
         state = "[";
-      } else if (char === "]" && !escaped) push("[", buffer);
+      } else if (char === "]" && !escaped) pushText("[", buffer);
       else append(char);
       continue;
     } else if (state?.startsWith(";")) {
@@ -105,10 +123,10 @@ const tokenize = (value: string) => {
         state = `;${buffer}`;
         buffer = "";
       } else if (char === ";" && !escaped) {
-        if (state === ";s") push(";s", buffer);
+        if (state === ";s") pushText(";s", buffer);
         state = ";";
       } else if (char === "]" && !escaped) {
-        if (state === ";s") push(";s", buffer);
+        if (state === ";s") pushText(";s", buffer);
         else {
           state = undefined;
           buffer = "";
@@ -116,7 +134,7 @@ const tokenize = (value: string) => {
       } else append(char);
       continue;
     }
-    if ("/:~@[!,".includes(char)) state = char;
+    if (isTokenStart(char)) state = char;
   }
   return tokens;
 };
@@ -128,17 +146,17 @@ const parsePath = (tokens: Token[]): CFIStep[] => {
   const steps: CFIStep[] = [];
   let previousType: TokenType | undefined;
   for (const [type, value] of tokens) {
-    if (type === "/") steps.push({ index: value as number });
+    if (type === "/") steps.push({ index: value });
     else {
       const step = steps.at(-1);
       if (!step) continue;
-      if (type === ":") step.offset = value as number;
-      else if (type === "~") step.temporal = value as number;
-      else if (type === "@") (step.spatial ??= []).push(value as number);
-      else if (type === ";s") step.side = value as string;
+      if (type === ":") step.offset = value;
+      else if (type === "~") step.temporal = value;
+      else if (type === "@") (step.spatial ??= []).push(value);
+      else if (type === ";s") step.side = value;
       else if (type === "[") {
-        if (previousType === "/" && value) step.id = value as string;
-        else (step.text ??= []).push(value as string);
+        if (previousType === "/" && value) step.id = value;
+        else (step.text ??= []).push(value);
       }
     }
     previousType = type;
@@ -256,32 +274,32 @@ const partsToNode = (node: Node, parts: CFIStep[], filter?: CFIFilter): NodePosi
   const id = parts.at(-1)?.id;
   if (id) {
     const element = node.ownerDocument?.getElementById(id);
-    if (element) return { node: element, offset: 0 };
+    if (element) return { kind: "offset", node: element, offset: 0 };
   }
   let current: IndexedNode = node;
   for (const { index } of parts) {
     if (!isNode(current)) return null;
     const next: IndexedNode | undefined = indexChildNodes(current, filter)[index];
-    if (next === "first") return { node: current.firstChild ?? current };
-    if (next === "last") return { node: current.lastChild ?? current };
-    if (next === "before") return { node: current, before: true };
-    if (next === "after") return { node: current, after: true };
+    if (next === "first") return { kind: "offset", node: current.firstChild ?? current, offset: 0 };
+    if (next === "last") return { kind: "offset", node: current.lastChild ?? current, offset: 0 };
+    if (next === "before") return { kind: "boundary", node: current, side: "before" };
+    if (next === "after") return { kind: "boundary", node: current, side: "after" };
     if (!next) return null;
     current = next;
   }
   const offset = parts.at(-1)?.offset ?? 0;
-  if (isNode(current)) return { node: current, offset };
+  if (isNode(current)) return { kind: "offset", node: current, offset };
   if (!Array.isArray(current)) return null;
   let consumed = 0;
   for (const text of current) {
     const length = text.nodeValue?.length ?? 0;
-    if (consumed + length >= offset) return { node: text, offset: offset - consumed };
+    if (consumed + length >= offset) return { kind: "offset", node: text, offset: offset - consumed };
     consumed += length;
   }
   return null;
 };
 
-const nodeToParts = (node: Node, offset: number | null = null, filter?: CFIFilter): CFIStep[] => {
+const nodeToParts = (node: Node, offset?: number, filter?: CFIFilter): CFIStep[] => {
   let parent = node.parentNode;
   while (filter && parent
     && parent !== node.ownerDocument?.documentElement
@@ -310,7 +328,7 @@ const nodeToParts = (node: Node, offset: number | null = null, filter?: CFIFilte
     offset,
   };
   const root = node.ownerDocument?.documentElement;
-  const parts = parent !== root ? [...nodeToParts(parent, null, filter), step] : [step];
+  const parts = parent !== root ? [...nodeToParts(parent, undefined, filter), step] : [step];
   return parts.filter(part => part.index !== -1);
 };
 
@@ -327,12 +345,14 @@ export const toRange = (doc: Document, parsed: ParsedCFI, filter?: CFIFilter) =>
   if (!start?.node || !end?.node) throw new Error("CFI does not resolve to a range in this document");
 
   const range = doc.createRange();
-  if (start.before) range.setStartBefore(start.node);
-  else if (start.after) range.setStartAfter(start.node);
-  else range.setStart(start.node, start.offset ?? 0);
-  if (end.before) range.setEndBefore(end.node);
-  else if (end.after) range.setEndAfter(end.node);
-  else range.setEnd(end.node, end.offset ?? 0);
+  if (start.kind === "boundary") {
+    if (start.side === "before") range.setStartBefore(start.node);
+    else range.setStartAfter(start.node);
+  } else range.setStart(start.node, start.offset);
+  if (end.kind === "boundary") {
+    if (end.side === "before") range.setEndBefore(end.node);
+    else range.setEndAfter(end.node);
+  } else range.setEnd(end.node, end.offset);
   return range;
 };
 

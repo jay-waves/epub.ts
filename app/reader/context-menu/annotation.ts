@@ -1,8 +1,7 @@
 import { emitViewerEvent, emitViewerSignal, listenViewerEvent, VIEWER_EVENTS } from "../events";
 import type { ReaderAnnotation } from "../../epub/annotation";
 import { annotationRepository } from "./annotation-repository";
-import type { Annotation, Content, OverlayDraw, OverlayDrawOptions } from "../../renderer";
-import type { ReaderView } from "../model";
+import type { Content, OverlayDraw, OverlayDrawOptions, ReaderView } from "../../renderer";
 import type { Navigation } from "../navigation";
 import { drawAnnotation as drawAnnotationOverlay } from "./annotation-overlay";
 import { createTextContext, type TextContextActionDetail } from "./text-context";
@@ -47,8 +46,8 @@ export function createAnnotations(options: AnnotationOptions) {
     return task;
   };
 
-  const handleTextContextAction = (detail: TextContextActionDetail) => {
-    const context = detail.context as AnnotationContext | undefined;
+  const handleTextContextAction = (detail: TextContextActionDetail<AnnotationContext>) => {
+    const context = detail.context;
     if (!context) return;
     const { action, point } = detail;
     if (action === "copy" || action === "lookup" || action === "translate") {
@@ -62,12 +61,12 @@ export function createAnnotations(options: AnnotationOptions) {
     }
   };
 
-  const textContext = createTextContext({
+  const textContext = createTextContext<AnnotationContext>({
     getTranslationSourceLanguage: options.getTranslationSourceLanguage,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
     openExternal: options.openExternal,
   });
-  textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail>) => {
+  textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail<AnnotationContext>>) => {
     handleTextContextAction(event.detail);
   }) as EventListener, { signal: viewerEvents.signal });
 
@@ -75,9 +74,10 @@ export function createAnnotations(options: AnnotationOptions) {
     run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
   }, { signal: viewerEvents.signal });
   listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
-    run(track(deleteAnnotationNote(detail.value)), "Failed to delete annotation note.");
+    const annotation = annotationRepository.getByCfi(detail.value);
+    if (annotation) run(track(deleteHighlight(annotation)), "Failed to delete annotation.");
   }, { signal: viewerEvents.signal });
-  const getContents = () => options.getView()?.renderer?.getContents?.() ?? [];
+  const getContents = () => options.getView()?.renderer?.getContents() ?? [];
 
   const findContentByIndex = (index: number) => getContents().find((item) => item.index === index);
 
@@ -158,14 +158,18 @@ export function createAnnotations(options: AnnotationOptions) {
     });
   };
 
-  const getAnnotationText = (highlight: Annotation) => highlight.text?.trim() || highlight.value;
+  const getAnnotationText = (highlight: ReaderAnnotation) => highlight.text?.trim() || highlight.value;
 
-  const hasAnnotationNote = (highlight: Annotation) => Boolean(highlight.note?.trim());
+  const isAnnotation = (highlight: ReaderAnnotation) => highlight.note !== undefined;
 
-  const getHighlightColor = (highlight: Annotation) =>
+  const getHighlightColor = (highlight: ReaderAnnotation) =>
     !highlight.color || highlight.color === AUTO_HIGHLIGHT_COLOR || highlight.color === LEGACY_HIGHLIGHT_COLOR
       ? THEME_HIGHLIGHT_COLOR
       : highlight.color;
+
+  const hasSameAppearance = (left: ReaderAnnotation, right: ReaderAnnotation) =>
+    getHighlightColor(left) === getHighlightColor(right)
+    && isAnnotation(left) === isAnnotation(right);
 
   const getViewportCenter = () => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
@@ -224,16 +228,16 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const drawAnnotation = (detail: {
-    annotation: Annotation;
+    annotation: ReaderAnnotation;
     draw: <Options extends OverlayDrawOptions>(func: OverlayDraw<Options>, options?: Options) => void;
   }) => {
     detail.draw(drawAnnotationOverlay, {
       annotationValue: detail.annotation.value,
       color: getHighlightColor(detail.annotation),
-      hasNote: hasAnnotationNote(detail.annotation),
+      showBadge: isAnnotation(detail.annotation),
       onBadgeClick: (event) => {
         const highlight = annotationRepository.getByCfi(detail.annotation.value);
-        if (!highlight || !hasAnnotationNote(highlight)) return;
+        if (!highlight || !isAnnotation(highlight)) return;
         openAnnotationPopover(highlight, getPagePointFromDocumentEvent(event));
         textContext.close();
       },
@@ -241,13 +245,25 @@ export function createAnnotations(options: AnnotationOptions) {
         const highlight = annotationRepository.getByCfi(detail.annotation.value);
         if (!highlight) return;
         options.getNavigation()?.clearSelection();
-        open({ highlight, pageX: event.clientX, pageY: event.clientY });
+        const point = getPagePointFromDocumentEvent(event);
+        if (event.type === "click") {
+          run(
+            track(annotateContextText({ highlight }, point)),
+            "Failed to open annotation.",
+          );
+          return;
+        }
+        open({ highlight, pageX: point.x, pageY: point.y });
       },
     });
   };
 
-  const restore = async (view: ReaderView, bookKey: string) => {
-    const savedHighlights = await annotationRepository.load(bookKey);
+  const restore = async (
+    view: ReaderView,
+    bookKey: string,
+    embeddedAnnotations: readonly ReaderAnnotation[] = [],
+  ) => {
+    const savedHighlights = await annotationRepository.load(bookKey, embeddedAnnotations);
     if (options.getView() !== view || options.getBookKey() !== bookKey) return;
 
     let shouldPersist = false;
@@ -255,12 +271,13 @@ export function createAnnotations(options: AnnotationOptions) {
 
     const restoredHighlights = await Promise.all(
       savedHighlights.map(async (annotation) => {
-        const restored = await view.addAnnotation?.(annotation);
-        if (typeof annotation.fraction === "number") return annotation;
+        const restored = await view.addAnnotation(annotation);
+        if (annotation.fraction !== undefined) return annotation;
 
         const index = restored?.index ?? annotation.index;
-        const fraction = typeof index === "number" ? sectionFractions[index] : undefined;
-        if (typeof fraction !== "number") return annotation;
+        if (index === undefined) return annotation;
+        const fraction = sectionFractions[index];
+        if (fraction === undefined) return annotation;
 
         shouldPersist = true;
         return { ...annotation, index, fraction };
@@ -275,18 +292,29 @@ export function createAnnotations(options: AnnotationOptions) {
     emitViewerSignal(VIEWER_EVENTS.unsavedChange);
   };
 
-  const persistHighlight = async (highlight: ReaderAnnotation, selection?: TextSelection) => {
+  const persistHighlight = async (
+    highlight: ReaderAnnotation,
+    target?: Pick<TextSelection, "index" | "range">,
+  ) => {
     const view = options.getView();
     const bookKey = options.getBookKey();
     if (!view || !bookKey) return false;
 
+    const previous = annotationRepository.getByCfi(highlight.value);
     const annotation = { ...highlight, updatedAt: Date.now() };
     markUnsaved();
-    await view.addAnnotation?.(annotation, false, selection && {
-      index: selection.index,
-      range: selection.range,
-    });
-    await annotationRepository.put(bookKey, annotation);
+    // Publish the new logical value before painting it, so overlay callbacks
+    // and persistence always observe the same annotation revision.
+    const persistence = annotationRepository.put(bookKey, annotation);
+    await Promise.all([
+      !previous || !hasSameAppearance(previous, annotation)
+        ? view.addAnnotation(annotation, false, target && {
+            index: target.index,
+            range: target.range,
+          })
+        : undefined,
+      persistence,
+    ]);
     return true;
   };
 
@@ -296,22 +324,10 @@ export function createAnnotations(options: AnnotationOptions) {
     if (!view || !bookKey) return;
 
     markUnsaved();
-    await view.deleteAnnotation?.(highlight);
+    await view.deleteAnnotation(highlight);
     await annotationRepository.remove(bookKey, highlight.id);
     emitViewerSignal(VIEWER_EVENTS.annotationClose);
     textContext.close();
-  };
-
-  const deleteAnnotationNote = async (value: string) => {
-    const existing = annotationRepository.getByCfi(value);
-    if (!existing) return;
-
-    const highlight: ReaderAnnotation = {
-      ...existing,
-      note: undefined,
-    };
-    if (!await persistHighlight(highlight)) return;
-    emitViewerSignal(VIEWER_EVENTS.annotationClose);
   };
 
   const saveAnnotationNote = async (value: string, note: string) => {
@@ -319,12 +335,13 @@ export function createAnnotations(options: AnnotationOptions) {
     if (!existing) return;
 
     const cleanNote = note.trim();
-    if (cleanNote === (existing.note?.trim() ?? "")) return;
-
     if (!cleanNote) {
-      await deleteAnnotationNote(value);
+      if (existing.note === undefined) return;
+      const { note: _note, ...highlight } = existing;
+      await persistHighlight(highlight);
       return;
     }
+    if (cleanNote === existing.note?.trim()) return;
 
     const annotation: ReaderAnnotation = {
       ...existing,
@@ -376,6 +393,9 @@ export function createAnnotations(options: AnnotationOptions) {
         ...context.highlight,
         note: context.highlight.note ?? "",
       };
+      if (context.highlight.note === undefined) {
+        await persistHighlight(annotation);
+      }
       openAnnotationPopover(annotation, point);
       textContext.close();
       return;
@@ -400,7 +420,9 @@ export function createAnnotations(options: AnnotationOptions) {
           updatedAt: createdAt,
         };
 
-    if (!existing) await persistHighlight(annotation, context.selection);
+    if (!existing || existing.note === undefined) {
+      await persistHighlight(annotation, context.selection);
+    }
     options.getNavigation()?.clearSelection();
     openAnnotationPopover(annotation, point);
     textContext.close();

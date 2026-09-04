@@ -1,4 +1,4 @@
-import { BookOpen, Copy, Highlighter, Languages, MessageSquareText, Trash2 } from "lucide-react";
+import { BookOpen, Copy, Highlighter, Languages, SquarePen, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { usePointPopover } from "./use-point-popover";
@@ -10,7 +10,7 @@ const menuItems = [
   { action: "translate", enabledBy: "canTranslate", icon: Languages, label: "Translate" },
   { action: "lookup", enabledBy: "canLookUp", icon: BookOpen, label: "Look Up" },
   { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
-  { action: "annotate", enabledBy: "canAnnotate", icon: MessageSquareText, label: "Annotate" },
+  { action: "annotate", enabledBy: "canAnnotate", icon: SquarePen, label: "Annotate" },
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
 ] as const;
 
@@ -29,19 +29,19 @@ export function ContentContextMenu() {
 
   return (
     <div
-        className="reader-context-menu"
-        popover="auto"
-        ref={popover.setPopover}
-        style={popover.popoverStyle}
-        role="menu"
-      >
-        {visibleItems.map((item) => (
-          <ContextMenuItem
-            {...item}
-            key={item.action}
-            onSelect={state.select}
-          />
-        ))}
+      className="reader-context-menu"
+      popover="auto"
+      ref={popover.setPopover}
+      role="menu"
+      style={popover.popoverStyle}
+    >
+      {visibleItems.map((item) => (
+        <ContextMenuItem
+          {...item}
+          key={item.action}
+          onSelect={state.select}
+        />
+      ))}
     </div>
   );
 }

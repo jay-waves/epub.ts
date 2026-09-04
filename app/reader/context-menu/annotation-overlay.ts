@@ -6,20 +6,27 @@ import {
   consumeReaderPointerClaim,
 } from "../interaction-arbiter";
 
-const ANNOTATION_BADGE_SELECTOR = "[data-reader-annotation-badge]";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const DEFAULT_COLOR = "var(--reader-annotation-color, #f4c430)";
 
 type AnnotationDrawOptions = OverlayDrawOptions & {
   annotationValue?: string;
   color: string;
-  hasNote?: boolean;
   onActivate?: (event: MouseEvent) => void;
   onBadgeClick?: (event: MouseEvent) => void;
+  showBadge?: boolean;
 };
 
 const createSvgElement = (tagName: string) =>
   document.createElementNS(SVG_NAMESPACE, tagName);
+
+const bindHighlightPointer = (element: SVGElement) => {
+  element.addEventListener("pointerdown", (event) => claimReaderPointer(event, "highlight"));
+  element.addEventListener("pointercancel", consumeReaderPointerClaim);
+  element.addEventListener("pointerup", (event) => {
+    queueMicrotask(() => consumeReaderPointerClaim(event));
+  });
+};
 
 export function drawAnnotation(
   rects: DOMRectList,
@@ -44,11 +51,7 @@ export function drawAnnotation(
       hitRect.style.pointerEvents = "all";
       hitTarget.append(hitRect);
     }
-    hitTarget.addEventListener("pointerdown", (event) => claimReaderPointer(event, "highlight"));
-    hitTarget.addEventListener("pointercancel", consumeReaderPointerClaim);
-    hitTarget.addEventListener("pointerup", (event) => {
-      queueMicrotask(() => consumeReaderPointerClaim(event));
-    });
+    bindHighlightPointer(hitTarget);
     const activate = (event: MouseEvent) => {
       consumeReaderEvent(event, "immediate");
       options.onActivate?.(event);
@@ -58,59 +61,65 @@ export function drawAnnotation(
     group.append(hitTarget);
   }
 
-  if (!options.hasNote || rects.length === 0) return group;
+  if (!options.showBadge || rects.length === 0) return group;
   const lastRect = rects.item(rects.length - 1);
   if (!lastRect) return group;
 
-  const size = 10;
-  const x = Math.max(lastRect.left, lastRect.right - size + 2);
-  const y = Math.max(lastRect.top, lastRect.top - 2);
+  const iconSize = lastRect.height * 0.68;
+  const iconInset = lastRect.height * 0.08;
+  const iconX = Math.max(0, lastRect.right - iconSize - iconInset);
+  const iconY = lastRect.bottom - iconSize - iconInset;
+  const hitSize = 14;
+  const hitX = Math.max(0, lastRect.right - Math.min(hitSize, Math.max(lastRect.width, hitSize / 2)));
+  const hitY = lastRect.top + (lastRect.height - hitSize) / 2;
   const badge = createSvgElement("g");
   if (options.annotationValue) badge.setAttribute("data-reader-annotation-badge", options.annotationValue);
-  badge.setAttribute("opacity", "0.86");
   badge.style.cursor = "pointer";
   badge.style.pointerEvents = "auto";
+  bindHighlightPointer(badge);
   badge.addEventListener("click", (event) => {
     consumeReaderEvent(event, "stop");
     options.onBadgeClick?.(event);
   });
-  badge.addEventListener("contextmenu", (event) => consumeReaderEvent(event, "stop"));
-
-  const box = createSvgElement("rect");
-  box.setAttribute("x", String(x));
-  box.setAttribute("y", String(y));
-  box.setAttribute("width", String(size));
-  box.setAttribute("height", String(size));
-  box.setAttribute("rx", "2.5");
-  box.setAttribute("fill", "var(--reader-comment-color, #f4c430)");
-
-  const lineTop = createSvgElement("path");
-  lineTop.setAttribute("d", `M${x + 2.4} ${y + 3.3}H${x + 7.6}`);
-  lineTop.setAttribute("stroke", "var(--reader-comment-ink, white)");
-  lineTop.setAttribute("stroke-linecap", "round");
-  lineTop.setAttribute("stroke-width", "1.1");
-
-  const lineBottom = createSvgElement("path");
-  lineBottom.setAttribute("d", `M${x + 2.4} ${y + 5.9}H${x + 6.4}`);
-  lineBottom.setAttribute("stroke", "var(--reader-comment-ink, white)");
-  lineBottom.setAttribute("stroke-linecap", "round");
-  lineBottom.setAttribute("stroke-width", "1.1");
-
-  badge.append(box, lineTop, lineBottom);
-  group.append(badge);
-  queueMicrotask(() => {
-    const root = group.parentElement;
-    if (!root) return;
-    if (options.annotationValue) {
-      for (const existing of root.querySelectorAll(ANNOTATION_BADGE_SELECTOR)) {
-        if (existing !== badge
-          && existing.getAttribute("data-reader-annotation-badge") === options.annotationValue) {
-          existing.remove();
-        }
-      }
-    }
-    root.append(badge);
+  badge.addEventListener("contextmenu", (event) => {
+    consumeReaderEvent(event, "immediate");
+    options.onActivate?.(event);
   });
+
+  const hitArea = createSvgElement("rect");
+  hitArea.setAttribute("x", String(hitX));
+  hitArea.setAttribute("y", String(hitY));
+  hitArea.setAttribute("width", String(hitSize));
+  hitArea.setAttribute("height", String(hitSize));
+  hitArea.setAttribute("fill", "transparent");
+  hitArea.style.pointerEvents = "all";
+
+  const icon = createSvgElement("svg");
+  icon.setAttribute("x", String(iconX));
+  icon.setAttribute("y", String(iconY));
+  icon.setAttribute("width", String(iconSize));
+  icon.setAttribute("height", String(iconSize));
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute(
+    "stroke",
+    "color-mix(in srgb, var(--reader-comment-color, var(--reader-accent-secondary, #f4c430)) 86%, var(--reader-fg-color, #1f2937))",
+  );
+  icon.setAttribute("stroke-width", "2");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("opacity", "0.9");
+  icon.style.pointerEvents = "none";
+
+  const iconPath = createSvgElement("path");
+  iconPath.setAttribute(
+    "d",
+    "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z",
+  );
+  icon.append(iconPath);
+
+  badge.append(hitArea, icon);
+  group.append(badge);
   return group;
 }
 

@@ -1,15 +1,19 @@
 import { createBookStyles } from "../typography/styles/book-styles";
 import { readerSettings } from "./model";
-import type { ReaderFlow, ReaderTheme, ReaderThemeId } from "./model";
-import type { TypographyFonts, TypographyTextAlignment } from "../typography/model";
-import type { ReaderView } from "./model";
-import type { Renderer } from "../renderer";
+import type { ReaderFlow } from "./model";
+import type {
+  TypographyFonts,
+  TypographyTextAlignment,
+  TypographyTheme,
+  TypographyThemeId,
+} from "../typography/model";
+import type { ReaderView, Renderer } from "../renderer";
 
 type ReaderLayoutTarget = {
   view: ReaderView | null;
 };
 
-const READER_THEMES: ReaderTheme[] = [
+const READER_THEMES: TypographyTheme[] = [
   {
     id: "light",
     bodyTheme: "lofi",
@@ -67,7 +71,7 @@ const READER_THEMES: ReaderTheme[] = [
   },
 ];
 
-const READER_THEME_LABELS: Record<ReaderThemeId, string> = {
+const READER_THEME_LABELS: Record<TypographyThemeId, string> = {
   light: "Light",
   grey: "Solar",
   dark: "Nord",
@@ -86,7 +90,7 @@ function getReaderTheme(themeId = readerSettings.theme) {
   return READER_THEMES.find((theme) => theme.id === themeId) ?? READER_THEMES[0];
 }
 
-export function applyReaderTheme(themeId: ReaderThemeId) {
+export function applyReaderTheme(themeId: TypographyThemeId) {
   const theme = getReaderTheme(themeId);
   const scrollbarThumb = theme.mode === "dark"
     ? "rgba(191, 205, 219, 0.28)"
@@ -105,7 +109,6 @@ export function applyReaderTheme(themeId: ReaderThemeId) {
   document.documentElement.style.setProperty("--reader-accent-secondary", theme.secondary);
   document.documentElement.style.setProperty("--reader-annotation-color", theme.secondary);
   document.documentElement.style.setProperty("--reader-comment-color", theme.secondary);
-  document.documentElement.style.setProperty("--reader-comment-ink", theme.secondaryInk);
   document.documentElement.style.setProperty("--reader-search-outline", theme.secondary);
   document.documentElement.style.setProperty("--reader-search-current", theme.primary);
   document.documentElement.style.setProperty(
@@ -189,7 +192,7 @@ function getLayoutPreset(layoutLevel = readerSettings.layoutLevel) {
   return READER_LAYOUT_PRESETS[clampLayoutLevel(layoutLevel)] ?? READER_LAYOUT_PRESETS[2];
 }
 
-export function getBookStyles(themeId = readerSettings.theme): [string, string] {
+export function getBookStyles(themeId = readerSettings.theme): readonly [string, string] {
   return createBookStyles({
     fonts: readerSettings.fonts,
     fontSize: readerSettings.fontSize,

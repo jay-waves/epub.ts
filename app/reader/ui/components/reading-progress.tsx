@@ -102,7 +102,7 @@ export function ReadingProgress() {
   const percentage = progress * 100;
   return (
     <div className="reader-progress-shell">
-      <div className="reader-progress-float">
+      <div className="reader-progress-row">
         <Slider
           aria-label="Reading progress"
           className="reader-progress"
@@ -123,9 +123,9 @@ export function ReadingProgress() {
           step={1}
           value={[percentage]}
         >
-          <div className="reader-progress-join">
+          <div className="reader-progress-track-wrap">
             <SliderTrack className="reader-progress-track">
-              <SliderRange className="reader-progress-fill" />
+              <SliderRange className="reader-progress-read" />
             </SliderTrack>
             <SliderThumb className="reader-progress-thumb" />
           </div>
@@ -134,6 +134,7 @@ export function ReadingProgress() {
           aria-label="Return to previous reading position"
           aria-hidden={history == null}
           className={`reader-progress-history-marker${history == null ? "" : " is-history-visible"}`}
+          disabled={history == null}
           onClick={returnToHistory}
           type="button"
         />

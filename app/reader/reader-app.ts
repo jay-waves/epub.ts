@@ -20,7 +20,9 @@ import {
   getEpubBlob,
   readEmbeddedAnnotations,
 } from "../epub/annotation";
+import type { ReaderAnnotation } from "../epub/annotation";
 import { createView } from "../renderer";
+import type { ReaderView, TocItem } from "../renderer";
 import { getBookKey } from "../epub/metadata";
 import { createAnnotations } from "./context-menu/annotation";
 import { detectDocumentLanguage } from "./context-menu/document-language";
@@ -40,14 +42,12 @@ import {
   saveReaderSettings,
   saveReadingPosition,
 } from "./storage";
-import type { ReaderSettings, ReaderView } from "./model";
-import { annotationRepository } from "./context-menu/annotation-repository";
+import type { ReaderSettings, ReadingDirection } from "./model";
 import type { Location } from "./navigation";
 import type { DockAction, ReaderCommand } from "./events";
 import { DEFAULT_READER_SETTINGS, readerSettings } from "./model";
 import { createAdvancedSettingsController } from "./advanced-settings";
 import type { AdvancedReaderSettings } from "./advanced-settings";
-import { createBookSession, resetBookSession } from "./session";
 import { createRenderState } from "./render";
 import { Reader } from "./lifecycle";
 import { getReaderFontQueries, preloadReaderFonts } from "../typography/fonts";
@@ -66,6 +66,16 @@ type ViewerRuntime = {
   reader: Reader | null;
   search: ReturnType<typeof createSearch> | null;
   scrollEdgeFeedbackTimer?: number;
+};
+
+type BookSession = {
+  bookKey: string;
+  document: PlatformDocument | null;
+  dirty: boolean;
+  tocItem: TocItem | null;
+  tocIntent: TocItem | null;
+  progress: number;
+  restoring: boolean;
 };
 
 const runtime: ViewerRuntime = {
@@ -117,7 +127,15 @@ flushSync(() => {
 
 const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
 const initialDocumentTitle = document.title;
-const session = createBookSession();
+const session: BookSession = {
+  bookKey: "",
+  document: null,
+  dirty: false,
+  tocItem: null,
+  tocIntent: null,
+  progress: 0,
+  restoring: false,
+};
 const readerLayoutTarget = {
   get view() { return getView(); },
 };
@@ -345,7 +363,7 @@ function toggleSearch() {
   openSearch();
 }
 
-async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
+async function resetBookState(source: Pick<BookSession, "bookKey" | "document">) {
   await flushPositionSave();
   emitViewerSignal(VIEWER_EVENTS.annotationClose);
   await annotationState.flushPendingWrites();
@@ -363,7 +381,13 @@ async function resetBookState(source: Parameters<typeof resetBookSession>[1]) {
   await closeContentOverlays();
   await reader?.dispose();
   await clearMathCache();
-  resetBookSession(session, source);
+  session.bookKey = source.bookKey;
+  session.document = source.document;
+  session.dirty = false;
+  session.tocItem = null;
+  session.tocIntent = null;
+  session.progress = 0;
+  session.restoring = false;
   emitDockUpdate();
   renderDocumentTitle();
   emitTocUpdate();
@@ -415,7 +439,7 @@ async function enhanceContent(
   reflowable: boolean,
   paginated: boolean,
   signal: AbortSignal,
-  language: unknown,
+  language?: string | string[],
 ) {
   try {
     await prepareTypography(doc, {
@@ -434,7 +458,7 @@ function isReaderRenderPending() {
   return renderState.isPending();
 }
 
-function showScrollEdgeFeedback(direction: number) {
+function showScrollEdgeFeedback(direction: ReadingDirection) {
   const now = performance.now();
   if (now - runtime.lastScrollEdgeFeedbackAt < SCROLL_EDGE_FEEDBACK_COOLDOWN_MS) return;
   runtime.lastScrollEdgeFeedbackAt = now;
@@ -451,7 +475,7 @@ function showScrollEdgeFeedback(direction: number) {
   }, 360);
 }
 
-function showChapterBoundaryPending(direction: number, pending: boolean) {
+function showChapterBoundaryPending(direction: ReadingDirection, pending: boolean) {
   const ownClass = direction < 0
     ? "reader-frame--chapter-loading-top"
     : "reader-frame--chapter-loading-bottom";
@@ -530,7 +554,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     const paintStartedAt = performance.now();
     await render.revealAfterPaint();
     reader.signal.throwIfAborted();
-    const initialDomElementCount = (reader.view.renderer.getContents?.() ?? []).reduce(
+    const initialDomElementCount = reader.view.renderer.getContents().reduce(
       (total, { doc }) => total + (doc?.querySelectorAll("*").length ?? 0),
       0,
     );
@@ -725,16 +749,17 @@ async function restoreAnnotations(reader: Reader, bookKey: string) {
   const { book, signal, view } = reader;
   if (signal.aborted) return;
 
+  let embeddedAnnotations: ReaderAnnotation[] = [];
   try {
     const highlights = await readEmbeddedAnnotations(book);
     if (signal.aborted) return;
-    if (highlights) await annotationRepository.replace(bookKey, highlights);
+    embeddedAnnotations = highlights ?? [];
   } catch (error) {
     console.warn("Failed to read embedded EPUB highlights.", error);
   }
   if (signal.aborted) return;
   try {
-    await annotationState.restore(view, bookKey);
+    await annotationState.restore(view, bookKey, embeddedAnnotations);
   } catch (error) {
     console.warn("Failed to restore saved highlights.", error);
   }

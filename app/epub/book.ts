@@ -80,7 +80,7 @@ export async function createBook(input: File | string): Promise<Book> {
     return book;
   } catch (error) {
     startupTrace.fail("epub-parsing", error);
-    if (book) await book.destroy?.();
+    if (book) await book.destroy();
     else await source.destroy();
     throw error;
   }

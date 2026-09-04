@@ -3,18 +3,18 @@ import { contextMenuStore } from "./context-menu-store";
 import { emitViewerSignal, VIEWER_EVENTS } from "../events";
 import { createTranslation } from "./translation";
 
-type TextContextRequest = {
+type TextContextRequest<Context> = {
   canDelete: boolean;
   canHighlight: boolean;
-  context?: unknown;
+  context?: Context;
   point: { x: number; y: number };
   text: string;
 };
 
-export type TextContextActionDetail = {
+export type TextContextActionDetail<Context> = {
   action: ContentContextAction;
-  context?: unknown;
-  point: TextContextRequest["point"];
+  context?: Context;
+  point: TextContextRequest<Context>["point"];
   text: string;
 };
 
@@ -37,13 +37,13 @@ function wiktionaryUrl(term: string) {
 }
 
 /** Generic text actions over plain text and viewport coordinates. */
-export function createTextContext(options: TextContextOptions) {
+export function createTextContext<Context>(options: TextContextOptions) {
   const translation = createTranslation({
     getSourceLanguage: options.getTranslationSourceLanguage,
     getTargetLanguage: options.getTranslationTargetLanguage,
   });
   const events = new EventTarget();
-  let current: TextContextRequest | null = null;
+  let current: TextContextRequest<Context> | null = null;
 
   const clear = () => {
     if (!current) return;
@@ -73,7 +73,7 @@ export function createTextContext(options: TextContextOptions) {
         void translation.translate({ sourceText: request.text, ...request.point });
         break;
     }
-    events.dispatchEvent(new CustomEvent<TextContextActionDetail>("action", {
+    events.dispatchEvent(new CustomEvent<TextContextActionDetail<Context>>("action", {
       detail: { action, context: request.context, point: request.point, text: request.text },
     }));
   };
@@ -91,7 +91,7 @@ export function createTextContext(options: TextContextOptions) {
       emitViewerSignal(VIEWER_EVENTS.translationClose);
       emitViewerSignal(VIEWER_EVENTS.annotationClose);
     },
-    open(request: TextContextRequest) {
+    open(request: TextContextRequest<Context>) {
       current = request;
       const canLookUp = request.canHighlight && Boolean(getLookupTerm(request.text));
       contextMenuStore.getState().openMenu({

@@ -29,7 +29,6 @@ export const Dialog = forwardRef<
 >(function Dialog({
   children,
   className,
-  onClick,
   onPointerCancel,
   onPointerDown,
   onPointerUp,
@@ -44,9 +43,6 @@ export const Dialog = forwardRef<
     <dialog
       className={cn("reader-modal", className)}
       ref={ref}
-      onClick={(event) => {
-        onClick?.(event);
-      }}
       onPointerDown={(event) => {
         onPointerDown?.(event);
         backdropPointer.current = event.button === 0

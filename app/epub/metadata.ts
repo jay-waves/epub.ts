@@ -1,4 +1,4 @@
-import type { Book } from "../renderer";
+import type { Book, Contributor, Identifier, LocalizedText } from "../renderer";
 
 function normalizeInlineText(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -20,27 +20,23 @@ function formatLocalized(value?: string | Record<string, string>) {
   return firstKey ? value[firstKey] : "";
 }
 
-function formatContributor(
-  value?: string | { name?: string | Record<string, string> } | Array<string | { name?: string | Record<string, string> }>,
-): string {
+function formatContributor(value?: Contributor | Contributor[]): string {
   if (!value) return "";
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map((item) => formatContributor(item)).filter(Boolean).join(", ");
-  return formatLocalized(value.name);
+  return "name" in value
+    ? formatLocalized(value.name)
+    : formatLocalized(value as LocalizedText);
 }
 
-function collectIdentifiers(value: unknown, identifiers: string[] = []) {
+function collectIdentifiers(value: Identifier | Identifier[] | undefined, identifiers: string[] = []) {
   if (!value) return identifiers;
   if (typeof value === "string") {
     const normalized = value.trim();
     if (normalized) identifiers.push(normalized);
   } else if (Array.isArray(value)) {
     value.forEach((item) => collectIdentifiers(item, identifiers));
-  } else if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if ("value" in record) collectIdentifiers(record.value, identifiers);
-    else Object.values(record).forEach((item) => collectIdentifiers(item, identifiers));
-  }
+  } else collectIdentifiers(value.value, identifiers);
   return identifiers;
 }
 

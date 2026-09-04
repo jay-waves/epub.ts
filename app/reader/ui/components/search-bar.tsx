@@ -37,7 +37,7 @@ export function SearchBar() {
   };
 
   return (
-    <div className="search-nav" hidden={!searchState.visible}>
+    <div aria-label="Search book" className="search-nav" hidden={!searchState.visible} role="search">
       <Tooltip label="Previous result" side="bottom">
         <Button
           aria-label="Previous result"
@@ -47,7 +47,7 @@ export function SearchBar() {
           <ChevronLeft size={20} aria-hidden="true" />
         </Button>
       </Tooltip>
-      <span className="search-count">
+      <span aria-live="polite" className="search-count">
         {canNavigate ? `${searchState.hitIndex + 1} / ${searchState.hitCount}` : "0 / 0"}
       </span>
       <Tooltip label="Next result" side="bottom">
@@ -67,6 +67,7 @@ export function SearchBar() {
         }}
       >
         <input
+          aria-label="Search text"
           className="search-input"
           type="search"
           placeholder={searchState.placeholder}

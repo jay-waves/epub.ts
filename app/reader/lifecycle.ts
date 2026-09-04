@@ -1,5 +1,4 @@
-import type { Book } from "../renderer";
-import type { ReaderView } from "./model";
+import type { Book, ReaderView } from "../renderer";
 import { createBook } from "../epub/book";
 import type { PlatformDocument } from "../platform/types";
 import { Navigation } from "./navigation";
@@ -30,7 +29,7 @@ export class Reader {
     try {
       const book = await createBook(this.source.input);
       if (this.#disposed) {
-        await book.destroy?.();
+        await book.destroy();
         throw new DOMException("Reader disposed", "AbortError");
       }
       this.book = book;
@@ -57,7 +56,7 @@ export class Reader {
       this.view.destroy();
     } finally {
       try {
-        await this.book?.destroy?.();
+        await this.book?.destroy();
       } finally {
         this.source.release?.();
       }

@@ -1,8 +1,11 @@
-import type { Book, BookSection, Content, Resolved } from '../reader-view.js'
-import type { Renderer } from '../renderer.js'
+import type { Book, BookSection, Content, PublicationViewport, ResolvedNavigationTarget } from '../reader-view.js'
+import type { FixedLayoutRenderer } from '../renderer.js'
+import type { RelocationReason } from '../shared/navigation.js'
 import { loadFrameDocument } from '../shared/frame-document.js'
+import { observeSettledResize } from '../shared/settled-resize.js'
 
 type Viewport = { width: number, height: number }
+type ViewportSource = PublicationViewport | Record<string, string | number>
 type ZoomHandler = (options: { doc: Document | null, scale: number }) => void
 type FrameSource = string | { src?: string | null, onZoom?: ZoomHandler } | null
 type FrameRequest = { index: number, src?: FrameSource }
@@ -26,17 +29,16 @@ const parseViewport = (str: string | null | undefined): Viewport | null => {
     return entries?.length ? toViewport(Object.fromEntries(entries)) : null
 }
 
-const toViewport = (value: unknown): Viewport | null => {
+const toViewport = (value: ViewportSource | null | undefined): Viewport | null => {
     if (!value || typeof value !== 'object') return null
-    const record = value as Record<string, unknown>
-    const width = Number(record.width)
-    const height = Number(record.height)
+    const width = Number(value.width)
+    const height = Number(value.height)
     return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
         ? { width, height }
         : null
 }
 
-const getViewport = (doc: Document, viewport: unknown): Viewport => {
+const getViewport = (doc: Document, viewport: PublicationViewport | undefined): Viewport => {
     // use `viewBox` for SVG
     if (doc.documentElement.localName === 'svg') {
         const [, , width, height] = doc.documentElement
@@ -68,14 +70,14 @@ const getViewport = (doc: Document, viewport: unknown): Viewport => {
     return { width: 1000, height: 2000 }
 }
 
-export class FixedRenderer extends HTMLElement implements Renderer {
+export class FixedRenderer extends HTMLElement implements FixedLayoutRenderer {
     static observedAttributes = ['zoom']
     #root = this.attachShadow({ mode: 'closed' })
     #lifecycle = new AbortController()
-    #observer = new ResizeObserver(() => this.#render())
+    #stopObservingResize?: () => void
     #spreads: Spread[] = []
     #index = -1
-    defaultViewport?: unknown
+    defaultViewport?: PublicationViewport
     spread?: string
     #portrait = false
     #left?: Frame | null
@@ -87,7 +89,7 @@ export class FixedRenderer extends HTMLElement implements Renderer {
     #navigation = Promise.resolve()
     book!: Book
     rtl = false
-    beforeRenderDocument?: Renderer['beforeRenderDocument']
+    beforeRenderDocument?: FixedLayoutRenderer['beforeRenderDocument']
     constructor() {
         super()
 
@@ -103,7 +105,8 @@ export class FixedRenderer extends HTMLElement implements Renderer {
             scrollbar-width: none;
         }`)
 
-        this.#observer.observe(this)
+        this.#stopObservingResize = observeSettledResize(
+            this, () => this.#render())
     }
     get mode(): 'fixed' {
         return 'fixed'
@@ -166,7 +169,7 @@ export class FixedRenderer extends HTMLElement implements Renderer {
         const blankWidth = left.width ?? right.width ?? 0
         const blankHeight = left.height ?? right.height ?? 0
 
-        const scale = typeof this.#zoom === 'number' && !isNaN(this.#zoom)
+        const scale = typeof this.#zoom === 'number'
             ? this.#zoom
             : (this.#zoom === 'fit-width'
                 ? (portrait || this.#center
@@ -319,7 +322,7 @@ export class FixedRenderer extends HTMLElement implements Renderer {
             ? spread.left ?? spread.right : spread.right ?? spread.left)
         return section ? this.book.sections.indexOf(section) : -1
     }
-    #reportLocation(reason?: string) {
+    #reportLocation(reason?: RelocationReason) {
         this.dispatchEvent(new CustomEvent('relocate', { detail:
             { reason, index: this.index, fraction: 0, size: 1 } }))
     }
@@ -335,10 +338,10 @@ export class FixedRenderer extends HTMLElement implements Renderer {
     #unloadSpread(spread?: Spread, keep: Spread = {}) {
         const retained = new Set([keep.left, keep.right, keep.center])
         for (const section of [spread?.left, spread?.right, spread?.center]) {
-            if (section && !retained.has(section)) section.unload?.()
+            if (section && !retained.has(section)) section.unload()
         }
     }
-    async #goToSpread(index: number, side?: SpreadSide, reason?: string) {
+    async #goToSpread(index: number, side?: SpreadSide, reason?: RelocationReason) {
         if (index < 0 || index > this.#spreads.length - 1) return
         if (index === this.#index) {
             this.#side = side ?? this.#side
@@ -353,13 +356,13 @@ export class FixedRenderer extends HTMLElement implements Renderer {
         try {
             if (spread.center) {
                 const index = this.book.sections.indexOf(spread.center)
-                const src = await spread.center?.load?.()
+                const src = await spread.center?.load()
                 await this.#showSpread({ center: { index, src } })
             } else {
                 const indexL = spread.left ? this.book.sections.indexOf(spread.left) : -1
                 const indexR = spread.right ? this.book.sections.indexOf(spread.right) : -1
-                const srcL = await spread.left?.load?.()
-                const srcR = await spread.right?.load?.()
+                const srcL = await spread.left?.load()
+                const srcR = await spread.right?.load()
                 const left = { index: indexL, src: srcL }
                 const right = { index: indexR, src: srcR }
                 await this.#showSpread({ left, right, side })
@@ -382,10 +385,10 @@ export class FixedRenderer extends HTMLElement implements Renderer {
         this.#navigation = result.catch(() => undefined)
         return result
     }
-    goTo(target: Resolved) {
+    goTo(target: ResolvedNavigationTarget) {
         return this.#enqueue(() => this.#goTo(target))
     }
-    async #goTo(target: Resolved) {
+    async #goTo(target: ResolvedNavigationTarget) {
         const { book } = this
         const section = book.sections[target.index]
         if (!section) return
@@ -447,7 +450,7 @@ export class FixedRenderer extends HTMLElement implements Renderer {
         if (this.#destroyed) return
         this.#destroyed = true
         this.#lifecycle.abort(new DOMException('Fixed layout destroyed', 'AbortError'))
-        this.#observer.disconnect()
+        this.#stopObservingResize?.()
         this.#unloadDocuments()
         this.#unloadSpread(this.#spreads?.[this.#index])
         this.#root.replaceChildren()

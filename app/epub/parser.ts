@@ -5,8 +5,9 @@ import type {
     BookMetadata,
     BookRendition,
     BookSection,
+    ContributorDetails,
     LocalizedText,
-    Resolved,
+    ResolvedNavigationTarget,
     TocItem,
 } from '../renderer/reader-view.js'
 
@@ -35,7 +36,7 @@ type SpineItem = {
 }
 type GuideItem = { label: string | null; type: string[]; href: string }
 type NavItem = TocItem & { type?: string[]; subitems?: NavItem[] | null }
-type ReplaceCallback = (...args: any[]) => string | Promise<string | null>
+type ReplaceCallback = (match: string, ...captures: string[]) => string | Promise<string | null>
 type MutableRecord = Record<string, unknown>
 type MetadataEntry = {
     attrs: Record<string, string>
@@ -45,13 +46,7 @@ type MetadataEntry = {
     scheme: string | null
     value: string
 }
-type ParsedContributor = {
-    code?: string
-    name: LocalizedText | null
-    role: string[]
-    scheme?: string
-    sortAs?: LocalizedText
-}
+type ParsedContributor = ContributorDetails & { role: string[] }
 type AlternateIdentifier = string | { scheme: string, value: string }
 
 const NS = {
@@ -168,11 +163,24 @@ const pathRelative = (from: string, to: string) => {
 const pathDirname = (value: string) => value.slice(0, value.lastIndexOf('/') + 1)
 
 const replaceAsync = async (value: string, regex: RegExp, replace: ReplaceCallback) => {
-    const matches: any[][] = []
-    value.replace(regex, (...args: any[]) => (matches.push(args), ''))
-    const results = await Promise.all(matches.map(args => replace(...args)))
-    let index = 0
-    return value.replace(regex, () => results[index++] ?? '')
+    const matcher = new RegExp(regex.source, regex.flags)
+    const matches: Array<{ end: number, start: number, value: string | Promise<string | null> }> = []
+    let match: RegExpExecArray | null
+    while ((match = matcher.exec(value))) {
+        matches.push({
+            end: match.index + match[0].length,
+            start: match.index,
+            value: replace(match[0], ...match.slice(1).map(capture => capture ?? '')),
+        })
+        if (!regex.global || match[0] === '') break
+    }
+    const replacements = await Promise.all(matches.map(item => item.value))
+    let cursor = 0
+    return matches.reduce((result, item, index) => {
+        const next = result + value.slice(cursor, item.start) + (replacements[index] ?? '')
+        cursor = item.end
+        return next
+    }, '') + value.slice(cursor)
 }
 
 const isMutableRecord = (value: unknown): value is MutableRecord =>
@@ -279,7 +287,7 @@ const getMetadata = (opf: Document) => {
         return map
     }
     const makeContributor = (x: MetadataEntry): ParsedContributor => ({
-        name: makeLanguageMap(x),
+        name: makeLanguageMap(x) ?? undefined,
         sortAs: makeLanguageMap(x.props['file-as']?.[0]) ?? x.attrs['file-as'],
         role: x.props.role?.filter(role =>
             role.scheme === PREFIX.marc + 'relators')
@@ -288,7 +296,7 @@ const getMetadata = (opf: Document) => {
         scheme: prop(x, 'authority') ?? x.attrs.authority,
     })
     const makeCollection = (x: MetadataEntry) => ({
-        name: makeLanguageMap(x),
+        name: makeLanguageMap(x) ?? undefined,
         // NOTE: webpub requires number but EPUB allows values like "2.2.1"
         position: one(x.props?.['group-position']),
     })
@@ -338,7 +346,7 @@ const getMetadata = (opf: Document) => {
             ?? (legacyMeta?.['calibre:series'] ? {
                 name: legacyMeta?.['calibre:series'],
                 position: parseFloat(legacyMeta?.['calibre:series_index']),
-            } : null),
+            } : undefined),
         },
         altIdentifier: dc.identifier?.map(makeAltIdentifier)
             .filter(value => value !== identifier),
@@ -366,8 +374,12 @@ const getMetadata = (opf: Document) => {
 
     const rendition: BookRendition = {}
     for (const [key, val] of Object.entries(properties)) {
-        if (key.startsWith(PREFIX.rendition))
-            rendition[camel(key.replace(PREFIX.rendition, ''))] = one(val)
+        if (!key.startsWith(PREFIX.rendition)) continue
+        const property = camel(key.replace(PREFIX.rendition, ''))
+        const value = one(val)
+        if (property === 'flow' || property === 'layout'
+            || property === 'orientation' || property === 'spread'
+            || property === 'viewport') rendition[property] = value
     }
     return { metadata, rendition }
 }
@@ -607,7 +619,7 @@ class Resources {
     getItemByProperty(prop: string) {
         return this.manifest.find(item => item.properties?.includes(prop))
     }
-    resolveCFI(cfi: string, filter?: (node: Node) => number): Resolved {
+    resolveCFI(cfi: string, filter?: (node: Node) => number): ResolvedNavigationTarget {
         const parts = CFI.parse(cfi)
         const path = Array.isArray(parts) ? parts : parts.parent
         const top = path[0]
@@ -618,7 +630,7 @@ class Resources {
         // https://github.com/futurepress/epub.js/issues/1236
         if ($itemref && $itemref.nodeName !== 'idref') {
             const last = top.at(-1)
-            if (last) last.id = null
+            if (last) last.id = undefined
             $itemref = CFI.toElement(this.opf, top)
         }
         const idref = $itemref?.getAttribute('idref')
@@ -876,7 +888,7 @@ export class EPUB implements Book {
     metadata?: BookMetadata
     rendition: BookRendition = {}
     dir?: string
-    transformTarget?: EventTarget
+    transformTarget!: EventTarget
     resources!: Resources
     #loader?: Loader
     readonly #encryption: Encryption
@@ -984,9 +996,11 @@ ${parseError.textContent}`)
         if (displayOptions) {
             if (displayOptions.fixedLayout === 'true')
                 this.rendition.layout ??= 'pre-paginated'
-            if (displayOptions.openToSpread === 'false') this.sections
-                .find(section => section.linear !== 'no')!.pageSpread ??=
-                this.dir === 'rtl' ? 'left' : 'right'
+            if (displayOptions.openToSpread === 'false') {
+                const firstSection = this.sections.find(section => section.linear !== 'no')
+                if (firstSection) firstSection.pageSpread ??=
+                    this.dir === 'rtl' ? 'left' : 'right'
+            }
         }
         return this
     }
@@ -1004,13 +1018,15 @@ ${parseError.textContent}`)
     resolveCFI(cfi: string, filter?: (node: Node) => number) {
         return this.resources.resolveCFI(cfi, filter)
     }
-    resolveHref(href: string): Resolved | null {
+    resolveHref(href: string): ResolvedNavigationTarget | null {
         const [path, hash] = href.split('#')
         const item = this.resources.getItemByHref(decodeURI(path))
         if (!item) return null
         const index = this.resources.spine.findIndex(({ idref }) => idref === item.id)
-        const anchor = hash ? (doc: Document) => getHTMLFragment(doc, hash) : () => 0
-        return { index, anchor }
+        return {
+            index,
+            ...(hash ? { anchor: (doc: Document) => getHTMLFragment(doc, hash) } : {}),
+        }
     }
     splitTOCHref(href?: string): [string, string?] {
         const [path = '', hash] = href?.split('#') ?? []

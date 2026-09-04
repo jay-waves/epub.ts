@@ -5,15 +5,19 @@ import {
     animateNumber,
     createReadingPosition,
     easeOutQuad,
+    fractionAnchor,
     getAnchorRect,
     getFractionTarget,
     getRectTarget,
+    isFractionAnchor,
     NavigationTransaction,
+    resolveSectionAnchor,
     setSelectionTarget,
     uncollapseRange,
-    type NavigationAnchor,
+    type RenderedAnchor,
     type ReadingPosition,
     type RelocateDetail,
+    type RelocationReason,
 } from '../shared/navigation'
 import { isAtScrolledBookEdge, planScrolledNavigation } from './scrolled-navigation'
 import { resolveScrolledLocation, scrolledReadingEdge } from './scrolled-visible-location'
@@ -24,24 +28,28 @@ import {
     SectionFrame,
     type SectionDirection,
 } from '../shared/section-frame'
-import type { Book, Resolved } from '../reader-view.js'
-import type { RendererStyles } from '../renderer'
+import type { Book, ResolvedNavigationTarget } from '../reader-view.js'
+import type { ReflowableRenderer, RendererStyles } from '../renderer'
 import { getLayoutGap, supportsContinuousSpine } from '../shared/flow-geometry'
 import type { ScrolledSectionLayout } from '../shared/section-frame'
+import { observeSettledResize } from '../shared/settled-resize'
 
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
-export class ScrolledRenderer extends HTMLElement {
+export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer {
     beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void
     static observedAttributes = [
         'gap', 'margin', 'max-inline-size',
     ]
     #bookDir?: string
-    #observer = new ResizeObserver(([entry]) => {
-        const { width, height } = entry.contentRect
+    #stopObservingResize?: () => void
+    #handleViewportResize = () => {
+        const { width, height } = this.#container.getBoundingClientRect()
+        if (Math.abs(width - this.#containerWidth) < 0.5
+            && Math.abs(height - this.#containerHeight) < 0.5) return
         this.#containerWidth = width
         this.#containerHeight = height
         this.#scheduleRender()
-    })
+    }
     #top!: HTMLElement
     #background!: HTMLElement
     #container!: HTMLElement
@@ -53,7 +61,7 @@ export class ScrolledRenderer extends HTMLElement {
     #writingMode: SectionDirection['writingMode'] = 'horizontal-tb'
     #margin = 0
     #position?: ReadingPosition
-    #targetAnchor: NavigationAnchor = 0
+    #targetAnchor: RenderedAnchor = fractionAnchor(0)
     #motion?: AbortController
     #justAnchored = false
     #renderFrame?: number
@@ -141,7 +149,8 @@ export class ScrolledRenderer extends HTMLElement {
             },
         })
 
-        this.#observer.observe(this.#container)
+        this.#stopObservingResize = observeSettledResize(
+            this.#container, this.#handleViewportResize)
         this.#container.addEventListener('scroll', () => {
             this.dispatchEvent(new Event('scroll'))
             if (this.#justAnchored) this.#justAnchored = false
@@ -151,12 +160,11 @@ export class ScrolledRenderer extends HTMLElement {
         this.addEventListener('relocate', (({ detail }: CustomEvent) => {
             if (detail.reason === 'selection') setSelectionTarget(this.#targetAnchor, 0)
             else if (detail.reason === 'navigation') {
-                if (this.#targetAnchor === 1) setSelectionTarget(detail.range, 1)
-                else if (typeof this.#targetAnchor === 'number')
-                    setSelectionTarget(detail.range, -1)
-                else setSelectionTarget(this.#targetAnchor, -1)
-                const cueTarget = typeof this.#targetAnchor === 'number'
-                    ? detail.range : this.#targetAnchor
+                const target = this.#targetAnchor
+                if (isFractionAnchor(target))
+                    setSelectionTarget(detail.range, target.fraction === 1 ? 1 : -1)
+                else setSelectionTarget(target, -1)
+                const cueTarget = isFractionAnchor(target) ? detail.range : target
                 this.#spine.showNavigationCue(cueTarget)
             }
         }) as EventListener)
@@ -242,7 +250,7 @@ export class ScrolledRenderer extends HTMLElement {
         const entry = this.#entryForView()
         const anchor = entry
             ? anchorForPosition(this.#position, entry.index, entry.view.document)
-            : 0
+            : fractionAnchor(0)
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeOtherThanCurrent()
         for (const { view } of this.#spine.entries) {
@@ -340,13 +348,13 @@ export class ScrolledRenderer extends HTMLElement {
         }
         this.#container[this.scrollProp] = offset
     }
-    async #scrollToRect(rect: DOMRect, reason: string, entry = this.#entryForView()) {
+    async #scrollToRect(rect: DOMRect, reason: RelocationReason, entry = this.#entryForView()) {
         if (!entry) return false
         const offset = getRectTarget(this.#entryOffset(entry),
             this.#getRectMapper(entry.view)(rect).left, this.#margin)
         return this.#scrollTo(offset, reason)
     }
-    async #scrollTo(offset: number, reason: string, smooth = false) {
+    async #scrollTo(offset: number, reason: RelocationReason, smooth = false) {
         if (this.#destroyed) return false
         const element = this.#container
         const { scrollProp } = this
@@ -376,7 +384,7 @@ export class ScrolledRenderer extends HTMLElement {
             this.#activateEntry(entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
-                this.#targetAnchor = position.range ?? position.fraction
+                this.#targetAnchor = position.range ?? fractionAnchor(position.fraction)
             else {
                 this.#scrolledViewport.cancel()
                 this.#justAnchored = true
@@ -413,15 +421,18 @@ export class ScrolledRenderer extends HTMLElement {
         element[scrollProp] = offset
         return commit()
     }
-    async scrollToAnchor(anchor: number, select = false) {
-        await this.#enqueueNavigation(() => this.#scrollToAnchor(
-            anchor, select ? 'selection' : 'navigation'))
-    }
-    async #scrollToAnchor(anchor: NavigationAnchor, reason = 'anchor', entry = this.#entryForView()) {
+    async #scrollToAnchor(
+        anchor: RenderedAnchor,
+        reason: RelocationReason = 'anchor',
+        entry = this.#entryForView(),
+    ) {
         if (!entry) return false
         this.#scrolledViewport.cancel()
         this.#targetAnchor = anchor
-        const rect = typeof anchor === 'number' ? undefined : getAnchorRect(uncollapseRange(anchor))
+        if (isFractionAnchor(anchor)) return this.#scrollTo(getFractionTarget(
+            this.#entryOffset(entry), entry.view.extent, anchor.fraction), reason)
+
+        const rect = getAnchorRect(uncollapseRange(anchor))
         // if anchor is an element or a range
         if (rect) {
             if (!this.#vertical) {
@@ -437,10 +448,7 @@ export class ScrolledRenderer extends HTMLElement {
             }
             return this.#scrollToRect(rect, reason, entry)
         }
-        if (typeof anchor !== 'number') return false
-        // if anchor is a fraction
-        return this.#scrollTo(getFractionTarget(
-            this.#entryOffset(entry), entry.view.extent, anchor), reason)
+        return false
     }
     #navigationState() {
         return {
@@ -454,16 +462,15 @@ export class ScrolledRenderer extends HTMLElement {
             start: this.start,
         }
     }
-    async #goTo({ index, anchor, select = false }: Resolved,
+    async #goTo({ index, anchor, select = false }: ResolvedNavigationTarget,
         revision = this.#navigation.revision,
-        reason = select ? 'selection' : 'navigation') {
+        reason: RelocationReason = select ? 'selection' : 'navigation') {
         const hasFocus = this.#spine.currentView?.document?.hasFocus()
         const entry = await this.#spine.prepare(index)
         if (this.#destroyed || revision !== this.#navigation.revision) return false
         this.#activateEntry(entry)
-        const resolvedAnchor = typeof anchor === 'function'
-            ? anchor(entry.view.document) : anchor
-        const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
+        const resolvedAnchor = resolveSectionAnchor(anchor, entry.view.document)
+        const landed = await this.#scrollToAnchor(resolvedAnchor, reason, entry)
         if (landed !== false && hasFocus)
             this.#spine.currentView?.document?.defaultView?.focus()
         return landed !== false
@@ -486,13 +493,12 @@ export class ScrolledRenderer extends HTMLElement {
         this.#motion = undefined
         this.#scrolledViewport.cancel(true)
     }
-    async goTo(target: Resolved | Promise<Resolved>) {
+    async goTo(target: ResolvedNavigationTarget) {
         const revision = this.#navigation.revision
-        const resolved = await target
         if (this.#destroyed || revision !== this.#navigation.revision) return
-        if (this.#spine.contains(resolved.index))
-            return this.#enqueueNavigation(
-                current => this.#goTo(resolved, current), revision)
+        if (this.#spine.contains(target.index))
+            await this.#enqueueNavigation(
+                current => this.#goTo(target, current), revision)
     }
     get atStart() {
         return isAtScrolledBookEdge(this.#navigationState(), -1)
@@ -504,7 +510,7 @@ export class ScrolledRenderer extends HTMLElement {
         return this.#spine.adjacent(
             this.#entryForView()?.index ?? this.#position?.index ?? -1, dir)
     }
-    #crossCacheWindow(dir: -1 | 1, reason = 'scroll') {
+    #crossCacheWindow(dir: -1 | 1, reason: RelocationReason = 'scroll') {
         const boundary = this.continuous
             ? (dir < 0 ? this.#spine.first : this.#spine.last)?.index
             : this.#entryForView()?.index ?? this.#position?.index
@@ -513,7 +519,7 @@ export class ScrolledRenderer extends HTMLElement {
         if (index == null) return
         return this.#goTo({
             index,
-            anchor: dir < 0 ? 1 : 0,
+            anchor: fractionAnchor(dir < 0 ? 1 : 0),
             select: false,
         }, this.#navigation.revision, reason)
     }
@@ -544,7 +550,7 @@ export class ScrolledRenderer extends HTMLElement {
         this.cancelNavigation()
         if (this.#renderFrame !== undefined) cancelAnimationFrame(this.#renderFrame)
         this.#scrolledViewport.destroy()
-        this.#observer.disconnect()
+        this.#stopObservingResize?.()
         this.#spine.destroy()
     }
 }

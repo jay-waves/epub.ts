@@ -65,7 +65,7 @@ function formatPublishedDate(value: unknown) {
 
 function estimateWords(sections: BookSection[]) {
   const totalSize = sections.reduce(
-    (sum, section) => sum + (Number.isFinite(section.size) ? Number(section.size) : 0),
+    (sum, section) => sum + (Number.isFinite(section.size) ? section.size : 0),
     0,
   );
   return totalSize > 0 ? Math.max(1, Math.round(totalSize / CHARS_PER_WORD)) : null;

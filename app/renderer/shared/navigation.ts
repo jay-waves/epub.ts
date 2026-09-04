@@ -5,17 +5,52 @@ export type ReadingPosition = {
   range?: Range;
 };
 
-/** A transient navigation request before it is measured as a ReadingPosition. */
-export type NavigationAnchor = number | Node | Range;
+/** A layout-independent fallback position within one spine section. */
+export type FractionAnchor = {
+  readonly kind: "fraction";
+  readonly fraction: number;
+};
+export type DocumentAnchorResolver = (doc: Document) => Element | Range | null;
+/** A section target before its document has been loaded. */
+export type SectionAnchor = FractionAnchor | DocumentAnchorResolver;
+/** A section target resolved against the currently rendered document. */
+export type RenderedAnchor = FractionAnchor | Element | Range;
+export type RelocationReason =
+  | "anchor"
+  | "navigation"
+  | "page"
+  | "scroll"
+  | "selection"
+  | "snap"
+  | "switch";
 
 /** Renderer relocation payload. Physical offsets never cross this boundary. */
 export type RelocateDetail = ReadingPosition & {
-  reason?: string;
+  reason?: RelocationReason;
   size: number;
 };
 
 export function clampFraction(value: number | undefined, fallback = 0) {
-  return Number.isFinite(value) ? Math.min(1, Math.max(0, value!)) : fallback;
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : fallback;
+}
+
+export function fractionAnchor(fraction: number): FractionAnchor {
+  return { kind: "fraction", fraction: clampFraction(fraction) };
+}
+
+export function isFractionAnchor(anchor: RenderedAnchor): anchor is FractionAnchor {
+  return "kind" in anchor && anchor.kind === "fraction";
+}
+
+export function resolveSectionAnchor(
+  anchor: SectionAnchor | undefined,
+  doc: Document,
+): RenderedAnchor {
+  if (anchor === undefined) return fractionAnchor(0);
+  if (typeof anchor !== "function") return anchor;
+  return anchor(doc) ?? fractionAnchor(0);
 }
 
 export function createReadingPosition(
@@ -27,6 +62,9 @@ export function createReadingPosition(
 }
 
 /** Reduces a viewport-sized range to the exact point where reading starts. */
+export function readingEdgeRange(range: Range): Range;
+export function readingEdgeRange(range: undefined): undefined;
+export function readingEdgeRange(range: Range | undefined): Range | undefined;
 export function readingEdgeRange(range: Range | undefined) {
   if (!range) return undefined;
   const edge = range.cloneRange();
@@ -54,11 +92,12 @@ export function anchorForPosition(
   position: ReadingPosition | undefined,
   index: number,
   doc: Document,
-): NavigationAnchor {
-  if (!position || position.index !== index) return 0;
-  return rangeBelongsToDocument(position.range, doc)
-    ? position.range!.cloneRange()
-    : position.fraction;
+): RenderedAnchor {
+  if (!position || position.index !== index) return fractionAnchor(0);
+  const { range } = position;
+  return range && rangeBelongsToDocument(range, doc)
+    ? range.cloneRange()
+    : fractionAnchor(position.fraction);
 }
 
 /** Prefer the requested edge while retaining a measured DOM range for CFI/reflow. */
@@ -243,28 +282,28 @@ export class NavigationTransaction {
 }
 
 /** Expands a collapsed cross-frame range enough for reliable client geometry. */
-export function uncollapseRange(target: Node | Range): Node | Range {
+export function uncollapseRange(target: Element | Range): Element | Range {
   if (!("startContainer" in target) || !target.collapsed) return target;
   const range = target;
   const { endOffset, endContainer } = range;
   if (endContainer.nodeType === Node.ELEMENT_NODE) {
     const node = endContainer.childNodes[endOffset];
-    if (node?.nodeType === Node.ELEMENT_NODE) return node;
-    return endContainer;
+    if (node?.nodeType === Node.ELEMENT_NODE) return node as Element;
+    return endContainer as Element;
   }
   if (endOffset < (endContainer.nodeValue?.length ?? 0)) range.setEnd(endContainer, endOffset + 1);
   else if (endOffset > 0) range.setStart(endContainer, endOffset - 1);
-  else return endContainer.parentNode ?? endContainer;
+  else return endContainer.parentElement ?? range;
   return range;
 }
 
 export function setSelectionTarget(
-  target: NavigationAnchor | null | undefined,
+  target: RenderedAnchor | null | undefined,
   collapse: -1 | 0 | 1,
 ) {
   let range: Range | undefined;
-  if (typeof target === "object" && target && "startContainer" in target) range = target.cloneRange();
-  else if (typeof target === "object" && target?.nodeType && target.ownerDocument) {
+  if (target && !isFractionAnchor(target) && "startContainer" in target) range = target.cloneRange();
+  else if (target && !isFractionAnchor(target)) {
     const createdRange = target.ownerDocument.createRange();
     createdRange.selectNode(target);
     range = createdRange;

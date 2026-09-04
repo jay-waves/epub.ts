@@ -85,7 +85,6 @@ function setStylesImportant(element: ElementCSSInlineStyle, styles: Record<strin
 
 /** One loaded reflowable spine document and its layout measurements. */
 export class SectionFrame {
-  readonly #observer = new ResizeObserver(() => this.#scheduleExpand());
   readonly #element = document.createElement("div");
   readonly #iframe = document.createElement("iframe");
   readonly #lifecycle = new AbortController();
@@ -174,7 +173,7 @@ export class SectionFrame {
       const layout = resolveLayout?.(direction);
       this.#iframe.style.display = "block";
       if (layout) this.render(layout);
-      this.#observer.observe(doc.body);
+      this.#observeIntrinsicChanges(doc);
 
       await doc.fonts.ready;
       signal.throwIfAborted();
@@ -186,6 +185,26 @@ export class SectionFrame {
     this.#layout = layout;
     if (layout.kind === "columns") this.#columnize(layout, notify);
     else this.#renderScrolled(layout, notify);
+  }
+
+  #observeIntrinsicChanges(doc: Document) {
+    const schedule = () => this.#scheduleExpand();
+    const options = { once: true, signal: this.#lifecycle.signal };
+    for (const image of doc.images) {
+      if (!image.complete) {
+        image.addEventListener("load", schedule, options);
+        image.addEventListener("error", schedule, options);
+      }
+    }
+    for (const media of doc.querySelectorAll<HTMLMediaElement>("video, audio")) {
+      if (media.readyState === HTMLMediaElement.HAVE_NOTHING) {
+        media.addEventListener("loadedmetadata", schedule, options);
+      }
+    }
+    doc.addEventListener("toggle", schedule, {
+      capture: true,
+      signal: this.#lifecycle.signal,
+    });
   }
 
   #renderScrolled({ gap, columnWidth }: ScrolledSectionLayout, notify: boolean) {
@@ -337,7 +356,10 @@ export class SectionFrame {
         this.#overlay.redraw();
       }
     }
-    if (notify && this.extent !== previousExtent) this.#onExpand();
+    // DOM geometry is sub-pixel. Treat values that map to the same visual
+    // pixel as stable so layout writes cannot feed rounding noise back into
+    // another renderer reflow.
+    if (notify && Math.abs(this.extent - previousExtent) >= 0.5) this.#onExpand();
   }
 
   set overlay(overlay: Overlay | undefined) {
@@ -368,7 +390,7 @@ export class SectionFrame {
     return getVisibleRange(this.document, start, end, (rect) => this.mapRect(rect));
   }
 
-  showNavigationCue(target: Node | Range | undefined) {
+  showNavigationCue(target: Element | Range | undefined) {
     this.#navigationCue?.remove();
     this.#navigationCue = undefined;
     if (!target || !this.#overlay || !this.#layout) return;
@@ -445,7 +467,6 @@ export class SectionFrame {
     this.#destroyed = true;
     this.#lifecycle.abort(new DOMException("Section frame destroyed", "AbortError"));
     if (this.#expandFrame !== undefined) cancelAnimationFrame(this.#expandFrame);
-    this.#observer.disconnect();
     this.#navigationCue?.remove();
     this.#media = undefined;
     this.#overlay = undefined;

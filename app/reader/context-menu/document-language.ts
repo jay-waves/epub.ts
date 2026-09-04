@@ -17,21 +17,20 @@ function publicationLanguage(book: Book) {
 }
 
 function sampleSections(sections: BookSection[]) {
-  const available = sections.filter((section) => section.createDocument);
-  const linear = available.filter((section) => section.linear !== "no");
-  const readable = linear.length ? linear : available;
+  const linear = sections.filter((section) => section.linear !== "no");
+  const readable = linear.length ? linear : sections;
   const count = Math.min(MAX_SAMPLE_SECTIONS, readable.length);
   if (count < 2) return readable.slice(0, count);
   return Array.from({ length: count }, (_, index) =>
-    readable[Math.round(index * (readable.length - 1) / (count - 1))]!,
-  );
+    readable.at(Math.round(index * (readable.length - 1) / (count - 1))),
+  ).filter((section): section is BookSection => section !== undefined);
 }
 
 async function sampleBookText(book: Book, signal: AbortSignal) {
   let sample = "";
   for (const section of sampleSections(book.sections)) {
     signal.throwIfAborted();
-    const doc = await section.createDocument!();
+    const doc = await section.createDocument();
     const text = (doc.body ?? doc.documentElement).textContent
       ?.replaceAll(/\s+/gu, " ")
       .trim()

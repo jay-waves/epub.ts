@@ -6,23 +6,26 @@ export { PaginatedRenderer } from "./paginated/paginated-renderer.js";
 export { ScrolledRenderer } from "./scrolled/scrolled-renderer.js";
 export type { OverlayDraw, OverlayDrawOptions } from "./shared/overlay";
 export type {
-  Annotation,
-  Anchor,
   Book,
   BookMetadata,
   BookRendition,
   BookSection,
+  Collection,
   Content,
   Decoration,
+  DocumentAnchorResolver,
   ReadingPosition,
   RelocateDetail,
+  RelocationReason,
   Renderer,
-  Resolved,
+  ResolvedNavigationTarget,
+  SectionAnchor,
   TocItem,
   Contributor,
+  ContributorDetails,
   Identifier,
   LocalizedText,
-  View,
+  PublicationViewport,
   ReaderView,
 } from "./reader-view.js";
 

@@ -1,35 +1,29 @@
 import { platform } from "#platform";
-import type { View } from "../renderer";
 import { DEFAULT_TYPOGRAPHY_FONTS } from "../typography/model";
 import type {
   TypographyFonts,
   TypographyTextAlignment,
-  TypographyTheme,
   TypographyThemeId,
 } from "../typography/model";
 
 export type ReaderFlow = "paginated" | "scrolled";
+export type ReadingDirection = -1 | 1;
 export type StepDirection = "left" | "right";
-export type ReaderThemeId = TypographyThemeId;
 
 export type ReaderSettings = {
   fonts: TypographyFonts;
   fontSize: number;
   layoutMode: ReaderFlow;
   layoutLevel: number;
-  theme: ReaderThemeId;
+  theme: TypographyThemeId;
   textAlignment: TypographyTextAlignment;
 };
-
-export type ReaderTheme = TypographyTheme;
 
 export type SavedReadingPosition = {
   cfi?: string;
   fraction?: number;
   settings?: Partial<ReaderSettings>;
 };
-
-export type ReaderView = View;
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },

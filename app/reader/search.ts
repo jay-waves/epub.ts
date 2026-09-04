@@ -1,5 +1,4 @@
-import type { Anchor, Book, Content, OverlayDraw } from "../renderer";
-import type { ReaderView } from "./model";
+import type { Book, Content, DocumentAnchorResolver, OverlayDraw, ReaderView } from "../renderer";
 import { emitViewerEvent, VIEWER_EVENTS } from "./events";
 import { annotationRepository } from "./context-menu/annotation-repository";
 import type { Navigation } from "./navigation";
@@ -13,7 +12,7 @@ function normalizeInlineText(value: string) {
 }
 
 type Hit = {
-  anchor?: Anchor;
+  anchor?: DocumentAnchorResolver;
   cfi: string;
   index: number;
   key?: string;
@@ -23,7 +22,7 @@ type SearchOptions = {
   book: Book;
   bookKey: string;
   navigation: Navigation;
-  run: (action: () => Promise<unknown>) => Promise<unknown>;
+  run: <Result>(action: () => Promise<Result> | Result) => Promise<Result>;
   signal: AbortSignal;
   view: ReaderView;
 };
@@ -97,7 +96,7 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
     paint(hit, true);
     try {
       const target = hit.anchor ? { anchor: hit.anchor, index: hit.index } : hit.cfi;
-      const content = view.renderer.getContents?.().find(
+      const content = view.renderer.getContents().find(
         (item): item is Content & { doc: Document } => item.index === hit.index && Boolean(item.doc),
       );
       const range = content?.doc ? resolveHitRange(hit, content.doc, navigation) : null;
@@ -114,7 +113,7 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
   };
 
   const showClosest = () => {
-    const contents = (view.renderer.getContents?.() ?? [])
+    const contents = view.renderer.getContents()
       .filter((content): content is Content & { doc: Document } => Boolean(content.doc));
     if (!contents.length) return show(0);
 
@@ -187,7 +186,6 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
         ? language
         : Array.isArray(language) && typeof language[0] === "string" ? language[0] : "en";
       searchBook: for (const [index, section] of book.sections.entries()) {
-        if (!section.createDocument) continue;
         const doc = await section.createDocument();
         if (id !== runId || signal.aborted) return;
 
@@ -196,7 +194,7 @@ export function createSearch({ book, bookKey, navigation, run, signal, view }: S
           if (id !== runId || signal.aborted) return;
           const cfi = navigation.cfi(index, range);
           const occurrence = sectionHitIndex++;
-          const anchor: Anchor = (renderedDoc) => {
+          const anchor: DocumentAnchorResolver = (renderedDoc) => {
             let currentOccurrence = 0;
             for (const renderedRange of findText(renderedDoc, normalized, locale)) {
               if (currentOccurrence++ === occurrence) return renderedRange;

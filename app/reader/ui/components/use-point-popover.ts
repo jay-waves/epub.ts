@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
+import { claimReaderPointer } from "../../interaction-arbiter";
 
 const VIEWPORT_GUTTER = 8;
 
@@ -27,18 +28,26 @@ export function usePointPopover({
     if (!popover) return;
     const handleDismiss = (event: Event) => {
       if ((event as ToggleEvent).newState === "closed" && openRef.current) {
-        // Guard the following `toggle` event and make light-dismiss synchronous
-        // so consumers can persist their latest state before the popover closes.
+        // Let the browser finish light-dismiss before React unmounts the node.
+        // The completed toggle is the single close boundary for the popover.
         openRef.current = false;
         onDismissRef.current();
       }
     };
-    popover.addEventListener("beforetoggle", handleDismiss);
     popover.addEventListener("toggle", handleDismiss);
     return () => {
-      popover.removeEventListener("beforetoggle", handleDismiss);
       popover.removeEventListener("toggle", handleDismiss);
     };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    const popover = popoverRef.current;
+    if (!open || !popover) return;
+    const claimLightDismiss = (event: PointerEvent) => {
+      if (!event.composedPath().includes(popover)) claimReaderPointer(event, "control");
+    };
+    window.addEventListener("pointerdown", claimLightDismiss, { capture: true });
+    return () => window.removeEventListener("pointerdown", claimLightDismiss, { capture: true });
   }, [open]);
 
   useLayoutEffect(() => {
@@ -74,10 +83,12 @@ export function usePointPopover({
     };
   }, [gap, open, x, y]);
 
+  const setPopover = useCallback((element: HTMLElement | null) => {
+    popoverRef.current = element;
+  }, []);
+
   return {
     popoverStyle: { left: x, top: y } satisfies CSSProperties,
-    setPopover: (element: HTMLElement | null) => {
-      popoverRef.current = element;
-    },
+    setPopover,
   };
 }

@@ -35,11 +35,10 @@ export function BookInfoPage() {
               {bookInfo.subtitle ? <p className="book-info-subtitle">{bookInfo.subtitle}</p> : null}
             </header>
 
-            <section className="book-info-section" aria-labelledby="book-info-reading">
-              <h2 id="book-info-reading" className="book-info-section-title">Reading</h2>
+            <section className="book-info-section" aria-label="Book details">
               <div className="book-info-stats">
-                {[...bookInfo.statsRows, ...bookInfo.metadataRows].map((row) => (
-                  <div className={`book-info-stat${row.wide ? " book-info-stat-wide" : ""}`} key={row.label}>
+                {[...bookInfo.statsRows, ...bookInfo.metadataRows].map((row, index) => (
+                  <div className={`book-info-stat${row.wide ? " book-info-stat-wide" : ""}`} key={`${row.label}-${index}`}>
                     <span className="book-info-stat-value">{row.value}</span>
                     <span className="book-info-stat-label">{row.label}</span>
                   </div>
@@ -49,7 +48,7 @@ export function BookInfoPage() {
 
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">Open a book to show its information.</p>
+          <p className="reader-empty-state">Open a book to show its information.</p>
         )}
       </div>
     </Dialog>

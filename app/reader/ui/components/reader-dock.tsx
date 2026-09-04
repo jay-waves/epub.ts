@@ -39,7 +39,7 @@ export function ReaderDock() {
   if (dockState.searchActive) return null;
 
   return (
-    <aside className={`reader-dock-shell${touchOpen ? " is-touch-open" : ""}`}>
+    <aside aria-label="Reader controls" className={`reader-dock-shell${touchOpen ? " is-touch-open" : ""}`}>
       <div className="reader-dock">
         {dockItems.map((item) => {
           const label = getDockItemLabel(item.action, item.label, dockState);

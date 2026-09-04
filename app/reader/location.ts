@@ -6,8 +6,9 @@ type Section = {
   size?: number;
 };
 
-type SplitHref = (href?: string) => [unknown, string?] | Promise<[unknown, string?]>;
+type SplitHref = (href?: string) => [path: string, fragment?: string] | Promise<[path: string, fragment?: string]>;
 type GetFragment = (doc: Document, id?: string) => Element | null;
+type TocGroup = { items?: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem };
 
 export type SectionLocation = {
   fraction: number;
@@ -25,8 +26,8 @@ function flatten(items: TocItem[]): TocItem[] {
 
 /** Resolves the nearest TOC or page-list item for a rendered range. */
 export class TocIndex {
-  #ids?: unknown[];
-  #map = new Map<unknown, { items?: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem }>();
+  #ids?: string[];
+  #map = new Map<string, TocGroup>();
   #getFragment?: GetFragment;
 
   async init({
@@ -36,12 +37,12 @@ export class TocIndex {
     getFragment,
   }: {
     toc: TocItem[];
-    ids: unknown[];
+    ids: string[];
     splitHref: SplitHref;
     getFragment: GetFragment;
   }) {
     const items = flatten(toc);
-    const grouped = new Map<unknown, { items: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem }>();
+    const grouped = new Map<string, Required<Pick<TocGroup, "items">> & Pick<TocGroup, "prev">>();
     for (const [index, item] of items.entries()) {
       const [id, fragment] = await splitHref(item.href) ?? [];
       const value = { fragment, item };
@@ -50,7 +51,7 @@ export class TocIndex {
       else grouped.set(id, { prev: items[index - 1], items: [value] });
     }
 
-    const map = new Map<unknown, { items?: Array<{ fragment?: string; item: TocItem }>; prev?: TocItem }>();
+    const map = new Map<string, TocGroup>();
     for (const [index, id] of ids.entries()) {
       map.set(id, grouped.get(id) ?? map.get(ids[index - 1]) ?? {});
     }
@@ -68,12 +69,13 @@ export class TocIndex {
     if (!items) return prev;
     if (!range || (items.length === 1 && !items[0]?.fragment)) return items[0]?.item;
 
-    const doc = range.startContainer.getRootNode() as Document;
+    const doc = range.startContainer.ownerDocument;
+    if (!doc) return prev;
     // A relocation range spans the whole viewport. Comparing TOC targets with
     // that range treats every heading visible near the bottom as current and
     // eventually selects the last one. Collapse it to the reading edge so the
     // active item is the last heading at or before the viewport start.
-    const readingEdge = readingEdgeRange(range)!;
+    const readingEdge = readingEdgeRange(range);
     for (const [itemIndex, { fragment }] of items.entries()) {
       const element = this.#getFragment?.(doc, fragment);
       if (element && readingEdge.comparePoint(element, 0) > 0) {
@@ -117,8 +119,8 @@ export class SectionIndex {
   }
 
   get(index: number, sectionFraction?: number, pageFraction = 0): SectionLocation {
-    const fraction = Number.isFinite(sectionFraction)
-      ? Math.max(0, Math.min(1, sectionFraction!))
+    const fraction = typeof sectionFraction === "number" && Number.isFinite(sectionFraction)
+      ? Math.max(0, Math.min(1, sectionFraction))
       : 0;
     const page = Number.isFinite(pageFraction) ? Math.max(0, pageFraction) : 0;
     const sectionSize = this.#sizes[index] ?? 0;
@@ -149,7 +151,7 @@ export class SectionIndex {
   at(fraction: number): [number, number] {
     const first = this.#sizes.findIndex((size) => size > 0);
     let last = this.#sizes.length - 1;
-    while (last >= 0 && !(this.#sizes[last]! > 0)) last -= 1;
+    while (last >= 0 && !((this.#sizes[last] ?? 0) > 0)) last -= 1;
     if (first < 0) return [0, 0];
     if (fraction <= 0) return [first, 0];
     if (fraction >= 1) return [last, 1];
@@ -158,7 +160,7 @@ export class SectionIndex {
     let index = this.fractions.findIndex((value) => value > target) - 1;
     if (index < 0) return [first, 0];
     while (!this.#sizes[index] && index < last) index += 1;
-    const sectionFraction = (target - this.fractions[index]!)
+    const sectionFraction = (target - (this.fractions[index] ?? 0))
       / ((this.#sizes[index] ?? 0) / this.#total);
     return [index, sectionFraction];
   }

@@ -18,7 +18,7 @@ function normalizeInlineText(value: string) {
 
 export async function prepareTypography(doc: Document, options: {
   fontQueries: string[];
-  language?: unknown;
+  language?: string | string[];
   paginated: boolean;
   reflowable: boolean;
   signal: AbortSignal;
@@ -61,7 +61,7 @@ export async function prepareTypography(doc: Document, options: {
   ]);
 }
 
-function applyDocumentLanguage(doc: Document, language: unknown) {
+function applyDocumentLanguage(doc: Document, language?: string | string[]) {
   const requested = typeof language === "string"
     ? [language]
     : Array.isArray(language)

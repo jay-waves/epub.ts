@@ -1,9 +1,16 @@
 import * as CFI from "../epub/cfi.js";
-import type { Book, RelocateDetail, Renderer, Resolved, TocItem } from "../renderer/reader-view.js";
+import type {
+  Book,
+  RelocateDetail,
+  Renderer,
+  ResolvedNavigationTarget,
+  TocItem,
+} from "../renderer/reader-view.js";
+import { fractionAnchor } from "../renderer/shared/navigation";
 import { SectionIndex, TocIndex } from "./location";
 import type { SectionLocation } from "./location";
 
-type Target = string | number | Resolved;
+type Target = string | ResolvedNavigationTarget;
 
 type GoOptions = {
   select?: boolean;
@@ -74,15 +81,14 @@ export class Navigation {
     return range ? CFI.joinIndir(base, CFI.fromRange(range, cfiFilter)) : base;
   }
 
-  resolve(target: Target): Resolved | undefined {
+  resolve(target: Target): ResolvedNavigationTarget | undefined {
     try {
-      let resolved: Resolved | undefined;
-      if (typeof target === "number") resolved = { index: target };
+      let resolved: ResolvedNavigationTarget | undefined;
       if (typeof target === "object") resolved = target;
       else if (typeof target === "string") {
         resolved = CFI.isCFI.test(target)
           ? this.#resolveCfi(target)
-          : this.book.resolveHref?.(target) ?? undefined;
+          : this.book.resolveHref(target) ?? undefined;
       }
       return resolved
         && Number.isInteger(resolved.index)
@@ -96,7 +102,7 @@ export class Navigation {
     }
   }
 
-  #resolveCfi(cfi: string): Resolved {
+  #resolveCfi(cfi: string): ResolvedNavigationTarget {
     if (this.book.resolveCFI) return this.book.resolveCFI(cfi, cfiFilter);
     const parts = CFI.parse(cfi);
     const [spine, ...path] = Array.isArray(parts) ? parts : parts.parent;
@@ -115,7 +121,7 @@ export class Navigation {
   async goToProgress(fraction: number) {
     if (!Number.isFinite(fraction)) throw new Error(`Invalid reading progress ${String(fraction)}`);
     const [index, anchor] = this.#sections.at(Math.max(0, Math.min(1, fraction)));
-    const resolved = { anchor, index };
+    const resolved = { anchor: fractionAnchor(anchor), index };
     await this.#getRenderer().goTo(resolved);
     return resolved;
   }
@@ -154,7 +160,9 @@ export class Navigation {
       ?.find(({ type }) => type.includes("bodymatter") || type.includes("text"))
       ?.href;
     const firstLinear = this.book.sections.findIndex((section) => section.linear !== "no");
-    const target = landmark && this.resolve(landmark) ? landmark : Math.max(0, firstLinear);
+    const target = landmark && this.resolve(landmark)
+      ? landmark
+      : { index: Math.max(0, firstLinear) };
     return this.go(target);
   }
 
@@ -180,12 +188,8 @@ export class Navigation {
     this.#getRenderer().panBy?.(distance, distance);
   }
 
-  scrollTo(anchor: number) {
-    return this.#getRenderer().scrollToAnchor?.(anchor);
-  }
-
   clearSelection() {
-    for (const { doc } of this.#renderer?.getContents?.() ?? []) {
+    for (const { doc } of this.#renderer?.getContents() ?? []) {
       doc?.defaultView?.getSelection()?.removeAllRanges();
     }
   }

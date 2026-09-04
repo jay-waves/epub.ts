@@ -1,5 +1,4 @@
-import type { ReaderView } from "./model";
-import type { Content, Resolved } from "../renderer";
+import type { Content, ReaderView, ResolvedNavigationTarget } from "../renderer";
 import { observeRenderedContent } from "./rendered-content";
 import {
   consumeReaderEvent,
@@ -32,7 +31,7 @@ type Point = { x: number; y: number };
 
 type InteractionOptions = {
   closeContentMenu: () => void;
-  navigate: (href: string) => Promise<Resolved | undefined>;
+  navigate: (href: string) => Promise<ResolvedNavigationTarget | undefined>;
   openContentMenu: (event: MouseEvent, content: Content, coordinateSpace: "content" | "viewport") => void;
   openExternal: (href: string) => void;
 };
@@ -50,20 +49,20 @@ function isPlainClick(event: MouseEvent | PointerEvent) {
     && !event.shiftKey;
 }
 
-function flashTarget(view: ReaderView, resolved?: Resolved) {
+function flashTarget(view: ReaderView, resolved?: ResolvedNavigationTarget) {
   if (!resolved || typeof resolved.anchor !== "function") return;
-  const content = view.renderer?.getContents?.()
+  const content = view.renderer?.getContents()
     .find(({ index }) => index === resolved.index);
   const doc = content?.doc;
   if (!doc) return;
 
-  let target: Node | Range | number | null;
+  let target: Element | Range | null;
   try {
     target = resolved.anchor(doc);
   } catch {
     return;
   }
-  if (!target || typeof target === "number") return;
+  if (!target) return;
 
   const node = "startContainer" in target ? target.startContainer : target;
   let element = node.nodeType === 1 ? node as Element : node.parentElement;
@@ -134,9 +133,9 @@ export function createInteractions(options: InteractionOptions) {
         doc.defaultView?.getSelection()?.removeAllRanges();
         const sourceHref = anchor.getAttribute("href");
         if (!sourceHref) return;
-        const section = view.book?.sections?.[index];
-        const href = section?.resolveHref?.(sourceHref) ?? sourceHref;
-        if (view.book?.isExternal?.(href)) {
+        const section = view.book?.sections[index];
+        const href = section?.resolveHref(sourceHref) ?? sourceHref;
+        if (view.book?.isExternal(href)) {
           options.openExternal(href);
         } else {
           void options.navigate(href)

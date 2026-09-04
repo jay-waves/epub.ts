@@ -23,12 +23,15 @@ class AnnotationRepository {
   getByCfi(cfi: string) { return this.#byCfi.get(cfi); }
   forSection(index: number) { return [...(this.#bySection.get(index) ?? [])]; }
 
-  async load(bookKey: string) {
+  async load(bookKey: string, initial: readonly unknown[] = []) {
     if (this.#bookKey === bookKey) return this.all();
     const current = await platform.readViewerMetadata<unknown[]>(storageKey(bookKey));
-    const stored = current ?? await platform.readViewerMetadata<unknown[]>(legacyStorageKey(bookKey));
-    this.#set(bookKey, stored ?? []);
-    if (!current && stored) await this.#persist(bookKey);
+    const legacy = current === undefined
+      ? await platform.readViewerMetadata<unknown[]>(legacyStorageKey(bookKey))
+      : undefined;
+    const stored = current ?? legacy ?? initial;
+    this.#set(bookKey, stored);
+    if (current === undefined) await this.#persist(bookKey);
     return this.all();
   }
 
@@ -73,7 +76,7 @@ class AnnotationRepository {
   #add(annotation: ReaderAnnotation) {
     this.#byId.set(annotation.id, annotation);
     this.#byCfi.set(annotation.value, annotation);
-    if (typeof annotation.index !== "number") return;
+    if (annotation.index === undefined) return;
     const section = this.#bySection.get(annotation.index) ?? new Set();
     section.add(annotation);
     this.#bySection.set(annotation.index, section);
@@ -82,7 +85,7 @@ class AnnotationRepository {
   #delete(annotation: ReaderAnnotation) {
     this.#byId.delete(annotation.id);
     if (this.#byCfi.get(annotation.value) === annotation) this.#byCfi.delete(annotation.value);
-    if (typeof annotation.index !== "number") return;
+    if (annotation.index === undefined) return;
     const section = this.#bySection.get(annotation.index);
     section?.delete(annotation);
     if (!section?.size) this.#bySection.delete(annotation.index);

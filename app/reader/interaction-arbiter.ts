@@ -1,5 +1,12 @@
 export type ReaderPointerIntent = "control" | "link" | "highlight" | "image" | "content";
 const pointerOwners = new WeakMap<Document, Map<number, ReaderPointerIntent>>();
+const pointerPriority: Record<ReaderPointerIntent, number> = {
+  control: 4,
+  link: 3,
+  highlight: 2,
+  image: 1,
+  content: 0,
+};
 
 export function eventTargetElement(target: EventTarget | null) {
   return target && (target as Node).nodeType === Node.ELEMENT_NODE
@@ -46,8 +53,12 @@ export function claimReaderPointer(event: PointerEvent, owner = resolveReaderPoi
     owners = new Map();
     pointerOwners.set(doc, owners);
   }
-  owners.set(event.pointerId, owner);
-  return owner;
+  const current = owners.get(event.pointerId);
+  if (!current || pointerPriority[owner] > pointerPriority[current]) {
+    owners.set(event.pointerId, owner);
+    return owner;
+  }
+  return current;
 }
 
 export function consumeReaderPointerClaim(event: PointerEvent) {

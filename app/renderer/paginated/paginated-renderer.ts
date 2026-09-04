@@ -5,14 +5,18 @@ import {
     animateNumber,
     createReadingPosition,
     easeOutQuad,
+    fractionAnchor,
     getAnchorRect,
+    isFractionAnchor,
     NavigationTransaction,
+    resolveSectionAnchor,
     resolveReadingPosition,
     setSelectionTarget,
     uncollapseRange,
-    type NavigationAnchor,
+    type RenderedAnchor,
     type ReadingPosition,
     type RelocateDetail,
+    type RelocationReason,
 } from '../shared/navigation'
 import {
     isAtPaginatedBookEdge,
@@ -26,14 +30,20 @@ import {
 } from '../shared/section-frame'
 import { getPaginatedColumnGeometry } from './paginated-layout'
 import { PaginatedTrack } from './paginated-track'
-import type { Book, Resolved } from '../reader-view.js'
-import type { RendererStyles } from '../renderer'
+import type { Book, ResolvedNavigationTarget } from '../reader-view.js'
+import type { ReflowableRenderer, RendererStyles } from '../renderer'
 import { getLayoutGap } from '../shared/flow-geometry'
+import { observeSettledResize } from '../shared/settled-resize'
 
 type PreferredPosition = {
     entry: SpineEntry<SectionFrame>
     fraction: number
     range?: Range
+}
+
+type AnchorProjection = {
+    localOffset: number
+    target?: Element | Range
 }
 
 const debounce = <Args extends unknown[]>(
@@ -65,7 +75,7 @@ const selectionIsBackward = (sel: Selection) => {
 }
 
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
-export class PaginatedRenderer extends HTMLElement {
+export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer {
     beforeRenderDocument?: (doc: Document, index: number) => Promise<void> | void
     static observedAttributes = [
         'gap', 'margin',
@@ -73,21 +83,23 @@ export class PaginatedRenderer extends HTMLElement {
         'max-column-count',
     ]
     #bookDir?: string
-    #observer = new ResizeObserver(() => {
+    #stopObservingResize?: () => void
+    #handleViewportResize = () => {
         const containerRect = this.#container.getBoundingClientRect()
         const viewportRect = this.getBoundingClientRect()
-        const changed = containerRect.width !== this.#containerWidth
-            || containerRect.height !== this.#containerHeight
-            || viewportRect.width !== this.#viewportWidth
-            || viewportRect.height !== this.#viewportHeight
+        const changed = Math.abs(containerRect.width - this.#containerWidth) >= 0.5
+            || Math.abs(containerRect.height - this.#containerHeight) >= 0.5
+            || Math.abs(viewportRect.width - this.#viewportWidth) >= 0.5
+            || Math.abs(viewportRect.height - this.#viewportHeight) >= 0.5
         if (!changed) return
 
         this.#containerWidth = containerRect.width
         this.#containerHeight = containerRect.height
         this.#viewportWidth = viewportRect.width
         this.#viewportHeight = viewportRect.height
+        this.#viewportMeasured = true
         this.#invalidateViewportGeometry()
-    })
+    }
     #top!: HTMLElement
     #background!: HTMLElement
     #container!: HTMLElement
@@ -98,7 +110,7 @@ export class PaginatedRenderer extends HTMLElement {
     #rtl = false
     #writingMode: SectionDirection['writingMode'] = 'horizontal-tb'
     #position?: ReadingPosition
-    #targetAnchor: NavigationAnchor = 0
+    #targetAnchor: RenderedAnchor = fractionAnchor(0)
     #motion?: AbortController
     #scrollBounds: [number, number, number] | null = null
     #renderFrame?: number
@@ -106,6 +118,7 @@ export class PaginatedRenderer extends HTMLElement {
     #containerHeight = 0
     #viewportWidth = 0
     #viewportHeight = 0
+    #viewportMeasured = false
     #pageSize = 0
     #turnSize = 1
     #edgeTurns = 1
@@ -224,19 +237,19 @@ export class PaginatedRenderer extends HTMLElement {
         // Observe only the external viewport. Observing #container as well
         // feeds our own paginated reflow back into ResizeObserver; Edge can
         // oscillate forever near a responsive column-count boundary.
-        this.#observer.observe(this)
+        this.#stopObservingResize = observeSettledResize(
+            this, this.#handleViewportResize)
         this.#container.addEventListener('scroll', () =>
             this.dispatchEvent(new Event('scroll')))
 
         this.addEventListener('relocate', (({ detail }: CustomEvent) => {
             if (detail.reason === 'selection') setSelectionTarget(this.#targetAnchor, 0)
             else if (detail.reason === 'navigation') {
-                if (this.#targetAnchor === 1) setSelectionTarget(detail.range, 1)
-                else if (typeof this.#targetAnchor === 'number')
-                    setSelectionTarget(detail.range, -1)
-                else setSelectionTarget(this.#targetAnchor, -1)
-                const cueTarget = typeof this.#targetAnchor === 'number'
-                    ? detail.range : this.#targetAnchor
+                const target = this.#targetAnchor
+                if (isFractionAnchor(target))
+                    setSelectionTarget(detail.range, target.fraction === 1 ? 1 : -1)
+                else setSelectionTarget(target, -1)
+                const cueTarget = isFractionAnchor(target) ? detail.range : target
                 this.#spine.showNavigationCue(cueTarget)
             }
         }) as EventListener)
@@ -275,8 +288,11 @@ export class PaginatedRenderer extends HTMLElement {
                 }
             })
             // NOTE: `requestAnimationFrame` is needed in WebKit
-            doc.addEventListener('focusin', (event: FocusEvent) =>
-                requestAnimationFrame(() => this.#scrollToAnchor(event.target as Node)))
+            doc.addEventListener('focusin', (event: FocusEvent) => {
+                const target = event.target as Node | null
+                if (target?.nodeType !== Node.ELEMENT_NODE) return
+                requestAnimationFrame(() => this.#scrollToAnchor(target as Element))
+            })
         }) as EventListener)
 
     }
@@ -332,7 +348,13 @@ export class PaginatedRenderer extends HTMLElement {
         const size = vertical ? height : width
 
         const style = getComputedStyle(this.#top)
-        const spreadWidth = this.getBoundingClientRect().width
+        const viewportRect = this.getBoundingClientRect()
+        if (!this.#viewportMeasured) {
+            this.#viewportWidth = viewportRect.width
+            this.#viewportHeight = viewportRect.height
+            this.#viewportMeasured = true
+        }
+        const spreadWidth = viewportRect.width
         const responsiveColumnCount = spreadWidth >= 2400 ? 3
             : spreadWidth >= 1360 ? 2 : 1
         const maxColumnCount = Math.min(
@@ -392,7 +414,7 @@ export class PaginatedRenderer extends HTMLElement {
         const entry = this.#entryForView()
         const anchor = entry
             ? anchorForPosition(this.#position, entry.index, entry.view.document)
-            : 0
+            : fractionAnchor(0)
         if (this.#trackLayoutInvalid) {
             this.#spine.track.reset()
             this.#trackLayoutInvalid = false
@@ -534,7 +556,7 @@ export class PaginatedRenderer extends HTMLElement {
         this.#container[this.scrollProp] = physicalOffset
         if (this.#scrollBounds) this.#scrollBounds[0] = physicalOffset
     }
-    async #scrollTo(offset: number, reason: string | null, smooth = false,
+    async #scrollTo(offset: number, reason: RelocationReason | null, smooth = false,
         preferred?: PreferredPosition) {
         if (this.#destroyed) return false
         const element = this.#container
@@ -579,7 +601,7 @@ export class PaginatedRenderer extends HTMLElement {
             this.#activateEntry(entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
-                this.#targetAnchor = position.range ?? position.fraction
+                this.#targetAnchor = position.range ?? fractionAnchor(position.fraction)
 
             const detail: RelocateDetail = { ...position, reason, size }
             this.dispatchEvent(new CustomEvent('relocate', { detail }))
@@ -607,15 +629,11 @@ export class PaginatedRenderer extends HTMLElement {
         element[scrollProp] = offset
         return commit()
     }
-    async #scrollToTurn(turn: number, reason: string | null, smooth = false) {
+    async #scrollToTurn(turn: number, reason: RelocationReason | null, smooth = false) {
         const logicalOffset = this.#pageOrigin + this.turnSize * turn
         return this.#scrollTo(this.#toPhysicalOffset(logicalOffset), reason, smooth)
     }
-    async scrollToAnchor(anchor: number, select = false) {
-        await this.#enqueueNavigation(() => this.#scrollToAnchor(
-            anchor, select ? 'selection' : 'navigation'))
-    }
-    async #scrollToAnchor(anchor: NavigationAnchor, reason: string | null = 'anchor',
+    async #scrollToAnchor(anchor: RenderedAnchor, reason: RelocationReason | null = 'anchor',
         entry = this.#entryForView()) {
         if (!entry) return false
         this.#targetAnchor = anchor
@@ -623,17 +641,17 @@ export class PaginatedRenderer extends HTMLElement {
         if (!projection) return false
         return this.#projectTarget(entry, projection.localOffset, reason, projection.target)
     }
-    #resolveAnchorProjection(anchor: NavigationAnchor, entry: SpineEntry<SectionFrame>) {
-        const rect = typeof anchor === 'number' ? undefined : getAnchorRect(uncollapseRange(anchor))
-        if (rect) {
-            const mapped = this.#getRectMapper(entry.view)(rect)
-            return { localOffset: mapped.left, target: anchor }
+    #resolveAnchorProjection(anchor: RenderedAnchor,
+        entry: SpineEntry<SectionFrame>): AnchorProjection | undefined {
+        if (isFractionAnchor(anchor)) return {
+            localOffset: anchor.fraction * Math.max(0, entry.view.extent - 1),
         }
-        if (typeof anchor === 'number') return {
-            localOffset: anchor * Math.max(0, entry.view.extent - 1),
-        }
+        const rect = getAnchorRect(uncollapseRange(anchor))
+        if (!rect) return
+        const mapped = this.#getRectMapper(entry.view)(rect)
+        return { localOffset: mapped.left, target: anchor }
     }
-    async #restoreAfterReflow(anchor: NavigationAnchor,
+    async #restoreAfterReflow(anchor: RenderedAnchor,
         entry = this.#entryForView()) {
         if (!entry) return false
         this.#targetAnchor = anchor
@@ -642,15 +660,14 @@ export class PaginatedRenderer extends HTMLElement {
         return this.#projectAlignedTarget(
             entry, projection.localOffset, 'anchor', projection.target)
     }
-    #targetRange(anchor: NavigationAnchor) {
-        if (typeof anchor === 'number') return undefined
-        if ('startContainer' in anchor) return anchor as Range
+    #targetRange(anchor: Element | Range) {
+        if ('startContainer' in anchor) return anchor
         const range = anchor.ownerDocument?.createRange()
         range?.selectNode(anchor)
         return range
     }
     async #projectTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
-        reason: string | null, anchor?: NavigationAnchor) {
+        reason: RelocationReason | null, anchor?: Element | Range) {
         const target = this.#entryOffset(entry) + localOffset
         const preferred = {
             entry,
@@ -664,7 +681,7 @@ export class PaginatedRenderer extends HTMLElement {
         return this.#projectAlignedTarget(entry, localOffset, reason, anchor)
     }
     #projectAlignedTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
-        reason: string | null, anchor?: NavigationAnchor) {
+        reason: RelocationReason | null, anchor?: Element | Range) {
         const preferred = {
             entry,
             fraction: Math.min(1, Math.max(0, localOffset / entry.view.extent)),
@@ -688,16 +705,15 @@ export class PaginatedRenderer extends HTMLElement {
             turns: this.turns,
         }
     }
-    async #goTo({ index, anchor, select = false }: Resolved,
+    async #goTo({ index, anchor, select = false }: ResolvedNavigationTarget,
         revision = this.#navigation.revision,
-        reason: string | null = select ? 'selection' : 'navigation') {
+        reason: RelocationReason | null = select ? 'selection' : 'navigation') {
         const hasFocus = this.#spine.currentView?.document?.hasFocus()
         const entry = await this.#spine.prepare(index)
         if (this.#destroyed || revision !== this.#navigation.revision) return false
         this.#activateEntry(entry)
-        const resolvedAnchor = typeof anchor === 'function'
-            ? anchor(entry.view.document) : anchor
-        const landed = await this.#scrollToAnchor(resolvedAnchor ?? 0, reason, entry)
+        const resolvedAnchor = resolveSectionAnchor(anchor, entry.view.document)
+        const landed = await this.#scrollToAnchor(resolvedAnchor, reason, entry)
         if (landed !== false && hasFocus)
             this.#spine.currentView?.document?.defaultView?.focus()
         return landed !== false
@@ -720,13 +736,12 @@ export class PaginatedRenderer extends HTMLElement {
         this.#motion = undefined
         this.#scrollBounds = null
     }
-    async goTo(target: Resolved | Promise<Resolved>) {
+    async goTo(target: ResolvedNavigationTarget) {
         const revision = this.#navigation.revision
-        const resolved = await target
         if (this.#destroyed || revision !== this.#navigation.revision) return
-        if (this.#spine.contains(resolved.index))
-            return this.#enqueueNavigation(
-                current => this.#goTo(resolved, current), revision)
+        if (this.#spine.contains(target.index))
+            await this.#enqueueNavigation(
+                current => this.#goTo(target, current), revision)
     }
     get atStart() {
         return isAtPaginatedBookEdge(this.#navigationState(), -1)
@@ -738,14 +753,14 @@ export class PaginatedRenderer extends HTMLElement {
         return this.#spine.adjacent(
             this.#entryForView()?.index ?? this.#position?.index ?? -1, dir)
     }
-    async #crossCacheWindow(dir: -1 | 1, reason: string | null = 'page') {
+    async #crossCacheWindow(dir: -1 | 1, reason: RelocationReason | null = 'page') {
         const boundary = (dir < 0 ? this.#spine.first : this.#spine.last)?.index
         if (boundary == null) return false
         const index = this.#spine.adjacent(boundary, dir)
         if (index == null) return false
         return this.#goTo({
             index,
-            anchor: dir < 0 ? 1 : 0,
+            anchor: fractionAnchor(dir < 0 ? 1 : 0),
             select: false,
         }, this.#navigation.revision, reason)
     }
@@ -803,7 +818,7 @@ export class PaginatedRenderer extends HTMLElement {
         this.#destroyed = true
         this.cancelNavigation()
         if (this.#renderFrame !== undefined) cancelAnimationFrame(this.#renderFrame)
-        this.#observer.disconnect()
+        this.#stopObservingResize?.()
         this.#spine.destroy()
     }
 }

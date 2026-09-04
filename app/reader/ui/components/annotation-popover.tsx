@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, MessageSquareText, Trash2 } from "lucide-react";
+import { Check, Copy, SquarePen, Trash2 } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
-import { emitViewerEvent, emitViewerSignal, VIEWER_EVENTS } from "../../events";
+import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
 import type { AnnotationDetail } from "../../events";
 import { useViewerEvent } from "./use-viewer-event";
 
@@ -32,20 +32,22 @@ export function AnnotationPopover() {
     setState(next);
   };
 
-  useViewerEvent(VIEWER_EVENTS.annotationOpen, (detail) => {
-    deletingRef.current = false;
-    const next = { ...detail, copied: false, open: true };
-    stateRef.current = next;
-    setState(next);
-  });
-  useViewerEvent(VIEWER_EVENTS.annotationClose, () => {
+  const closeAndSave = () => {
     const current = stateRef.current;
     if (!deletingRef.current && current.open) {
       emitViewerEvent(VIEWER_EVENTS.annotationSave, { note: current.note, value: current.value });
     }
     deletingRef.current = false;
     updateState((value) => ({ ...value, open: false }));
+  };
+
+  useViewerEvent(VIEWER_EVENTS.annotationOpen, (detail) => {
+    deletingRef.current = false;
+    const next = { ...detail, copied: false, open: true };
+    stateRef.current = next;
+    setState(next);
   });
+  useViewerEvent(VIEWER_EVENTS.annotationClose, closeAndSave);
 
   useEffect(() => {
     if (!state.open) return;
@@ -57,7 +59,7 @@ export function AnnotationPopover() {
   }, [state.open, state.value]);
 
   const popover = usePointPopover({
-    onDismiss: () => emitViewerSignal(VIEWER_EVENTS.annotationClose),
+    onDismiss: closeAndSave,
     open: state.open,
     x: state.x,
     y: state.y,
@@ -68,17 +70,17 @@ export function AnnotationPopover() {
   if (!state.open) return null;
   return (
     <section
-        aria-label="Annotation"
-        aria-live="polite"
-        className="reader-text-popover"
-        popover="auto"
-        ref={popover.setPopover}
-        role="dialog"
-        style={popover.popoverStyle}
-      >
+      aria-label="Annotation"
+      aria-live="polite"
+      className="reader-text-popover"
+      popover="auto"
+      ref={popover.setPopover}
+      role="dialog"
+      style={popover.popoverStyle}
+    >
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">
-          <MessageSquareText size={16} aria-hidden="true" />
+          <SquarePen size={16} aria-hidden="true" />
           <span>Annotation</span>
         </div>
         <div className="reader-text-popover-actions">
@@ -110,7 +112,7 @@ export function AnnotationPopover() {
       </header>
 
       <div className="reader-text-popover-body">
-        <textarea className="reader-text-popover-source" readOnly value={state.sourceText} />
+        <textarea aria-label="Selected text" className="reader-text-popover-source" readOnly value={state.sourceText} />
         <textarea
           aria-label="Annotation"
           className="reader-text-popover-result reader-annotation-input"
