@@ -536,10 +536,11 @@ export function createViewerInput(options: ViewerInputOptions) {
     };
   };
 
-  const bindWheelGesture = (targetDocument: Document) => {
+  const createWheelGesture = () => {
     const wheel = WheelGestures({ preventWheelAction: false });
     let swipeConsumed = false;
     const stopListening = wheel.on("wheel", (state) => {
+      const targetDocument = (state.event.target as Node | null)?.ownerDocument ?? document;
       if (state.isStart) {
         inertia.stop();
         activeWheelTargets.add(targetDocument);
@@ -547,7 +548,7 @@ export function createViewerInput(options: ViewerInputOptions) {
         if (wheelBoundaryDirection === null) wheelBoundaryConsumed = false;
       }
       if (state.isEnding || state.isMomentumCancel) {
-        activeWheelTargets.delete(targetDocument);
+        activeWheelTargets.clear();
         swipeConsumed = false;
         if (!activeWheelTargets.size && wheelBoundaryDirection === null) {
           wheelBoundaryConsumed = false;
@@ -593,14 +594,16 @@ export function createViewerInput(options: ViewerInputOptions) {
       if (!state.isMomentum && coarse) inertia.pushDistance(delta);
       else scrollWheelBy(delta);
     });
-    const stopObserving = wheel.observe(targetDocument);
-    return () => {
-      activeWheelTargets.delete(targetDocument);
-      stopObserving();
-      stopListening();
-      wheel.disconnect();
+    return {
+      observe: (target: Document) => wheel.observe(target),
+      destroy: () => {
+        stopListening();
+        wheel.disconnect();
+      },
     };
   };
+
+  const wheelGesture = createWheelGesture();
 
   const bindSideButtonNavigation = (targetDocument: Document) => {
     const events = new AbortController();
@@ -668,7 +671,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     const stopPointer = targetDocument === document
       ? () => {}
       : bindPointerInput(targetDocument, targetDocument);
-    const stopWheel = bindWheelGesture(targetDocument);
+    const stopWheel = wheelGesture.observe(targetDocument);
     const stopSideButtons = bindSideButtonNavigation(targetDocument);
     inputTargets.set(targetDocument, () => {
       stopPointer();
@@ -716,6 +719,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       bindings.forEach((_, view) => unbindReaderView(view));
       inputTargets.forEach((dispose) => dispose());
       inputTargets.clear();
+      wheelGesture.destroy();
     },
     scrollByKey,
     executeStep,

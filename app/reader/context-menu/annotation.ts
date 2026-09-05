@@ -135,7 +135,7 @@ export function createAnnotations(options: AnnotationOptions) {
     highlight,
     pageX,
     pageY,
-    selection,
+    selection = getSelectedReaderContext() ?? undefined,
   }: {
     highlight?: ReaderAnnotation;
     pageX: number;
@@ -154,7 +154,7 @@ export function createAnnotations(options: AnnotationOptions) {
       canHighlight: hasSelection,
       context,
       point: { x: pageX, y: pageY },
-      text: highlight ? getAnnotationText(highlight) : selection!.text,
+      text: selection ? selection.text : getAnnotationText(highlight!),
     });
   };
 
@@ -244,9 +244,9 @@ export function createAnnotations(options: AnnotationOptions) {
       onActivate: (event) => {
         const highlight = annotationRepository.getByCfi(detail.annotation.value);
         if (!highlight) return;
-        options.getNavigation()?.clearSelection();
         const point = getPagePointFromDocumentEvent(event);
         if (event.type === "click") {
+          options.getNavigation()?.clearSelection();
           run(
             track(annotateContextText({ highlight }, point)),
             "Failed to open annotation.",
@@ -258,12 +258,8 @@ export function createAnnotations(options: AnnotationOptions) {
     });
   };
 
-  const restore = async (
-    view: ReaderView,
-    bookKey: string,
-    embeddedAnnotations: readonly ReaderAnnotation[] = [],
-  ) => {
-    const savedHighlights = await annotationRepository.load(bookKey, embeddedAnnotations);
+  const restore = async (view: ReaderView, bookKey: string) => {
+    const savedHighlights = await annotationRepository.load(bookKey);
     if (options.getView() !== view || options.getBookKey() !== bookKey) return;
 
     let shouldPersist = false;
@@ -353,28 +349,61 @@ export function createAnnotations(options: AnnotationOptions) {
   const highlightSelectedText = async (selection: TextSelection) => {
     const view = options.getView();
     const bookKey = options.getBookKey();
-    if (!view || !bookKey) return;
-    const { value } = selection;
-    const existing = annotationRepository.getByCfi(value);
-    if (existing) {
-      options.getNavigation()?.clearSelection();
-      textContext.close();
-      return existing;
+    const navigation = options.getNavigation();
+    if (!view || !bookKey || !navigation) return;
+    const range = selection.range.cloneRange();
+    const compare = (left: Range, leftEnd: boolean, right: Range, rightEnd: boolean) => {
+      const a = left.cloneRange();
+      const b = right.cloneRange();
+      a.collapse(!leftEnd);
+      b.collapse(!rightEnd);
+      return a.compareBoundaryPoints(Range.START_TO_START, b);
+    };
+    const merged: ReaderAnnotation[] = [];
+    const candidates = annotationRepository.all().flatMap(annotation => {
+      const target = navigation.resolve(annotation.value);
+      if (target?.index !== selection.index || typeof target.anchor !== "function") return [];
+      const existingRange = target.anchor(range.startContainer.ownerDocument!);
+      return existingRange && "startContainer" in existingRange
+        ? [{ annotation, range: existingRange }] : [];
+    });
+    // Repeat after extending the union so chained overlaps become one record.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const candidate of candidates) {
+        if (merged.includes(candidate.annotation)) continue;
+        if (compare(range, false, candidate.range, true) >= 0
+          || compare(range, true, candidate.range, false) <= 0) continue;
+        merged.push(candidate.annotation);
+        if (compare(candidate.range, false, range, false) < 0)
+          range.setStart(candidate.range.startContainer, candidate.range.startOffset);
+        if (compare(candidate.range, true, range, true) > 0)
+          range.setEnd(candidate.range.endContainer, candidate.range.endOffset);
+        changed = true;
+      }
     }
-
+    merged.sort((a, b) => a.createdAt - b.createdAt);
+    const note = [...new Set(merged.map(item => item.note?.trim()).filter(Boolean))].join("\n\n");
     const createdAt = Date.now();
     const annotation: ReaderAnnotation = {
-      id: crypto.randomUUID(),
-      value,
+      id: merged[0]?.id ?? crypto.randomUUID(),
+      value: navigation.cfi(selection.index, range),
       color: AUTO_HIGHLIGHT_COLOR,
-      text: selection.text,
+      text: range.toString(),
+      ...(note ? { note } : {}),
       index: selection.index,
       fraction: options.getProgress(),
-      createdAt,
+      createdAt: merged[0]?.createdAt ?? createdAt,
       updatedAt: createdAt,
     };
-
-    await persistHighlight(annotation, selection);
+    markUnsaved();
+    const persistence = annotationRepository.replace(bookKey, [
+      ...annotationRepository.all().filter(item => !merged.includes(item)), annotation,
+    ]);
+    await Promise.all(merged.map(item => view.deleteAnnotation(item)));
+    await view.addAnnotation(annotation, false, { index: selection.index, range });
+    await persistence;
     options.getNavigation()?.clearSelection();
     textContext.close();
     return annotation;
@@ -388,41 +417,29 @@ export function createAnnotations(options: AnnotationOptions) {
     const bookKey = options.getBookKey();
     if (!view || !bookKey) return;
 
-    if (context.highlight) {
-      const annotation: ReaderAnnotation = {
-        ...context.highlight,
-        note: context.highlight.note ?? "",
-      };
-      if (context.highlight.note === undefined) {
-        await persistHighlight(annotation);
+    if (context.highlight && !context.selection) {
+      const target = options.getNavigation()?.resolve(context.highlight.value);
+      const content = target && findContentByIndex(target.index);
+      const range = content && typeof target?.anchor === "function"
+        ? target.anchor(content.doc) : null;
+      if (range && "startContainer" in range && target) {
+        context = { selection: {
+          index: target.index,
+          range,
+          value: context.highlight.value,
+          text: range.toString(),
+        } };
+      } else {
+        openAnnotationPopover(context.highlight, point);
+        textContext.close();
+        return;
       }
-      openAnnotationPopover(annotation, point);
-      textContext.close();
-      return;
     }
 
     if (!context.selection) return;
 
-    const { value } = context.selection;
-    const existing = annotationRepository.getByCfi(value);
-    const createdAt = Date.now();
-    const annotation: ReaderAnnotation = existing
-      ? { ...existing, note: existing.note ?? "" }
-      : {
-          id: crypto.randomUUID(),
-          value,
-          color: AUTO_HIGHLIGHT_COLOR,
-          note: "",
-          text: context.selection.text,
-          index: context.selection.index,
-          fraction: options.getProgress(),
-          createdAt,
-          updatedAt: createdAt,
-        };
-
-    if (!existing || existing.note === undefined) {
-      await persistHighlight(annotation, context.selection);
-    }
+    const annotation = await highlightSelectedText(context.selection);
+    if (!annotation) return;
     options.getNavigation()?.clearSelection();
     openAnnotationPopover(annotation, point);
     textContext.close();

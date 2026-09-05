@@ -329,13 +329,6 @@ export class SectionFrame {
       this.#iframe.style[otherSide] = "100%";
       this.#element.style[otherSide] = "100%";
       documentElement.style[side] = `${this.#size}px`;
-      if (this.#overlay) {
-        this.#overlay.element.style.margin = "0";
-        this.#overlay.element.style.left = "0";
-        this.#overlay.element.style.top = "0";
-        this.#overlay.element.style[side] = `${expandedSize}px`;
-        this.#overlay.redraw();
-      }
     } else {
       const side = this.#vertical ? "width" : "height";
       const otherSide = this.#vertical ? "height" : "width";
@@ -348,14 +341,8 @@ export class SectionFrame {
       this.#element.style[side] = `${expandedSize}px`;
       this.#iframe.style[otherSide] = "100%";
       this.#element.style[otherSide] = "100%";
-      if (this.#overlay) {
-        this.#overlay.element.style.margin = padding;
-        this.#overlay.element.style.left = "0";
-        this.#overlay.element.style.top = "0";
-        this.#overlay.element.style[side] = `${expandedSize}px`;
-        this.#overlay.redraw();
-      }
     }
+    this.#layoutOverlay();
     // DOM geometry is sub-pixel. Treat values that map to the same visual
     // pixel as stable so layout writes cannot feed rounding noise back into
     // another renderer reflow.
@@ -365,6 +352,19 @@ export class SectionFrame {
   set overlay(overlay: Overlay | undefined) {
     this.#overlay = overlay;
     if (overlay) this.#element.append(overlay.element);
+    this.#layoutOverlay();
+  }
+
+  #layoutOverlay() {
+    if (!this.#overlay) return;
+    Object.assign(this.#overlay.element.style, {
+      margin: this.#element.style.padding,
+      left: "0",
+      top: "0",
+      width: this.#iframe.style.width,
+      height: this.#iframe.style.height,
+    });
+    this.#overlay.redraw();
   }
 
   get overlay() { return this.#overlay; }

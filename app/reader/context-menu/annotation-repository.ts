@@ -23,13 +23,13 @@ class AnnotationRepository {
   getByCfi(cfi: string) { return this.#byCfi.get(cfi); }
   forSection(index: number) { return [...(this.#bySection.get(index) ?? [])]; }
 
-  async load(bookKey: string, initial: readonly unknown[] = []) {
+  async load(bookKey: string) {
     if (this.#bookKey === bookKey) return this.all();
     const current = await platform.readViewerMetadata<unknown[]>(storageKey(bookKey));
     const legacy = current === undefined
       ? await platform.readViewerMetadata<unknown[]>(legacyStorageKey(bookKey))
       : undefined;
-    const stored = current ?? legacy ?? initial;
+    const stored = current ?? legacy ?? [];
     this.#set(bookKey, stored);
     if (current === undefined) await this.#persist(bookKey);
     return this.all();

@@ -294,6 +294,10 @@ func (app *App) handleDocument(response http.ResponseWriter, request *http.Reque
 		writeJSONError(response, http.StatusNotFound, "unknown_document", "This document is not registered with epub.ts.")
 		return
 	}
+	if len(parts) == 2 && parts[1] == "metadata" {
+		app.handleViewerMetadata(document, response, request)
+		return
+	}
 	resource, err := app.resourceFor(document)
 	if err != nil {
 		app.writeResourceError(response, err)

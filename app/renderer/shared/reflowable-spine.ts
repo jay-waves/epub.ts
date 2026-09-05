@@ -236,14 +236,14 @@ export class ReflowableSpine {
     }
   }
 
-  setStyles(styles: RendererStyles) {
+  setStyles(styles: RendererStyles, { reflow = true }: { reflow?: boolean } = {}) {
     this.#styles = styles;
     const docs = this.entries
       .map(({ view }) => view.document)
       .filter(doc => this.#applyStyles(doc, styles));
     if (!docs.length) return docs;
     requestAnimationFrame(() => this.#updateBackground());
-    Promise.all(docs.map(doc => doc.fonts.ready)).then(this.#options.scheduleRender);
+    if (reflow) Promise.all(docs.map(doc => doc.fonts.ready)).then(this.#options.scheduleRender);
     return docs;
   }
 

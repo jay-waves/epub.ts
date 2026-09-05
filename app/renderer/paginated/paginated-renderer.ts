@@ -810,8 +810,8 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         return this.#turnPage(1, this.edgeTurns)
     }
     getContents() { return this.#spine.getContents() }
-    setStyles(styles: RendererStyles) {
-        this.#spine.setStyles(styles)
+    setStyles(styles: RendererStyles, options?: { reflow?: boolean }) {
+        this.#spine.setStyles(styles, options)
     }
     destroy() {
         if (this.#destroyed) return

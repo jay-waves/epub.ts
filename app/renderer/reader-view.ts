@@ -142,6 +142,7 @@ export class ReaderView extends HTMLElement {
     #contents = new Map<Document, AbortController>()
     #annotations = new AnnotationCache<ReaderAnnotation>()
     #readingCfis = new Map<number, string>()
+    #switchTarget?: ResolvedNavigationTarget
     #destroyed = false
     #opened = false
     #decorations = new Map<number, Map<string, Decoration>>()
@@ -200,7 +201,11 @@ export class ReaderView extends HTMLElement {
             this.#relocations.set(renderer, detail)
             const cfi = this.#readingCfi(detail)
             if (cfi) this.#readingCfis.set(detail.index, cfi)
-            if (renderer === this.renderer) this.#emit('relocate', detail)
+            if (renderer === this.renderer) {
+                if (detail.reason !== 'anchor' && detail.reason !== 'switch')
+                    this.#switchTarget = undefined
+                this.#emit('relocate', detail)
+            }
         }, { signal: rendererSignal })
         renderer.addEventListener('request-overlay', event => {
             const detail = (event as CustomEvent<{
@@ -225,7 +230,7 @@ export class ReaderView extends HTMLElement {
         }
 
         current.capturePosition?.()
-        const target = this.#readingTarget(current)
+        const target = this.#switchTarget ?? this.#readingTarget(current)
         current.cancelNavigation?.()
         const next = await createRenderer(mode)
         if (this.#destroyed) {
@@ -259,6 +264,7 @@ export class ReaderView extends HTMLElement {
         }
 
         this.renderer = next
+        this.#switchTarget = target
         this.navigation!.attach(next)
         for (const { index, overlay } of next.getContents()) {
             if (overlay) this.#announceOverlay(overlay, index)
@@ -297,9 +303,9 @@ export class ReaderView extends HTMLElement {
             if (name !== 'style') target.setAttribute(name, value)
         }
     }
-    setStyles(styles: RendererStyles) {
+    setStyles(styles: RendererStyles, options?: { reflow?: boolean }) {
         this.#styles = styles
-        this.renderer?.setStyles?.(styles)
+        this.renderer?.setStyles?.(styles, options)
     }
     destroy() {
         if (this.#destroyed) return
@@ -311,6 +317,7 @@ export class ReaderView extends HTMLElement {
         this.renderer?.remove()
         this.#annotations.clear()
         this.#readingCfis.clear()
+        this.#switchTarget = undefined
         this.#decorations.clear()
         this.navigation = undefined
         this.book = undefined

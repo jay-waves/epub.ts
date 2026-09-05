@@ -28,6 +28,30 @@ const bindHighlightPointer = (element: SVGElement) => {
   });
 };
 
+function constrainBadgeToPage(
+  root: HTMLElement | undefined, lastRect: DOMRect,
+  x: number, y: number, iconSize: number, hitSize: number, gap: number,
+) {
+  const style = root && root.ownerDocument.defaultView?.getComputedStyle(root);
+  if (root && style && style.columnWidth !== "auto" && style.writingMode === "horizontal-tb") {
+    // Coordinates belong to the expanded iframe, not the outer browser viewport.
+    const pageWidth = root.getBoundingClientRect().width;
+    if (pageWidth > 0) {
+      const origin = root.getBoundingClientRect().left;
+      const pageLeft = origin + Math.floor(((lastRect.left + lastRect.right) / 2 - origin) / pageWidth) * pageWidth;
+      const inset = (hitSize - iconSize) / 2 + 2;
+      const boundedX = Math.max(pageLeft + inset,
+        Math.min(x, pageLeft + pageWidth - iconSize - inset));
+      if (boundedX < lastRect.right && boundedX + iconSize > lastRect.left) {
+        // Keep the marker outside the selection when the side gutter is too narrow.
+        y = lastRect.bottom + gap;
+      }
+      x = boundedX;
+    }
+  }
+  return { x, y };
+}
+
 export function drawAnnotation(
   rects: DOMRectList,
   options: AnnotationDrawOptions = { color: DEFAULT_COLOR },
@@ -66,12 +90,27 @@ export function drawAnnotation(
   if (!lastRect) return group;
 
   const iconSize = lastRect.height * 0.68;
-  const iconInset = lastRect.height * 0.08;
-  const iconX = Math.max(0, lastRect.right - iconSize - iconInset);
-  const iconY = lastRect.bottom - iconSize - iconInset;
-  const hitSize = 14;
-  const hitX = Math.max(0, lastRect.right - Math.min(hitSize, Math.max(lastRect.width, hitSize / 2)));
-  const hitY = lastRect.top + (lastRect.height - hitSize) / 2;
+  const gap = lastRect.height * 0.2;
+  let block = range?.endContainer.nodeType === Node.ELEMENT_NODE
+    ? range.endContainer as Element : range?.endContainer.parentElement;
+  while (block?.parentElement && block.ownerDocument.defaultView?.getComputedStyle(block).display === "inline") {
+    block = block.parentElement;
+  }
+  const blockRect = Array.from(block?.getClientRects() ?? []).find(rect =>
+    rect.left <= lastRect.left && rect.right >= lastRect.right
+    && rect.top <= lastRect.top && rect.bottom >= lastRect.bottom);
+  const rtl = block && block.ownerDocument.defaultView?.getComputedStyle(block).direction === "rtl";
+  let iconX = rtl
+    ? Math.min(lastRect.left, blockRect?.left ?? lastRect.left) - gap - iconSize
+    : Math.max(lastRect.right, blockRect?.right ?? lastRect.right) + gap;
+  let iconY = lastRect.top + (lastRect.height - iconSize) / 2;
+  const hitSize = Math.max(14, iconSize);
+  ({ x: iconX, y: iconY } = constrainBadgeToPage(
+    block?.ownerDocument.documentElement, lastRect,
+    iconX, iconY, iconSize, hitSize, gap,
+  ));
+  const hitX = iconX + (iconSize - hitSize) / 2;
+  const hitY = iconY + (iconSize - hitSize) / 2;
   const badge = createSvgElement("g");
   if (options.annotationValue) badge.setAttribute("data-reader-annotation-badge", options.annotationValue);
   badge.style.cursor = "pointer";

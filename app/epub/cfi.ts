@@ -340,8 +340,9 @@ export const fromRange = (range: Range, filter?: CFIFilter) => {
 };
 
 export const toRange = (doc: Document, parsed: ParsedCFI, filter?: CFIFilter) => {
-  const start = partsToNode(doc.documentElement, collapse(parsed)[0] ?? [], filter);
-  const end = partsToNode(doc.documentElement, collapse(parsed, true)[0] ?? [], filter);
+  // The supplied document owns the final path; preceding indirections locate it.
+  const start = partsToNode(doc.documentElement, collapse(parsed).at(-1) ?? [], filter);
+  const end = partsToNode(doc.documentElement, collapse(parsed, true).at(-1) ?? [], filter);
   if (!start?.node || !end?.node) throw new Error("CFI does not resolve to a range in this document");
 
   const range = doc.createRange();

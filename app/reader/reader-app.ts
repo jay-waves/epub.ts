@@ -20,11 +20,11 @@ import {
   getEpubBlob,
   readEmbeddedAnnotations,
 } from "../epub/annotation";
-import type { ReaderAnnotation } from "../epub/annotation";
 import { createView } from "../renderer";
 import type { ReaderView, TocItem } from "../renderer";
 import { getBookKey } from "../epub/metadata";
 import { createAnnotations } from "./context-menu/annotation";
+import { annotationRepository } from "./context-menu/annotation-repository";
 import { detectDocumentLanguage } from "./context-menu/document-language";
 import {
   clearMathCache,
@@ -667,7 +667,7 @@ function setupEventListeners(signal: AbortSignal) {
   listenViewerEvent(VIEWER_EVENTS.themeSelect, (theme) => {
     void runReaderStyleChange(() => {
       applyReaderTheme(theme);
-      getView()?.setStyles(getBookStyles());
+      getView()?.setStyles(getBookStyles(), { reflow: false });
     }).then(() => {
       saveCurrentReaderSettings();
       emitDockUpdate();
@@ -749,17 +749,18 @@ async function restoreAnnotations(reader: Reader, bookKey: string) {
   const { book, signal, view } = reader;
   if (signal.aborted) return;
 
-  let embeddedAnnotations: ReaderAnnotation[] = [];
   try {
     const highlights = await readEmbeddedAnnotations(book);
     if (signal.aborted) return;
-    embeddedAnnotations = highlights ?? [];
+    // An EPUB overlay is the committed state, including an explicitly empty
+    // list. Platform metadata is only a recovery draft when no overlay exists.
+    if (highlights !== null) await annotationRepository.replace(bookKey, highlights);
   } catch (error) {
     console.warn("Failed to read embedded EPUB highlights.", error);
   }
   if (signal.aborted) return;
   try {
-    await annotationState.restore(view, bookKey, embeddedAnnotations);
+    await annotationState.restore(view, bookKey);
   } catch (error) {
     console.warn("Failed to restore saved highlights.", error);
   }

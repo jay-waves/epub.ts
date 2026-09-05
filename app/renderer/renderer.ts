@@ -16,7 +16,7 @@ interface RendererBase extends HTMLElement {
   prev(distance?: number): Promise<void>;
   prevPage?(): Promise<void>;
   panBy?(dx: number, dy: number): void;
-  setStyles?(styles: RendererStyles): void;
+  setStyles?(styles: RendererStyles, options?: { reflow?: boolean }): void;
   settle?(velocityX: number, velocityY: number): void;
 }
 
@@ -32,7 +32,7 @@ export interface ReflowableRenderer extends RendererBase {
   cancelNavigation(): void;
   capturePosition(): void;
   panBy(dx: number, dy: number): void;
-  setStyles(styles: RendererStyles): void;
+  setStyles(styles: RendererStyles, options?: { reflow?: boolean }): void;
 }
 
 export type Renderer = FixedLayoutRenderer | ReflowableRenderer;

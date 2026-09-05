@@ -1,5 +1,4 @@
 import { browserLocalDocumentCapabilities } from "./browser-local-document";
-import { readViewerMetadata, writeViewerMetadata } from "./browser-storage";
 import { openExternal } from "./external";
 import { createBundledReaderProfile } from "./reader-profile";
 import type { ReaderAnnotation } from "../epub/annotation";
@@ -95,6 +94,25 @@ class EpubLauncherSession implements EpubFileHandle {
     };
   }
 
+  async readMetadata<Value>(key: string): Promise<Value | undefined> {
+    const url = new URL(`${this.resourceUrl}/metadata`);
+    url.searchParams.set("key", key);
+    const response = await fetch(url, { cache: "no-store" });
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new Error(`EPUB.ts could not read viewer metadata (${response.status}).`);
+    const result = await response.json() as { value: Value };
+    return result.value;
+  }
+
+  async writeMetadata<Value>(key: string, value: Value): Promise<void> {
+    const response = await fetch(`${this.resourceUrl}/metadata`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value }),
+    });
+    if (!response.ok) throw new Error(`EPUB.ts could not write viewer metadata (${response.status}).`);
+  }
+
   private async saveAnnotations(highlights: readonly ReaderAnnotation[]) {
     const body = JSON.stringify({ highlights });
     const response = await fetch(`${this.resourceUrl}/annotations`, {
@@ -155,6 +173,10 @@ export const platform: ViewerPlatform = {
   loadInitialDocument: () => launcher?.openDocument(),
   ...browserLocalDocumentCapabilities,
   openExternal,
-  readViewerMetadata,
-  writeViewerMetadata,
+  readViewerMetadata: (key) => launcher
+    ? launcher.readMetadata(key)
+    : Promise.resolve(undefined),
+  writeViewerMetadata: (key, value) => launcher
+    ? launcher.writeMetadata(key, value)
+    : Promise.reject(new Error("The launcher document is unavailable.")),
 };
