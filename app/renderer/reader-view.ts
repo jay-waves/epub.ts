@@ -141,8 +141,6 @@ export class ReaderView extends HTMLElement {
     #events?: AbortController
     #contents = new Map<Document, AbortController>()
     #annotations = new AnnotationCache<ReaderAnnotation>()
-    #readingCfis = new Map<number, string>()
-    #switchTarget?: ResolvedNavigationTarget
     #destroyed = false
     #opened = false
     #decorations = new Map<number, Map<string, Decoration>>()
@@ -199,11 +197,7 @@ export class ReaderView extends HTMLElement {
         renderer.addEventListener('relocate', e => {
             const detail = (e as CustomEvent<RelocateDetail>).detail
             this.#relocations.set(renderer, detail)
-            const cfi = this.#readingCfi(detail)
-            if (cfi) this.#readingCfis.set(detail.index, cfi)
             if (renderer === this.renderer) {
-                if (detail.reason !== 'anchor' && detail.reason !== 'switch')
-                    this.#switchTarget = undefined
                 this.#emit('relocate', detail)
             }
         }, { signal: rendererSignal })
@@ -230,7 +224,7 @@ export class ReaderView extends HTMLElement {
         }
 
         current.capturePosition?.()
-        const target = this.#switchTarget ?? this.#readingTarget(current)
+        const target = this.#readingTarget(current)
         current.cancelNavigation?.()
         const next = await createRenderer(mode)
         if (this.#destroyed) {
@@ -264,7 +258,6 @@ export class ReaderView extends HTMLElement {
         }
 
         this.renderer = next
-        this.#switchTarget = target
         this.navigation!.attach(next)
         for (const { index, overlay } of next.getContents()) {
             if (overlay) this.#announceOverlay(overlay, index)
@@ -281,13 +274,12 @@ export class ReaderView extends HTMLElement {
     #readingTarget(renderer: Renderer): ResolvedNavigationTarget | undefined {
         const location = this.#relocations.get(renderer)
         if (!location) return
-        const { index } = location
         try {
-            const cfi = this.#readingCfi(location) ?? this.#readingCfis.get(index)
-            return resolveSemanticTarget(index, cfi, value => this.navigation!.resolve(value))
+            const cfi = this.#readingCfi(location)
+            return resolveSemanticTarget(location, cfi, value => this.navigation!.resolve(value))
         } catch (error) {
             console.warn('Could not transfer the exact reading position.', error)
-            return { index }
+            return resolveSemanticTarget(location, undefined, () => undefined)
         }
     }
     #readingCfi({ index, range }: Pick<RelocateDetail, 'index' | 'range'>) {
@@ -316,8 +308,6 @@ export class ReaderView extends HTMLElement {
         this.renderer?.destroy()
         this.renderer?.remove()
         this.#annotations.clear()
-        this.#readingCfis.clear()
-        this.#switchTarget = undefined
         this.#decorations.clear()
         this.navigation = undefined
         this.book = undefined

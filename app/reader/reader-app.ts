@@ -269,14 +269,12 @@ function wireReaderEvents(reader: Reader) {
       session.tocItem = currentItem;
       emitTocUpdate();
     }
-    if (!preserveSemanticLocation) session.progress = detail.fraction;
+    session.progress = detail.fraction;
     emitViewerEvent(VIEWER_EVENTS.progressUpdate, {
       fraction: session.progress,
       index: detail.index,
     });
-    queuePositionSave(preserveSemanticLocation
-      ? { ...detail, fraction: session.progress }
-      : detail);
+    queuePositionSave(detail);
   }, listenerOptions);
 
   view.addEventListener("draw-annotation", (event) => {

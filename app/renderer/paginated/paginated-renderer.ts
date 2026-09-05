@@ -2,6 +2,7 @@ import type { SpineEntry } from '../shared/spine-state'
 import { ReflowableSpine } from '../shared/reflowable-spine'
 import {
     anchorForPosition,
+    anchorRange,
     animateNumber,
     createReadingPosition,
     easeOutQuad,
@@ -28,7 +29,7 @@ import {
     SectionFrame,
     type SectionDirection,
 } from '../shared/section-frame'
-import { getPaginatedColumnGeometry } from './paginated-layout'
+import { getPaginatedAnchorOffset, getPaginatedColumnGeometry } from './paginated-layout'
 import { PaginatedTrack } from './paginated-track'
 import type { Book, ResolvedNavigationTarget } from '../reader-view.js'
 import type { ReflowableRenderer, RendererStyles } from '../renderer'
@@ -432,7 +433,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         if (entry) this.#activateEntry(entry)
         // Clear overflow accidentally retained on the inactive axis.
         this.#container[this.#vertical ? 'scrollLeft' : 'scrollTop'] = 0
-        void this.#restoreAfterReflow(anchor, entry).catch(error => {
+        void this.#scrollToAnchor(anchor, 'anchor', entry).catch(error => {
             if (!this.#destroyed) console.warn('Failed to restore paginated reading position.', error)
         })
     }
@@ -651,48 +652,22 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         const mapped = this.#getRectMapper(entry.view)(rect)
         return { localOffset: mapped.left, target: anchor }
     }
-    async #restoreAfterReflow(anchor: RenderedAnchor,
-        entry = this.#entryForView()) {
-        if (!entry) return false
-        this.#targetAnchor = anchor
-        const projection = this.#resolveAnchorProjection(anchor, entry)
-        if (!projection) return false
-        return this.#projectAlignedTarget(
-            entry, projection.localOffset, 'anchor', projection.target)
-    }
-    #targetRange(anchor: Element | Range) {
-        if ('startContainer' in anchor) return anchor
-        const range = anchor.ownerDocument?.createRange()
-        range?.selectNode(anchor)
-        return range
-    }
     async #projectTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
         reason: RelocationReason | null, anchor?: Element | Range) {
         const target = this.#entryOffset(entry) + localOffset
         const preferred = {
             entry,
-            fraction: Math.min(1, Math.max(0, localOffset / entry.view.extent)),
-            range: anchor === undefined ? undefined : this.#targetRange(anchor),
+            fraction: reason === 'anchor' && this.#position?.index === entry.index
+                ? this.#position.fraction
+                : Math.min(1, Math.max(0, localOffset / entry.view.extent)),
+            range: anchor === undefined ? undefined : anchorRange(anchor),
         }
-        if (target >= this.start && target < this.end) {
+
+        if (reason !== 'anchor' && target >= this.start && target < this.end)
             return this.#scrollTo(this.#container[this.scrollProp], reason, false, preferred)
-        }
 
-        return this.#projectAlignedTarget(entry, localOffset, reason, anchor)
-    }
-    #projectAlignedTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
-        reason: RelocationReason | null, anchor?: Element | Range) {
-        const preferred = {
-            entry,
-            fraction: Math.min(1, Math.max(0, localOffset / entry.view.extent)),
-            range: anchor === undefined ? undefined : this.#targetRange(anchor),
-        }
-
-        const columnStep = Math.max(1, entry.view.columnStep)
-        const column = this.#entryOffset(entry) + Math.floor(localOffset / columnStep) * columnStep
-        const middle = Math.floor(entry.view.columnCount / 2) * columnStep
-        const max = Math.max(0, this.viewSize - this.size)
-        const offset = Math.max(0, Math.min(max, column - middle))
+        const offset = getPaginatedAnchorOffset(this.#entryOffset(entry), localOffset,
+            entry.view.columnStep, this.viewSize, this.size)
         this.#pageOrigin = ((offset % this.turnSize) + this.turnSize) % this.turnSize
         return this.#scrollTo(this.#toPhysicalOffset(offset), reason, false, preferred)
     }
@@ -726,9 +701,10 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         }, revision)
     }
     capturePosition() {
-        // Commit the physical offset synchronously before a mode switch aborts
-        // an in-flight page animation.
-        void this.#scrollTo(this.#container[this.scrollProp], 'switch')
+        // Only unfinished user motion can supersede the logical reading edge.
+        const offset = this.#container[this.scrollProp]
+        if (this.#motion || (this.#scrollBounds && offset !== this.#scrollBounds[0]))
+            void this.#scrollTo(offset, 'switch')
     }
     cancelNavigation() {
         this.#navigation.invalidate()

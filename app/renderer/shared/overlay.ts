@@ -9,6 +9,7 @@ export type OverlayDrawOptions = {
   src?: string;
   width?: number;
   writingMode?: string;
+  boundsForRect?: (rect: DOMRect) => DOMRect;
 };
 
 export type OverlayDraw<T extends OverlayDrawOptions = OverlayDrawOptions> = (
@@ -31,6 +32,7 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K) {
 
 /** Draws and hit-tests decorations anchored to ranges in a reader document. */
 export class Overlay {
+  boundsForRect?: (rect: DOMRect) => DOMRect;
   readonly #element = svg("svg");
   readonly #items = new Map<string, Item>();
 
@@ -62,7 +64,7 @@ export class Overlay {
     const range = typeof target === "function" ? target(this.#element.getRootNode()) : target;
     const rects = range.getClientRects();
     if (rects.length === 0) return false;
-    const element = draw(rects, options, range);
+    const element = draw(rects, { ...options, boundsForRect: this.boundsForRect } as T, range);
     const previous = this.#items.get(key);
     if (previous?.element.parentNode === this.#element) previous.element.replaceWith(element);
     else this.#element.append(element);
@@ -82,7 +84,7 @@ export class Overlay {
       try {
         const rects = item.range.getClientRects();
         if (rects.length === 0) continue;
-        const element = item.draw(rects, item.options, item.range);
+        const element = item.draw(rects, { ...item.options, boundsForRect: this.boundsForRect }, item.range);
         if (item.element.parentNode === this.#element) item.element.replaceWith(element);
         else this.#element.append(element);
         item.element = element;

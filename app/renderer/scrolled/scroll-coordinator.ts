@@ -103,14 +103,17 @@ export class ScrollCoordinator {
   readonly #events = new AbortController();
   readonly #update: () => void;
   #updateFrame = 0;
-  #suppressScrollEnd = false;
+  #left: number;
+  #top: number;
 
   constructor(container: HTMLElement, update: () => void) {
     this.#container = container;
     this.#update = update;
-    container.addEventListener("scrollend", this.#handleScrollEnd, {
-      signal: this.#events.signal,
-    });
+    this.#left = container.scrollLeft;
+    this.#top = container.scrollTop;
+    const options = { signal: this.#events.signal };
+    container.addEventListener("scroll", this.#schedule, options);
+    container.addEventListener("scrollend", this.#flush, options);
   }
 
   anchorTarget(doc: Document, rect: DOMRect, inset: number) {
@@ -121,42 +124,40 @@ export class ScrollCoordinator {
     return getReadingRange(this.#container, doc, inset);
   }
 
-  schedule() {
-    this.#suppressScrollEnd = false;
+  readonly #schedule = () => {
+    if (!this.#hasMoved()) return;
     if (!this.#updateFrame) {
-      this.#updateFrame = requestAnimationFrame(() => {
-        this.#updateFrame = 0;
-        this.#update();
-      });
+      this.#updateFrame = requestAnimationFrame(this.#flush);
     }
+  };
+
+  readonly #flush = () => { this.flush(); };
+
+  #hasMoved() {
+    return this.#container.scrollLeft !== this.#left
+      || this.#container.scrollTop !== this.#top;
   }
 
-  readonly #handleScrollEnd = () => {
-    if (this.#suppressScrollEnd) {
-      this.#suppressScrollEnd = false;
-      this.cancel();
-      return;
-    }
-    if (this.#updateFrame) {
-      cancelAnimationFrame(this.#updateFrame);
-      this.#updateFrame = 0;
-    }
-    this.#update();
-  };
+  /** Records the browser's actual (possibly clamped) offset before events arrive. */
+  scrollTo(property: "scrollLeft" | "scrollTop", offset: number) {
+    this.#container[property] = offset;
+    this.cancel();
+  }
 
   /** Commits the latest physical scroll before a reflow can restore its anchor. */
   flush() {
-    if (!this.#updateFrame) return false;
-    cancelAnimationFrame(this.#updateFrame);
-    this.#updateFrame = 0;
+    const moved = this.#hasMoved();
+    this.cancel();
+    if (!moved) return false;
     this.#update();
     return true;
   }
 
-  cancel(suppressScrollEnd = false) {
+  cancel() {
     cancelAnimationFrame(this.#updateFrame);
     this.#updateFrame = 0;
-    if (suppressScrollEnd) this.#suppressScrollEnd = true;
+    this.#left = this.#container.scrollLeft;
+    this.#top = this.#container.scrollTop;
   }
 
   destroy() {

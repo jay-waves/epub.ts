@@ -2,6 +2,7 @@ import { ReflowableSpine } from '../shared/reflowable-spine'
 import type { SpineEntry } from '../shared/spine-state'
 import {
     anchorForPosition,
+    anchorRange,
     animateNumber,
     createReadingPosition,
     easeOutQuad,
@@ -12,6 +13,7 @@ import {
     isFractionAnchor,
     NavigationTransaction,
     resolveSectionAnchor,
+    resolveReadingPosition,
     setSelectionTarget,
     uncollapseRange,
     type RenderedAnchor,
@@ -63,7 +65,6 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     #position?: ReadingPosition
     #targetAnchor: RenderedAnchor = fractionAnchor(0)
     #motion?: AbortController
-    #justAnchored = false
     #renderFrame?: number
     #scrolledViewport!: ScrollCoordinator
     #containerWidth = 0
@@ -153,8 +154,6 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             this.#container, this.#handleViewportResize)
         this.#container.addEventListener('scroll', () => {
             this.dispatchEvent(new Event('scroll'))
-            if (this.#justAnchored) this.#justAnchored = false
-            else this.#scrolledViewport.schedule()
         })
 
         this.addEventListener('relocate', (({ detail }: CustomEvent) => {
@@ -342,19 +341,10 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         return this.#spine.entryOffset(entry)
     }
     #restoreViewport(offset: number) {
-        if (this.#container[this.scrollProp] !== offset) {
-            this.#justAnchored = true
-            this.#scrolledViewport.cancel(true)
-        }
-        this.#container[this.scrollProp] = offset
+        this.#scrolledViewport.scrollTo(this.scrollProp, offset)
     }
-    async #scrollToRect(rect: DOMRect, reason: RelocationReason, entry = this.#entryForView()) {
-        if (!entry) return false
-        const offset = getRectTarget(this.#entryOffset(entry),
-            this.#getRectMapper(entry.view)(rect).left, this.#margin)
-        return this.#scrollTo(offset, reason)
-    }
-    async #scrollTo(offset: number, reason: RelocationReason, smooth = false) {
+    async #scrollTo(offset: number, reason: RelocationReason, smooth = false,
+        preferred?: Partial<ReadingPosition> & Pick<ReadingPosition, 'index'>) {
         if (this.#destroyed) return false
         const element = this.#container
         const { scrollProp } = this
@@ -376,19 +366,12 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             if (!location) return false
 
             const { entry, fraction, range, size: viewportSize } = location
-            const position = createReadingPosition(entry.index, fraction, range)
-            if (moved) {
-                this.#scrolledViewport.cancel(true)
-                this.#justAnchored = true
-            }
-            this.#activateEntry(entry)
+            const position = resolveReadingPosition(
+                createReadingPosition(entry.index, fraction, range), preferred)
+            this.#activateEntry(this.#spine.entries.find(candidate => candidate.index === position.index) ?? entry)
             this.#position = position
             if (reason !== 'selection' && reason !== 'navigation' && reason !== 'anchor')
                 this.#targetAnchor = position.range ?? fractionAnchor(position.fraction)
-            else {
-                this.#scrolledViewport.cancel()
-                this.#justAnchored = true
-            }
 
             const detail: RelocateDetail = {
                 ...position,
@@ -397,7 +380,6 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             }
             this.dispatchEvent(new CustomEvent('relocate', { detail }))
             if (this.continuous) this.#spine.scheduleCache()
-            if (!moved) this.#justAnchored = false
             return true
         }
 
@@ -410,7 +392,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             try {
                 const completed = await animateNumber(
                     element[scrollProp], offset, 300, easeOutQuad,
-                    x => element[scrollProp] = x,
+                    x => this.#scrolledViewport.scrollTo(scrollProp, x),
                     motion.signal,
                 )
                 return completed && !motion.signal.aborted ? commit() : false
@@ -418,7 +400,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
                 if (this.#motion === motion) this.#motion = undefined
             }
         }
-        element[scrollProp] = offset
+        this.#scrolledViewport.scrollTo(scrollProp, offset)
         return commit()
     }
     async #scrollToAnchor(
@@ -429,8 +411,16 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         if (!entry) return false
         this.#scrolledViewport.cancel()
         this.#targetAnchor = anchor
+        const preferred: Partial<ReadingPosition> & Pick<ReadingPosition, 'index'> = {
+            index: entry.index,
+            ...(reason === 'anchor' && this.#position?.index === entry.index
+                ? { fraction: this.#position.fraction } : {}),
+        }
         if (isFractionAnchor(anchor)) return this.#scrollTo(getFractionTarget(
-            this.#entryOffset(entry), entry.view.extent, anchor.fraction), reason)
+            this.#entryOffset(entry), entry.view.extent, anchor.fraction), reason, false,
+            { ...preferred, fraction: anchor.fraction })
+
+        preferred.range = anchorRange(anchor)
 
         const rect = getAnchorRect(uncollapseRange(anchor))
         // if anchor is an element or a range
@@ -439,14 +429,16 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
                 const target = this.#scrolledViewport.anchorTarget(
                     entry.view.document, rect, this.#margin)
                 if (target) {
-                    if (target.visible) {
+                    if (reason !== 'anchor' && target.visible) {
                         return this.#scrollTo(
-                            this.#container[this.scrollProp], reason)
+                            this.#container[this.scrollProp], reason, false, preferred)
                     }
-                    return this.#scrollTo(target.offset, reason)
+                    return this.#scrollTo(target.offset, reason, false, preferred)
                 }
             }
-            return this.#scrollToRect(rect, reason, entry)
+            const offset = getRectTarget(this.#entryOffset(entry),
+                this.#getRectMapper(entry.view)(rect).left, this.#margin)
+            return this.#scrollTo(offset, reason, false, preferred)
         }
         return false
     }
@@ -483,15 +475,14 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         }, revision)
     }
     capturePosition() {
-        // Commit the physical offset synchronously before a mode switch aborts
-        // an in-flight animation or a pending scroll sample.
-        void this.#scrollTo(this.start, 'switch')
+        if (!this.#scrolledViewport.flush() && this.#motion)
+            void this.#scrollTo(this.start, 'switch')
     }
     cancelNavigation() {
         this.#navigation.invalidate()
         this.#motion?.abort()
         this.#motion = undefined
-        this.#scrolledViewport.cancel(true)
+        this.#scrolledViewport.cancel()
     }
     async goTo(target: ResolvedNavigationTarget) {
         const revision = this.#navigation.revision

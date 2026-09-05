@@ -7,6 +7,19 @@ type PaginatedColumnGeometry = {
   pageSize: number;
 };
 
+/** Aligns the anchor's column to the reading edge, limited by the track ends. */
+export function getPaginatedAnchorOffset(
+  entryOffset: number,
+  localOffset: number,
+  columnStep: number,
+  trackSize: number,
+  viewportSize: number,
+) {
+  const step = Math.max(1, columnStep);
+  const column = entryOffset + Math.floor(localOffset / step) * step;
+  return Math.max(0, Math.min(Math.max(0, trackSize - viewportSize), column));
+}
+
 /** Keeps physical page pitch stable while changing the preferred text width. */
 export function getPaginatedColumnGeometry(
   viewportSize: number,

@@ -6,7 +6,7 @@ import type {
   ResolvedNavigationTarget,
   TocItem,
 } from "../renderer/reader-view.js";
-import { fractionAnchor } from "../renderer/shared/navigation";
+import { fractionAnchor, readingEdgeRange } from "../renderer/shared/navigation";
 import { SectionIndex, TocIndex } from "./location";
 import type { SectionLocation } from "./location";
 
@@ -206,7 +206,7 @@ export class Navigation {
     // A section-base CFI is not an exact substitute for a missing rendered
     // range. Persist the global fraction instead of manufacturing a locator
     // that would reopen at the start of the chapter.
-    const cfi = range ? this.cfi(index, range) : undefined;
+    const cfi = range ? this.cfi(index, readingEdgeRange(range)) : undefined;
     return {
       ...relocation,
       index,

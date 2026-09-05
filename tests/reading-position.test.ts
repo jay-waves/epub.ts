@@ -39,7 +39,7 @@ test("uses a DOM range only for its owning live section document", () => {
     contains: (candidate: Node) => candidate === node,
   } as Document;
   Object.assign(node, { ownerDocument: document });
-  const clone = { cloned: true };
+  const clone = { cloned: true, collapse: () => {} };
   const range = {
     startContainer: node,
     endContainer: node,
@@ -80,21 +80,23 @@ test("uses a collapsed clone as the transferable reading edge", () => {
   assert.equal(readingEdgeRange(undefined), undefined);
 });
 
-test("transfers layout modes by semantic CFI without a geometry fallback", () => {
+test("transfers layout modes by CFI with the current section fraction as fallback", () => {
   const anchor = () => null;
   const resolve = (cfi: string) => cfi === "epubcfi(/6/8)"
     ? { index: 3, anchor }
     : undefined;
 
-  assert.deepEqual(resolveSemanticTarget(3, "epubcfi(/6/8)", resolve), {
+  const position = { index: 3, fraction: 0.6 };
+  assert.deepEqual(resolveSemanticTarget(position, "epubcfi(/6/8)", resolve), {
     index: 3,
     anchor,
   });
-  assert.deepEqual(resolveSemanticTarget(3, "invalid", resolve), { index: 3 });
-  assert.deepEqual(resolveSemanticTarget(3, undefined, resolve), { index: 3 });
+  const fallback = { index: 3, anchor: fractionAnchor(0.6) };
+  assert.deepEqual(resolveSemanticTarget(position, "invalid", resolve), fallback);
+  assert.deepEqual(resolveSemanticTarget(position, undefined, resolve), fallback);
 });
 
-test("expands a collapsed text range by the adjacent character", () => {
+test("measuring a collapsed text anchor expands a copy without changing the saved point", () => {
   const previousNode = globalThis.Node;
   Object.defineProperty(globalThis, "Node", {
     configurable: true,
@@ -102,27 +104,32 @@ test("expands a collapsed text range by the adjacent character", () => {
   });
   try {
     const text = { nodeType: 3, nodeValue: "ab" } as Node;
-    let end = -1;
     const forward = {
       collapsed: true,
       endContainer: text,
       endOffset: 1,
-      setEnd: (_node: Node, offset: number) => end = offset,
+      setEnd(_node: Node, offset: number) { this.endOffset = offset; },
       startContainer: text,
+      cloneRange() { return { ...this }; },
     } as unknown as Range;
-    assert.equal(uncollapseRange(forward), forward);
-    assert.equal(end, 2);
+    const expandedForward = uncollapseRange(forward) as Range;
+    assert.notEqual(expandedForward, forward);
+    assert.equal(expandedForward.endOffset, 2);
+    assert.equal(forward.endOffset, 1);
 
-    let start = -1;
     const backward = {
       collapsed: true,
       endContainer: text,
       endOffset: 2,
-      setStart: (_node: Node, offset: number) => start = offset,
+      startOffset: 2,
+      setStart(_node: Node, offset: number) { this.startOffset = offset; },
       startContainer: text,
+      cloneRange() { return { ...this }; },
     } as unknown as Range;
-    assert.equal(uncollapseRange(backward), backward);
-    assert.equal(start, 1);
+    const expandedBackward = uncollapseRange(backward) as Range;
+    assert.notEqual(expandedBackward, backward);
+    assert.equal(expandedBackward.startOffset, 1);
+    assert.equal(backward.startOffset, 2);
   } finally {
     if (previousNode) Object.defineProperty(globalThis, "Node", { configurable: true, value: previousNode });
     else delete (globalThis as { Node?: unknown }).Node;

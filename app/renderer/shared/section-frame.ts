@@ -357,6 +357,21 @@ export class SectionFrame {
 
   #layoutOverlay() {
     if (!this.#overlay) return;
+    this.#overlay.boundsForRect = rect => {
+      const width = this.#iframe.clientWidth;
+      const height = this.#iframe.clientHeight;
+      if (this.#layout?.kind !== "columns") return new DOMRect(0, 0, width, height);
+      const { gap, columnStep } = this.#layout;
+      const center = this.#vertical ? (rect.top + rect.bottom) / 2
+        : this.#rtl ? width - (rect.left + rect.right) / 2 : (rect.left + rect.right) / 2;
+      const start = Math.floor(center / columnStep) * columnStep;
+      const inlineStart = start + gap / 2;
+      const inlineSize = columnStep - gap;
+      return this.#vertical
+        ? new DOMRect(0, inlineStart, width, inlineSize)
+        : new DOMRect(this.#rtl ? width - inlineStart - inlineSize : inlineStart,
+            0, inlineSize, height);
+    };
     Object.assign(this.#overlay.element.style, {
       margin: this.#element.style.padding,
       left: "0",
@@ -395,9 +410,7 @@ export class SectionFrame {
     this.#navigationCue = undefined;
     if (!target || !this.#overlay || !this.#layout) return;
 
-    const expanded = "startContainer" in target
-      ? uncollapseRange(target.cloneRange())
-      : uncollapseRange(target);
+    const expanded = uncollapseRange(target);
     const targetRect = getAnchorRect(expanded);
     if (!targetRect) return;
 

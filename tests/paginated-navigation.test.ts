@@ -1,5 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getPaginatedAnchorOffset } from "../app/renderer/paginated/paginated-layout.ts";
+
+test("restoration keeps the target column first across one, two and three visible columns", () => {
+  for (const count of [1, 2, 3]) {
+    assert.equal(getPaginatedAnchorOffset(300, 1250, 300, 6000, count * 300), 1500);
+  }
+  assert.equal(getPaginatedAnchorOffset(300, 1250, 200, 6000, 600), 1500);
+});
+
+test("restoration clamps only at track boundaries", () => {
+  assert.equal(getPaginatedAnchorOffset(0, 0, 300, 6000, 900), 0);
+  assert.equal(getPaginatedAnchorOffset(0, 5900, 300, 6000, 900), 5100);
+  assert.equal(getPaginatedAnchorOffset(0, 200, 300, 300, 900), 0);
+});
 
 import {
   planPaginatedNavigation,

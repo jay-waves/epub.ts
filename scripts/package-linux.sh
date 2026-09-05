@@ -7,7 +7,7 @@ format=$1
 version=$(node -p "require('./package.json').version")
 case "$format" in
   deb) output="release/epub-ts_${version}_amd64.deb" ;;
-  rpm) output="release/epub-ts-${version}-1.x86_64.rpm" ;;
+  rpm) output="release/epub-ts-${version}-1.x86-64.rpm" ;;
 esac
 
 EPUB_TS_VERSION=$version "${EPUB_TS_NFPM:-nfpm}" package \

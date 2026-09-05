@@ -72,13 +72,22 @@ export function readingEdgeRange(range: Range | undefined) {
   return edge;
 }
 
+/** Copies a DOM anchor without changing its selection or reading extent. */
+export function anchorRange(anchor: Element | Range): Range {
+  if ("startContainer" in anchor) return anchor.cloneRange();
+  const range = anchor.ownerDocument.createRange();
+  range.selectNode(anchor);
+  return range;
+}
+
 /** Resolves a mode-switch target without reusing geometry from the old layout. */
 export function resolveSemanticTarget<Target extends { index: number }>(
-  index: number,
+  position: Pick<ReadingPosition, "index" | "fraction">,
   cfi: string | undefined,
   resolve: (cfi: string) => Target | undefined,
-): Target | { index: number } {
-  return cfi ? resolve(cfi) ?? { index } : { index };
+): Target | { index: number; anchor: FractionAnchor } {
+  const fallback = { index: position.index, anchor: fractionAnchor(position.fraction) };
+  return cfi ? resolve(cfi) ?? fallback : fallback;
 }
 
 export function rangeBelongsToDocument(range: Range | undefined, doc: Document) {
@@ -96,7 +105,7 @@ export function anchorForPosition(
   if (!position || position.index !== index) return fractionAnchor(0);
   const { range } = position;
   return range && rangeBelongsToDocument(range, doc)
-    ? range.cloneRange()
+    ? readingEdgeRange(range)
     : fractionAnchor(position.fraction);
 }
 
@@ -284,7 +293,7 @@ export class NavigationTransaction {
 /** Expands a collapsed cross-frame range enough for reliable client geometry. */
 export function uncollapseRange(target: Element | Range): Element | Range {
   if (!("startContainer" in target) || !target.collapsed) return target;
-  const range = target;
+  const range = target.cloneRange();
   const { endOffset, endContainer } = range;
   if (endContainer.nodeType === Node.ELEMENT_NODE) {
     const node = endContainer.childNodes[endOffset];
@@ -301,14 +310,8 @@ export function setSelectionTarget(
   target: RenderedAnchor | null | undefined,
   collapse: -1 | 0 | 1,
 ) {
-  let range: Range | undefined;
-  if (target && !isFractionAnchor(target) && "startContainer" in target) range = target.cloneRange();
-  else if (target && !isFractionAnchor(target)) {
-    const createdRange = target.ownerDocument.createRange();
-    createdRange.selectNode(target);
-    range = createdRange;
-  }
-  if (!range) return;
+  if (!target || isFractionAnchor(target)) return;
+  const range = anchorRange(target);
   const selection = range.startContainer.ownerDocument?.defaultView?.getSelection();
   if (!selection) return;
   selection.removeAllRanges();

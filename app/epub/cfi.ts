@@ -288,7 +288,11 @@ const partsToNode = (node: Node, parts: CFIStep[], filter?: CFIFilter): NodePosi
     current = next;
   }
   const offset = parts.at(-1)?.offset ?? 0;
-  if (isNode(current)) return { kind: "offset", node: current, offset };
+  if (!Number.isInteger(offset) || offset < 0) return null;
+  if (isNode(current)) {
+    const length = isTextNode(current) ? current.nodeValue?.length ?? 0 : current.childNodes.length;
+    return offset <= length ? { kind: "offset", node: current, offset } : null;
+  }
   if (!Array.isArray(current)) return null;
   let consumed = 0;
   for (const text of current) {

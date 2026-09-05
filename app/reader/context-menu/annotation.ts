@@ -34,6 +34,17 @@ const AUTO_HIGHLIGHT_COLOR = "auto";
 const LEGACY_HIGHLIGHT_COLOR = "#f4c430";
 const THEME_HIGHLIGHT_COLOR = "var(--reader-annotation-color, #f4c430)";
 
+function resolveAnnotationRange(anchor: (doc: Document) => Element | Range | null, doc: Document) {
+  try {
+    const range = anchor(doc);
+    return range && "startContainer" in range ? range : null;
+  } catch (error) {
+    // A stale saved locator must not prevent creating or editing other notes.
+    console.warn("Could not resolve saved annotation in the current document.", error);
+    return null;
+  }
+}
+
 export function createAnnotations(options: AnnotationOptions) {
   const viewerEvents = new AbortController();
   const pendingWrites = new Set<Promise<unknown>>();
@@ -363,8 +374,8 @@ export function createAnnotations(options: AnnotationOptions) {
     const candidates = annotationRepository.all().flatMap(annotation => {
       const target = navigation.resolve(annotation.value);
       if (target?.index !== selection.index || typeof target.anchor !== "function") return [];
-      const existingRange = target.anchor(range.startContainer.ownerDocument!);
-      return existingRange && "startContainer" in existingRange
+      const existingRange = resolveAnnotationRange(target.anchor, range.startContainer.ownerDocument!);
+      return existingRange
         ? [{ annotation, range: existingRange }] : [];
     });
     // Repeat after extending the union so chained overlaps become one record.
@@ -421,8 +432,8 @@ export function createAnnotations(options: AnnotationOptions) {
       const target = options.getNavigation()?.resolve(context.highlight.value);
       const content = target && findContentByIndex(target.index);
       const range = content && typeof target?.anchor === "function"
-        ? target.anchor(content.doc) : null;
-      if (range && "startContainer" in range && target) {
+        ? resolveAnnotationRange(target.anchor, content.doc) : null;
+      if (range && target) {
         context = { selection: {
           index: target.index,
           range,
