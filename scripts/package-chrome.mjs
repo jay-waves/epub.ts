@@ -24,6 +24,13 @@ rmSync(extensionDir, { recursive: true, force: true });
 cpSync(viewerDir, extensionDir, { recursive: true });
 cpSync(resolve(repoRoot, 'packaging', 'chrome', 'service-worker.js'), resolve(extensionDir, 'service-worker.js'));
 
+for (const size of [16, 32, 48, 128]) {
+  cpSync(
+    resolve(repoRoot, 'assets', `icon-${size}.png`),
+    resolve(extensionDir, `icon-${size}.png`),
+  );
+}
+
 const manifest = JSON.parse(readFileSync(resolve(repoRoot, 'packaging', 'chrome', 'manifest.json'), 'utf8'));
 manifest.version = packageJson.version;
 writeFileSync(

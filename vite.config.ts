@@ -8,7 +8,6 @@ import packageJson from "./package.json" with { type: "json" };
 const outputDir = "release/web";
 const browserTargets = ["chrome152", "edge152", "firefox154", "safari26", "ios26"];
 const builtAt = new Date().toISOString();
-const iconFiles = ["icon.png", ...[16, 32, 48, 128].map((size) => `icon-${size}.png`)];
 const fontFiles = [
   "EBGaramond-VariableFont_wght.ttf",
   "EBGaramond-Italic-VariableFont_wght.ttf",
@@ -39,9 +38,7 @@ export default defineConfig({
           resolve(resolvedOutputDir, "build-metadata.json"),
           `${JSON.stringify({ builtAt, version: packageJson.version })}\n`,
         );
-        for (const filename of iconFiles) {
-          cpSync(resolve(import.meta.dirname, "assets", filename), resolve(resolvedOutputDir, filename));
-        }
+        cpSync(resolve(import.meta.dirname, "assets/logo.png"), resolve(resolvedOutputDir, "logo.png"));
         for (const filename of fontFiles) {
           cpSync(resolve(import.meta.dirname, "public", filename), resolve(resolvedOutputDir, filename));
         }

@@ -76,7 +76,7 @@ install_files:
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document" "" "epub.ts Document"
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\Application" "ApplicationName" "epub.ts"
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\Application" "ApplicationDescription" "Open EPUB documents with epub.ts"
-  WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\DefaultIcon" "" '"$INSTDIR\${APP_EXE}",0'
+  WriteRegExpandStr HKLM "Software\Classes\${APP_ID}.Document\DefaultIcon" "" "%SystemRoot%\System32\SHELL32.dll,1"
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\shell\open\command" "" '"$INSTDIR\${APP_EXE}" open "%1"'
   WriteRegStr HKLM "Software\Classes\.epub\OpenWithProgids" "${APP_ID}.Document" ""
 

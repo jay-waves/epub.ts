@@ -139,7 +139,7 @@ function Welcome({
         role="button"
         tabIndex={0}
       >
-        <img className="welcome-logo" src="./icon.png" alt="" />
+        <img className="welcome-logo" src="./logo.png" alt="" />
         <h1>EPUB.ts</h1>
         <p className="welcome-prompt">Click to choose or drop an EPUB</p>
         {selectionError ? <p className="welcome-error" role="alert">{selectionError}</p> : null}

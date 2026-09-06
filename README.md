@@ -1,6 +1,12 @@
-# epub.ts
+<p align="center">
+  <img src="assets/logo.png" width="96" alt="epub.ts logo">
+</p>
 
-A web-based EPUB reader available as:
+<h1 align="center">epub.ts</h1>
+
+<p align="center">A focused EPUB reader built for the web and desktop.</p>
+
+Available as:
 
 - A Chrome extension
 - A web app
