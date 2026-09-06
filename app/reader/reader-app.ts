@@ -1,4 +1,4 @@
-import { createElement, useEffect } from "react";
+import { createElement, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   applyReaderFonts,
@@ -33,7 +33,6 @@ import { closeContentOverlays, disposeContent } from "./image-zoom";
 import { createSearch } from "./search";
 import { createBookInfo } from "./book-info";
 import { App } from "./ui/App";
-import { emitViewerEvent, emitViewerSignal, listenViewerEvent, VIEWER_EVENTS } from "./events";
 import { createViewerInput } from "./input";
 import { createInteractions } from "./interactions";
 import {
@@ -43,7 +42,7 @@ import {
 } from "./storage";
 import type { ReaderSettings, ReadingDirection } from "./model";
 import type { Location } from "./navigation";
-import type { DockAction, ReaderCommand } from "./events";
+import type { DockAction, ReaderCommand, ReaderUiActions, ReaderUiState } from "./ui/model";
 import { DEFAULT_READER_SETTINGS, readerSettings } from "./model";
 import { createAdvancedSettingsController } from "./advanced-settings";
 import type { AdvancedReaderSettings } from "./advanced-settings";
@@ -76,6 +75,14 @@ type BookSession = {
   progress: number;
   restoring: boolean;
 };
+
+type UiUpdate = Partial<ReaderUiState> | ((state: ReaderUiState) => Partial<ReaderUiState>);
+let dispatchUi: (update: UiUpdate) => void = () => {};
+let readUi: () => ReaderUiState | undefined = () => undefined;
+
+function updateUi(update: UiUpdate) {
+  dispatchUi(update);
+}
 
 const runtime: ViewerRuntime = {
   disposed: false,
@@ -133,7 +140,7 @@ function queryRequired<T extends Element>(selector: string) {
 function setHasUnsavedChanges(dirty: boolean) {
   session.dirty = dirty;
   renderDocumentTitle();
-  emitDockUpdate();
+  updateDock();
 }
 
 function renderDocumentTitle() {
@@ -143,6 +150,7 @@ function renderDocumentTitle() {
 const SCROLL_EDGE_FEEDBACK_COOLDOWN_MS = 900;
 
 const annotationState = createAnnotations({
+  closeAnnotation: () => closeAnnotation(),
   getBookKey: () => session.bookKey,
   getNavigation,
   getProgress: () => session.progress,
@@ -150,8 +158,16 @@ const annotationState = createAnnotations({
   getTranslationSourceLanguage: () =>
     advancedSettings.value.translationSourceLanguage ?? undefined,
   getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
+  onUnsaved: () => setHasUnsavedChanges(true),
   openExternal: platform.openExternal,
+  updateUi,
 });
+
+function closeAnnotation() {
+  const annotation = readUi()?.annotation;
+  if (annotation) annotationState.saveAnnotation(annotation.value, annotation.note);
+  updateUi({ annotation: null });
+}
 
 function ensureViewerInput() {
   runtime.input ??= createViewerInput({
@@ -161,28 +177,27 @@ function ensureViewerInput() {
     canTurnPage: () => !isReaderRenderPending() && !document.body.classList.contains("reader-image-zoom-open"),
     onChapterBoundary: showChapterBoundaryPending,
     onScrollEdge: showScrollEdgeFeedback,
-    dispatchCommand: (command) => emitViewerEvent(VIEWER_EVENTS.readerCommand, command),
-    dispatchProgressReturn: () => emitViewerSignal(VIEWER_EVENTS.progressReturn),
-    dispatchProgressSeek: (progress) => emitViewerEvent(VIEWER_EVENTS.progressSeek, progress),
+    dispatchCommand: runReaderCommand,
+    dispatchProgressReturn: () => updateUi((state) => ({
+      progressReturnRequest: state.progressReturnRequest + 1,
+    })),
+    dispatchProgressSeek: goToProgress,
   });
   const view = getView();
   if (view) runtime.input.bindReaderView(view);
   return runtime.input;
 }
 
-function emitTocUpdate() {
-  emitViewerEvent(VIEWER_EVENTS.tocUpdate, {
+function updateToc() {
+  updateUi({ toc: {
     currentHref: session.tocItem?.href ?? "",
     currentItem: session.tocItem,
     items: getView()?.book?.toc ?? [],
-  });
+  } });
 }
 
-function emitBookInfoUpdate() {
-  emitViewerEvent(
-    VIEWER_EVENTS.bookInfoUpdate,
-    createBookInfo(getView()?.book),
-  );
+function updateBookInfo() {
+  updateUi({ bookInfo: createBookInfo(getView()?.book) });
 }
 
 const POSITION_SAVE_DELAY_MS = 350;
@@ -240,13 +255,13 @@ function wireReaderEvents(reader: Reader) {
     }
     if (currentItem !== session.tocItem) {
       session.tocItem = currentItem;
-      emitTocUpdate();
+      updateToc();
     }
     session.progress = detail.fraction;
-    emitViewerEvent(VIEWER_EVENTS.progressUpdate, {
+    updateUi({ progress: {
       fraction: session.progress,
       index: detail.index,
-    });
+    } });
     queuePositionSave(detail);
   }, listenerOptions);
 
@@ -259,17 +274,17 @@ function wireReaderEvents(reader: Reader) {
   }, listenerOptions);
 }
 
-function emitDockUpdate() {
+function updateDock() {
   const layoutLabel = readerSettings.layoutMode === "paginated"
     ? "Switch to Scrolling"
     : "Switch to Paginated";
 
-  emitViewerEvent(VIEWER_EVENTS.dockUpdate, {
+  updateUi({ dock: {
     canSearch: Boolean(runtime.reader?.book),
     layoutLabel,
     hasUnsavedChanges: session.dirty,
     searchActive: runtime.isSearchOpen,
-  });
+  } });
 }
 
 async function saveAnnotatedBook() {
@@ -277,7 +292,7 @@ async function saveAnnotatedBook() {
   if (!session.dirty || !bookKey || !document) return;
 
   try {
-    emitViewerSignal(VIEWER_EVENTS.annotationClose);
+    closeAnnotation();
     await annotationState.flushPendingWrites();
 
     // Browser file pickers need the live Ctrl+S/click activation, so acquire
@@ -305,7 +320,7 @@ function clearSearchState() {
   if (!runtime.isSearchOpen) return false;
   runtime.isSearchOpen = false;
   runtime.search?.clear();
-  emitDockUpdate();
+  updateDock();
   return true;
 }
 
@@ -321,7 +336,7 @@ function openSearch() {
   if (!runtime.search) return false;
   runtime.isSearchOpen = true;
   runtime.search.open();
-  emitDockUpdate();
+  updateDock();
   return true;
 }
 
@@ -336,7 +351,7 @@ function toggleSearch() {
 
 async function resetBookState(source: Pick<BookSession, "bookKey" | "document">) {
   await flushPositionSave();
-  emitViewerSignal(VIEWER_EVENTS.annotationClose);
+  closeAnnotation();
   await annotationState.flushPendingWrites();
 
   const reader = runtime.reader;
@@ -359,11 +374,11 @@ async function resetBookState(source: Pick<BookSession, "bookKey" | "document">)
   session.tocIntent = null;
   session.progress = 0;
   session.restoring = false;
-  emitDockUpdate();
+  updateDock();
   renderDocumentTitle();
-  emitTocUpdate();
-  emitBookInfoUpdate();
-  emitViewerEvent(VIEWER_EVENTS.progressUpdate, { fraction: 0, reset: true });
+  updateToc();
+  updateBookInfo();
+  updateUi({ progress: { fraction: 0, reset: true } });
 }
 
 async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined) {
@@ -386,7 +401,7 @@ async function applyReaderSettings(settings: Partial<ReaderSettings> | undefined
   applyReaderLayoutLevel(nextSettings.layoutLevel, { view: null });
   getView()?.setStyles(getBookStyles());
   await applyReaderLayoutMode(nextLayoutMode, readerLayoutTarget);
-  emitDockUpdate();
+  updateDock();
 }
 
 async function mountView() {
@@ -495,7 +510,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
       detectDocumentLanguage(reader.book, reader.signal),
     );
     const { navigation } = reader;
-    emitViewerSignal(VIEWER_EVENTS.documentOpen);
+    updateUi({ welcome: false });
     session.bookKey = await getBookKey(view.book, platformDocument.key);
     reader.signal.throwIfAborted();
     const bookKey = session.bookKey;
@@ -506,13 +521,14 @@ async function replaceBook(platformDocument: PlatformDocument) {
       run: renderState.run,
       signal: reader.signal,
       view,
+      onUpdate: (search) => updateUi({ search }),
     });
     const savedPosition = await getSavedPosition(bookKey);
     reader.signal.throwIfAborted();
     await applyReaderSettings(savedPosition?.settings);
 
-    emitBookInfoUpdate();
-    emitTocUpdate();
+    updateBookInfo();
+    updateToc();
     await restoreAnnotations(reader, bookKey);
     reader.signal.throwIfAborted();
     session.restoring = true;
@@ -563,34 +579,29 @@ async function replaceBook(platformDocument: PlatformDocument) {
       session.document = null;
       session.bookKey = "";
       renderDocumentTitle();
-      emitDockUpdate();
-      emitViewerSignal(VIEWER_EVENTS.welcomeOpen);
+      updateDock();
+      updateUi({ welcome: true });
     }
   }
 }
 
-function setupEventListeners(signal: AbortSignal) {
-  window.addEventListener("resize", () => {
-    annotationState.close();
-  }, { signal });
+function navigateToc(item: TocItem) {
+  if (!item.href) return;
+  const task = pendingTocNavigation.then(async () => {
+    const navigation = getNavigation();
+    if (!navigation) return;
+    session.tocIntent = item;
+    try {
+      await renderState.run(() => navigation.go(item.href!));
+    } catch (error) {
+      if (session.tocIntent === item) session.tocIntent = null;
+      console.warn("Failed to open table-of-contents entry.", error);
+    }
+  });
+  pendingTocNavigation = task.then(() => undefined, () => undefined);
+}
 
-  listenViewerEvent(VIEWER_EVENTS.tocNavigate, ({ href, item }) => {
-    if (!href) return;
-    const navigation = pendingTocNavigation.then(async () => {
-      const navigation = getNavigation();
-      if (!navigation) return;
-      session.tocIntent = item;
-      try {
-        await renderState.run(() => navigation.go(href));
-      } catch (error) {
-        if (session.tocIntent === item) session.tocIntent = null;
-        console.warn("Failed to open table-of-contents entry.", error);
-      }
-    });
-    pendingTocNavigation = navigation.then(() => undefined, () => undefined);
-    void navigation;
-  }, { signal });
-  listenViewerEvent(VIEWER_EVENTS.progressSeek, goToProgress, { signal });
+function runReaderCommand(command: ReaderCommand) {
   const runDockCommand = (command: "zoom-in" | "zoom-out", action: DockAction) => {
     void handleDockAction(action)
       .catch((error) => console.warn(`Failed to run reader command ${command}.`, error));
@@ -605,45 +616,35 @@ function setupEventListeners(signal: AbortSignal) {
     "open-search": openSearch,
     escape: () => {
       clearSearchState();
-      emitViewerSignal(VIEWER_EVENTS.tocClose);
+      updateUi({ tocOpen: false });
     },
     "save-book": () => {
       void saveAnnotatedBook();
     },
-    "toggle-dock": () => emitViewerSignal(VIEWER_EVENTS.dockToggle),
+    "toggle-dock": () => updateUi((state) => ({ dockOpen: !state.dockOpen })),
     "zoom-in": () => runDockCommand("zoom-in", "increase-width"),
     "zoom-out": () => runDockCommand("zoom-out", "decrease-width"),
     "open-toc": () => {
-      emitTocUpdate();
-      emitViewerSignal(VIEWER_EVENTS.tocOpen);
+      updateToc();
+      updateUi({ tocOpen: true });
     },
   } satisfies Record<ReaderCommand, () => void>;
-  listenViewerEvent(VIEWER_EVENTS.readerCommand, (command) => readerCommandHandlers[command](), { signal });
-  listenViewerEvent(VIEWER_EVENTS.searchCollect, ({ highlightedOnly, query }) => {
-    void runtime.search?.collect(query, highlightedOnly);
-  }, { signal });
-  listenViewerEvent(VIEWER_EVENTS.searchPrevious, () => {
-    void runtime.search?.previous();
-  }, { signal });
-  listenViewerEvent(VIEWER_EVENTS.searchNext, () => {
-    void runtime.search?.next();
-  }, { signal });
-  listenViewerEvent(VIEWER_EVENTS.searchClear, clearSearchState, { signal });
-  listenViewerEvent(VIEWER_EVENTS.unsavedChange, () => setHasUnsavedChanges(true), { signal });
-  listenViewerEvent(VIEWER_EVENTS.dockAction, (action) => {
-    void handleDockAction(action).catch((error) => {
-      console.warn("Failed to apply reader action.", error);
-    });
-  }, { signal });
-  listenViewerEvent(VIEWER_EVENTS.themeSelect, (theme) => {
-    void runReaderStyleChange(() => {
-      applyReaderTheme(theme);
-      getView()?.setStyles(getBookStyles(), { reflow: false });
-    }).then(() => {
-      saveCurrentReaderSettings();
-      emitDockUpdate();
-    }).catch((error) => console.warn("Failed to apply reader theme.", error));
-  }, { signal });
+  readerCommandHandlers[command]();
+}
+
+function selectTheme(theme: Parameters<typeof applyReaderTheme>[0]) {
+  updateUi({ theme });
+  void runReaderStyleChange(() => {
+    applyReaderTheme(theme);
+    getView()?.setStyles(getBookStyles(), { reflow: false });
+  }).then(() => {
+    saveCurrentReaderSettings();
+    updateDock();
+  }).catch((error) => console.warn("Failed to apply reader theme.", error));
+}
+
+function setupEventListeners(signal: AbortSignal) {
+  window.addEventListener("resize", annotationState.close, { signal });
 }
 
 async function applyAdvancedSettings(settings: AdvancedReaderSettings) {
@@ -668,12 +669,12 @@ async function runReaderStyleChange(action: () => void | Promise<void>) {
 async function handleDockAction(action: DockAction) {
   switch (action) {
     case "open-info":
-      emitBookInfoUpdate();
-      emitViewerSignal(VIEWER_EVENTS.bookInfoOpen);
+      updateBookInfo();
+      updateUi({ bookInfoOpen: true });
       return;
     case "open-toc":
-      emitTocUpdate();
-      emitViewerSignal(VIEWER_EVENTS.tocOpen);
+      updateToc();
+      updateUi({ tocOpen: true });
       return;
     case "toggle-search":
       toggleSearch();
@@ -686,10 +687,10 @@ async function handleDockAction(action: DockAction) {
         return changeReaderLayoutMode(readerLayoutTarget);
       });
       saveCurrentReaderSettings();
-      emitDockUpdate();
+      updateDock();
       return;
     case "open-theme":
-      emitViewerEvent(VIEWER_EVENTS.themeOpen, readerSettings.theme);
+      updateUi({ theme: readerSettings.theme });
       return;
     case "decrease-font":
     case "increase-font": {
@@ -756,7 +757,7 @@ async function bootstrap() {
       durationMs: Math.round(performance.now() - startedAt),
       error,
     });
-    emitViewerSignal(VIEWER_EVENTS.welcomeOpen);
+    updateUi({ welcome: true });
   }
 }
 
@@ -764,13 +765,13 @@ async function disposeViewer() {
   if (runtime.disposed) return;
   runtime.disposed = true;
   const reader = runtime.reader;
-  runtime.reader = null;
   await flushPositionSave();
   window.clearTimeout(runtime.scrollEdgeFeedbackTimer);
   runtime.scrollEdgeFeedbackTimer = undefined;
 
-  emitViewerSignal(VIEWER_EVENTS.annotationClose);
+  closeAnnotation();
   await annotationState.flushPendingWrites();
+  runtime.reader = null;
 
   runtime.listeners?.abort();
   runtime.input?.destroy();
@@ -802,10 +803,52 @@ function initializeReaderRoot(node: HTMLDivElement | null) {
     openContentMenu: (event, content, coordinateSpace) =>
       annotationState.openContextMenu(event, content, coordinateSpace),
     openExternal: platform.openExternal,
+    updateUi,
   });
 }
 
+function createInitialUiState(): ReaderUiState {
+  return {
+    annotation: null,
+    bookInfo: createBookInfo(),
+    bookInfoOpen: false,
+    contextMenu: null,
+    dock: {
+      canSearch: false,
+      hasUnsavedChanges: false,
+      layoutLabel: "Switch to Scrolling",
+      searchActive: false,
+    },
+    dockOpen: false,
+    progress: { fraction: 0, reset: true },
+    progressReturnRequest: 0,
+    search: { hitCount: 0, hitIndex: -1, placeholder: "Search text", visible: false },
+    theme: null,
+    toc: { currentHref: "", items: [] },
+    tocOpen: false,
+    translation: null,
+    welcome: !initialDocument,
+  };
+}
+
+function uiReducer(state: ReaderUiState, update: UiUpdate) {
+  return { ...state, ...(typeof update === "function" ? update(state) : update) };
+}
+
 function ReaderApplication() {
+  const [state, dispatch] = useReducer(uiReducer, undefined, createInitialUiState);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  useLayoutEffect(() => {
+    dispatchUi = dispatch;
+    readUi = () => stateRef.current;
+    return () => {
+      dispatchUi = () => {};
+      readUi = () => undefined;
+    };
+  }, []);
+
   useEffect(() => {
     window.addEventListener("pagehide", handlePageHide);
     void bootstrap().catch((error) => console.error("Failed to start viewer.", error));
@@ -816,16 +859,55 @@ function ReaderApplication() {
   }, []);
 
   const { openLocalDocument, pickLocalDocument } = platform;
-  return createElement(App, {
-    onOpenLocalFile: (file) => {
+  const actions = useMemo(() => ({
+    closeAnnotation,
+    closeBookInfo: () => updateUi({ bookInfoOpen: false }),
+    closeContextMenu: () => {
+      stateRef.current.contextMenu?.onClose();
+      updateUi({ contextMenu: null });
+    },
+    closeSearch: () => { clearSearchState(); },
+    closeTheme: () => updateUi({ theme: null }),
+    closeToc: () => updateUi({ tocOpen: false }),
+    closeTranslation: annotationState.closeTranslation,
+    collectSearch: (query, highlightedOnly) => {
+      void runtime.search?.collect(query, highlightedOnly);
+    },
+    deleteAnnotation: (value) => {
+      annotationState.deleteAnnotation(value);
+      updateUi({ annotation: null });
+    },
+    downloadTranslation: annotationState.downloadTranslation,
+    navigateToc,
+    nextSearchResult: () => { void runtime.search?.next(); },
+    openLocalFile: (file) => {
+      updateUi({ welcome: false });
       void openBook(openLocalDocument(file));
     },
-    onPickLocalFile: pickLocalDocument ? async () => {
+    pickLocalFile: pickLocalDocument ? async () => {
       const selectedDocument = await pickLocalDocument();
-      if (selectedDocument) void openBook(selectedDocument);
+      if (!selectedDocument) return;
+      updateUi({ welcome: false });
+      void openBook(selectedDocument);
     } : undefined,
+    previousSearchResult: () => { void runtime.search?.previous(); },
+    runDockAction: (action) => {
+      void handleDockAction(action).catch((error) => {
+        console.warn("Failed to apply reader action.", error);
+      });
+    },
+    seek: goToProgress,
+    selectTheme,
+    setDockOpen: (open) => updateUi({ dockOpen: open }),
+    updateAnnotation: (note) => updateUi((state) => ({
+      annotation: state.annotation ? { ...state.annotation, note } : null,
+    })),
+  } satisfies ReaderUiActions), [openLocalDocument, pickLocalDocument]);
+
+  return createElement(App, {
+    actions,
     readerRootRef: initializeReaderRoot,
-    showWelcomeInitially: !initialDocument,
+    state,
   });
 }
 

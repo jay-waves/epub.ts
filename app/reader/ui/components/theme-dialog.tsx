@@ -1,10 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
 import type { TypographyTheme, TypographyThemeId } from "../../../typography/model";
 import { getReaderThemeOptions } from "../../settings";
 import { Dialog } from "./ui";
-import { useViewerEvent } from "./use-viewer-event";
 
 const THEME_GROUPS = [
   { label: "Light", mode: "light" },
@@ -46,15 +44,18 @@ function ThemeCard({
   );
 }
 
-export function ThemeDialog() {
+export function ThemeDialog({ onClose, onSelect, selected }: {
+  onClose: () => void;
+  onSelect: (theme: TypographyThemeId) => void;
+  selected: TypographyThemeId | null;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [selected, setSelected] = useState<TypographyThemeId>("light");
 
-  useViewerEvent(VIEWER_EVENTS.themeOpen, (theme) => {
-    setSelected(theme);
+  useEffect(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  });
+    if (selected && dialog && !dialog.open) dialog.showModal();
+    else if (!selected && dialog?.open) dialog.close();
+  }, [selected]);
 
   const handleThemeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home"].includes(event.key)) return;
@@ -79,6 +80,7 @@ export function ThemeDialog() {
       id="theme-modal"
       aria-labelledby="theme-dialog-title"
       className="theme-modal-box"
+      onClose={onClose}
       ref={dialogRef}
     >
       <header className="theme-dialog-header">
@@ -101,10 +103,7 @@ export function ThemeDialog() {
                     key={theme.id}
                     label={label}
                     theme={theme}
-                    onSelect={() => {
-                      setSelected(theme.id);
-                      emitViewerEvent(VIEWER_EVENTS.themeSelect, theme.id);
-                    }}
+                    onSelect={() => onSelect(theme.id)}
                   />
                 ))}
             </div>

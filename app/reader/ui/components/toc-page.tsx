@@ -1,40 +1,39 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TocItem } from "../../../renderer";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
-import type { TocUpdateDetail } from "../../events";
+import type { TocState } from "../model";
 import { normalizeTocHref } from "../../../epub/metadata";
 import { Dialog } from "./ui";
-import { useViewerEvent } from "./use-viewer-event";
 
-export function TocPage() {
-  const [tocState, setTocState] = useState<TocUpdateDetail>({ currentHref: "", items: [] });
+export function TocPage({ onClose, onNavigate, open, state }: {
+  onClose: () => void;
+  onNavigate: (item: TocItem) => void;
+  open: boolean;
+  state: TocState;
+}) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useViewerEvent(VIEWER_EVENTS.tocOpen, () => {
+  useEffect(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    setSelectedKey(null);
-    scrollCurrentItemIntoView(rootRef.current);
-  });
-  useViewerEvent(VIEWER_EVENTS.tocClose, () => {
-    if (dialogRef.current?.open) dialogRef.current.close();
-  });
-  useViewerEvent(VIEWER_EVENTS.tocUpdate, (detail) => {
-    setTocState(detail);
-    setSelectedKey(null);
-  });
+    if (open && dialog && !dialog.open) {
+      dialog.showModal();
+      setSelectedKey(null);
+      scrollCurrentItemIntoView(rootRef.current);
+    } else if (!open && dialog?.open) dialog.close();
+  }, [open]);
 
-  const currentKey = findCurrentKey(tocState.items, tocState.currentItem, tocState.currentHref);
+  useEffect(() => setSelectedKey(null), [state]);
+
+  const currentKey = findCurrentKey(state.items, state.currentItem, state.currentHref);
 
   useEffect(() => {
     if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
-  }, [selectedKey, tocState]);
+  }, [selectedKey, state]);
 
   const navigate = (item: TocItem) => {
     if (!item.href) return;
-    emitViewerEvent(VIEWER_EVENTS.tocNavigate, { href: item.href, item });
+    onNavigate(item);
   };
 
   return (
@@ -42,12 +41,13 @@ export function TocPage() {
       id="toc-modal"
       aria-label="Table of contents"
       className="toc-modal-box"
+      onClose={onClose}
       ref={dialogRef}
     >
       <div className="toc-root" ref={rootRef}>
-        {tocState.items.length ? (
+        {state.items.length ? (
           <ul className="toc-menu">
-            {tocState.items.map((item, index) => (
+            {state.items.map((item, index) => (
               <TocTreeItem
                 currentKey={currentKey}
                 item={item}

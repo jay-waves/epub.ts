@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
+import type { ProgressUpdate } from "../model";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "./ui";
-import { useViewerEvent } from "./use-viewer-event";
 
 const HISTORY_DISMISS_MS = 8_000;
 const SECTION_JUMP_THRESHOLD = 2;
@@ -12,7 +11,11 @@ const SEEK_KEYS = new Set([
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
-export function ReadingProgress() {
+export function ReadingProgress({ onSeek, returnRequest, update }: {
+  onSeek: (progress: number) => void;
+  returnRequest: number;
+  update: ProgressUpdate;
+}) {
   const [progress, setProgressState] = useState(0);
   const [history, setHistoryState] = useState<number | null>(null);
   const [enabled, setEnabled] = useState(false);
@@ -22,6 +25,7 @@ export function ReadingProgress() {
   const pendingHistoryRef = useRef<number | null>(null);
   const suppressJumpRef = useRef(false);
   const dismissTimerRef = useRef<number | undefined>(undefined);
+  const returnRequestRef = useRef(returnRequest);
 
   const setProgress = (value: number) => {
     const next = clamp(value);
@@ -40,7 +44,8 @@ export function ReadingProgress() {
 
   useEffect(() => () => window.clearTimeout(dismissTimerRef.current), []);
 
-  useViewerEvent(VIEWER_EVENTS.progressUpdate, ({ fraction, index, reset }) => {
+  useEffect(() => {
+    const { fraction, index, reset } = update;
     if (reset) {
       setEnabled(false);
       sectionRef.current = null;
@@ -69,7 +74,7 @@ export function ReadingProgress() {
     suppressJumpRef.current = false;
     sectionRef.current = index ?? null;
     setProgress(fraction);
-  });
+  }, [update]);
 
   const seek = (value: number) => {
     const next = clamp(value);
@@ -80,7 +85,7 @@ export function ReadingProgress() {
       suppressJumpRef.current = true;
     }
     setProgress(next);
-    emitViewerEvent(VIEWER_EVENTS.progressSeek, next);
+    onSeek(next);
   };
 
   const rememberOrigin = () => {
@@ -94,10 +99,14 @@ export function ReadingProgress() {
     suppressJumpRef.current = true;
     setHistory(null);
     setProgress(target);
-    emitViewerEvent(VIEWER_EVENTS.progressSeek, target);
+    onSeek(target);
   };
 
-  useViewerEvent(VIEWER_EVENTS.progressReturn, returnToHistory);
+  useEffect(() => {
+    if (returnRequest === returnRequestRef.current) return;
+    returnRequestRef.current = returnRequest;
+    returnToHistory();
+  }, [returnRequest]);
 
   const percentage = progress * 100;
   return (

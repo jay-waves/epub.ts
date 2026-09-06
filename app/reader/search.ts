@@ -1,7 +1,7 @@
 import type { Book, Content, DocumentAnchorResolver, OverlayDraw, ReaderView } from "../renderer";
-import { emitViewerEvent, VIEWER_EVENTS } from "./events";
 import { annotationRepository } from "./context-menu/annotation-repository";
 import type { Navigation } from "./navigation";
+import type { SearchState } from "./ui/model";
 
 const MAX_QUERY_LENGTH = 120;
 const MAX_RESULTS = 200;
@@ -22,6 +22,7 @@ type SearchOptions = {
   book: Book;
   bookKey: string;
   navigation: Navigation;
+  onUpdate: (state: SearchState) => void;
   run: <Result>(action: () => Promise<Result> | Result) => Promise<Result>;
   signal: AbortSignal;
   view: ReaderView;
@@ -52,14 +53,14 @@ const drawCurrent: OverlayDraw = (rects) => {
   return group;
 };
 
-export function createSearch({ book, bookKey, navigation, run, signal, view }: SearchOptions) {
+export function createSearch({ book, bookKey, navigation, onUpdate, run, signal, view }: SearchOptions) {
   let runId = 0;
   let hits: Hit[] = [];
   let current = -1;
   let disposed = false;
 
   const publish = (placeholder = "Search text", visible = true) => {
-    emitViewerEvent(VIEWER_EVENTS.searchUpdate, {
+    onUpdate({
       hitCount: hits.length,
       hitIndex: current,
       placeholder,

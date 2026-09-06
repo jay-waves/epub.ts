@@ -1,6 +1,5 @@
-import { emitViewerEvent, emitViewerSignal, VIEWER_EVENTS } from "../events";
-import type { ContentContextAction } from "../events";
 import { createTranslation } from "./translation";
+import type { ContentContextAction, ReaderUiState } from "../ui/model";
 
 type TextContextRequest<Context> = {
   canDelete: boolean;
@@ -17,10 +16,14 @@ export type TextContextActionDetail<Context> = {
   text: string;
 };
 
-type TextContextOptions = {
+type TextContextOptions<Context> = {
+  closeAnnotation: () => void;
   getTranslationSourceLanguage: () => string | undefined;
   getTranslationTargetLanguage: () => string;
+  onAction: (detail: TextContextActionDetail<Context>) => void;
+  onClose: () => void;
   openExternal: (url: string) => void;
+  updateUi: (state: Partial<ReaderUiState>) => void;
 };
 
 function getLookupTerm(text: string) {
@@ -36,21 +39,21 @@ function wiktionaryUrl(term: string) {
 }
 
 /** Generic text actions over plain text and viewport coordinates. */
-export function createTextContext<Context>(options: TextContextOptions) {
+export function createTextContext<Context>(options: TextContextOptions<Context>) {
   const translation = createTranslation({
     getSourceLanguage: options.getTranslationSourceLanguage,
     getTargetLanguage: options.getTranslationTargetLanguage,
+    onUpdate: (detail) => options.updateUi({ translation: detail }),
   });
-  const events = new EventTarget();
   let current: TextContextRequest<Context> | null = null;
 
   const clear = () => {
     if (!current) return;
     current = null;
-    events.dispatchEvent(new Event("close"));
+    options.onClose();
   };
   const close = () => {
-    emitViewerSignal(VIEWER_EVENTS.contextMenuClose);
+    options.updateUi({ contextMenu: null });
     clear();
   };
   const run = (task: Promise<unknown>, message: string) => {
@@ -72,9 +75,7 @@ export function createTextContext<Context>(options: TextContextOptions) {
         void translation.translate({ sourceText: request.text, ...request.point });
         break;
     }
-    events.dispatchEvent(new CustomEvent<TextContextActionDetail<Context>>("action", {
-      detail: { action, context: request.context, point: request.point, text: request.text },
-    }));
+    options.onAction({ action, context: request.context, point: request.point, text: request.text });
   };
 
   return {
@@ -83,17 +84,16 @@ export function createTextContext<Context>(options: TextContextOptions) {
       close();
       translation.destroy();
     },
-    events,
     dismiss() {
       close();
       translation.cancel();
-      emitViewerSignal(VIEWER_EVENTS.translationClose);
-      emitViewerSignal(VIEWER_EVENTS.annotationClose);
+      options.closeAnnotation();
+      options.updateUi({ translation: null });
     },
     open(request: TextContextRequest<Context>) {
       current = request;
       const canLookUp = request.canHighlight && Boolean(getLookupTerm(request.text));
-      emitViewerEvent(VIEWER_EVENTS.contextMenuOpen, {
+      options.updateUi({ contextMenu: {
         menu: {
           canAnnotate: true,
           canCopy: true,
@@ -105,8 +105,13 @@ export function createTextContext<Context>(options: TextContextOptions) {
         },
         onAction: handleAction,
         onClose: clear,
-      });
+      } });
     },
+    closeTranslation() {
+      translation.cancel();
+      options.updateUi({ translation: null });
+    },
+    downloadTranslation: translation.download,
     setTranslationSourceLanguage: translation.setSourceLanguage,
   };
 }

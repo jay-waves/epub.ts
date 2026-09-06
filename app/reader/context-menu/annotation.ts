@@ -1,21 +1,24 @@
-import { emitViewerEvent, emitViewerSignal, listenViewerEvent, VIEWER_EVENTS } from "../events";
 import type { ReaderAnnotation } from "../../epub/annotation";
 import { annotationRepository } from "./annotation-repository";
 import type { Content, OverlayDraw, OverlayDrawOptions, ReaderView } from "../../renderer";
 import type { Navigation } from "../navigation";
 import { drawAnnotation as drawAnnotationOverlay } from "./annotation-overlay";
 import { createTextContext, type TextContextActionDetail } from "./text-context";
+import type { ReaderUiState } from "../ui/model";
 
 type PointerCoordinateSpace = "content" | "viewport";
 
 type AnnotationOptions = {
+  closeAnnotation: () => void;
   getBookKey: () => string;
   getNavigation: () => Navigation | null;
   getProgress: () => number;
   getView: () => ReaderView | null;
   getTranslationSourceLanguage: () => string | undefined;
   getTranslationTargetLanguage: () => string;
+  onUnsaved: () => void;
   openExternal: (url: string) => void;
+  updateUi: (state: Partial<ReaderUiState>) => void;
 };
 
 type TextSelection = {
@@ -46,7 +49,6 @@ function resolveAnnotationRange(anchor: (doc: Document) => Element | Range | nul
 }
 
 export function createAnnotations(options: AnnotationOptions) {
-  const viewerEvents = new AbortController();
   const pendingWrites = new Set<Promise<unknown>>();
   const run = (task: Promise<unknown>, message: string) => {
     void task.catch((error) => console.warn(message, error));
@@ -71,24 +73,15 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const textContext = createTextContext<AnnotationContext>({
+    closeAnnotation: options.closeAnnotation,
     getTranslationSourceLanguage: options.getTranslationSourceLanguage,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
+    onAction: handleTextContextAction,
+    onClose: () => options.getNavigation()?.clearSelection(),
     openExternal: options.openExternal,
+    updateUi: options.updateUi,
   });
-  textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail<AnnotationContext>>) => {
-    handleTextContextAction(event.detail);
-  }) as EventListener, { signal: viewerEvents.signal });
-  textContext.events.addEventListener("close", () => {
-    options.getNavigation()?.clearSelection();
-  }, { signal: viewerEvents.signal });
 
-  listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
-    run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");
-  }, { signal: viewerEvents.signal });
-  listenViewerEvent(VIEWER_EVENTS.annotationDelete, (detail) => {
-    const annotation = annotationRepository.getByCfi(detail.value);
-    if (annotation) run(track(deleteHighlight(annotation)), "Failed to delete annotation.");
-  }, { signal: viewerEvents.signal });
   const getContents = () => options.getView()?.renderer?.getContents() ?? [];
 
   const findContentByIndex = (index: number) => getContents().find((item) => item.index === index);
@@ -195,13 +188,13 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const openAnnotationPopover = (highlight: ReaderAnnotation, point?: { x: number; y: number }) => {
-    emitViewerSignal(VIEWER_EVENTS.translationClose);
-    emitViewerEvent(VIEWER_EVENTS.annotationOpen, {
+    textContext.closeTranslation();
+    options.updateUi({ annotation: {
       note: highlight.note ?? "",
       sourceText: getAnnotationText(highlight),
       value: highlight.value,
       ...(point ?? getViewportCenter()),
-    });
+    } });
   };
 
   const openContextMenu = (
@@ -297,7 +290,7 @@ export function createAnnotations(options: AnnotationOptions) {
   };
 
   const markUnsaved = () => {
-    emitViewerSignal(VIEWER_EVENTS.unsavedChange);
+    options.onUnsaved();
   };
 
   const persistHighlight = async (
@@ -334,7 +327,7 @@ export function createAnnotations(options: AnnotationOptions) {
     markUnsaved();
     await view.deleteAnnotation(highlight);
     await annotationRepository.remove(bookKey, highlight.id);
-    emitViewerSignal(VIEWER_EVENTS.annotationClose);
+    options.updateUi({ annotation: null });
     textContext.close();
   };
 
@@ -470,14 +463,22 @@ export function createAnnotations(options: AnnotationOptions) {
     destroy: () => {
       reset();
       textContext.destroy();
-      viewerEvents.abort();
     },
     flushPendingWrites: () => Promise.allSettled(pendingWrites).then(() => undefined),
     getAll: () => annotationRepository.all(),
+    closeTranslation: textContext.closeTranslation,
+    deleteAnnotation(value: string) {
+      const annotation = annotationRepository.getByCfi(value);
+      if (annotation) run(track(deleteHighlight(annotation)), "Failed to delete annotation.");
+    },
+    downloadTranslation: textContext.downloadTranslation,
     openContextMenu,
     openFromAnnotation,
     reset,
     restore,
+    saveAnnotation(value: string, note: string) {
+      run(track(saveAnnotationNote(value, note)), "Failed to save annotation note.");
+    },
     setTranslationSourceLanguage: textContext.setTranslationSourceLanguage,
   };
 }

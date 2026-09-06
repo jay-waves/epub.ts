@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import type { Ref } from "react";
 import { ReaderDock } from "./components/reader-dock";
 import { BookInfoPage } from "./components/book-info-page";
@@ -9,54 +9,71 @@ import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
 import { ThemeDialog } from "./components/theme-dialog";
-import { VIEWER_EVENTS } from "../events";
-import { useViewerEvent } from "./components/use-viewer-event";
+import type { ReaderUiActions, ReaderUiState } from "./model";
+
+const StableAnnotationPopover = memo(AnnotationPopover);
+const StableBookInfoPage = memo(BookInfoPage);
+const StableContentContextMenu = memo(ContentContextMenu);
+const StableReaderDock = memo(ReaderDock);
+const StableSearchBar = memo(SearchBar);
+const StableThemeDialog = memo(ThemeDialog);
+const StableTocPage = memo(TocPage);
+const StableTranslationPopover = memo(TranslationPopover);
 
 export function App({
-  onOpenLocalFile,
-  onPickLocalFile,
+  actions,
   readerRootRef,
-  showWelcomeInitially,
+  state,
 }: {
-  onOpenLocalFile: (file: File) => void;
-  onPickLocalFile?: () => Promise<void>;
+  actions: ReaderUiActions;
   readerRootRef?: Ref<HTMLDivElement>;
-  showWelcomeInitially: boolean;
+  state: ReaderUiState;
 }) {
-  const [showWelcome, setShowWelcome] = useState(showWelcomeInitially);
-
-  useViewerEvent(VIEWER_EVENTS.documentOpen, () => setShowWelcome(false));
-  useViewerEvent(VIEWER_EVENTS.welcomeOpen, () => setShowWelcome(true));
-
   return (
     <>
       <div className="reader-app">
-        <ReaderDock />
+        <StableReaderDock
+          onAction={actions.runDockAction}
+          onOpenChange={actions.setDockOpen}
+          open={state.dockOpen}
+          state={state.dock}
+        />
 
         <main className="reader-stage">
           <div id="reader-root" className="reader-frame" ref={readerRootRef} />
         </main>
 
-        <ReadingProgress />
+        <ReadingProgress onSeek={actions.seek} returnRequest={state.progressReturnRequest} update={state.progress} />
 
-        <SearchBar />
-        <BookInfoPage />
-        <TocPage />
-        <ThemeDialog />
-        <ContentContextMenu />
-        <AnnotationPopover />
-        <TranslationPopover />
+        <StableSearchBar
+          onClose={actions.closeSearch}
+          onNext={actions.nextSearchResult}
+          onPrevious={actions.previousSearchResult}
+          onSearch={actions.collectSearch}
+          state={state.search}
+        />
+        <StableBookInfoPage bookInfo={state.bookInfo} onClose={actions.closeBookInfo} open={state.bookInfoOpen} />
+        <StableTocPage onClose={actions.closeToc} onNavigate={actions.navigateToc} open={state.tocOpen} state={state.toc} />
+        <StableThemeDialog onClose={actions.closeTheme} onSelect={actions.selectTheme} selected={state.theme} />
+        <StableContentContextMenu onClose={actions.closeContextMenu} state={state.contextMenu} />
+        <StableAnnotationPopover
+          detail={state.annotation}
+          onChange={actions.updateAnnotation}
+          onClose={actions.closeAnnotation}
+          onDelete={actions.deleteAnnotation}
+        />
+        <StableTranslationPopover
+          detail={state.translation}
+          onClose={actions.closeTranslation}
+          onDownload={actions.downloadTranslation}
+        />
       </div>
-      {showWelcome ? (
+      {state.welcome ? (
         <Welcome
           onSelect={(file) => {
-            setShowWelcome(false);
-            onOpenLocalFile(file);
+            actions.openLocalFile(file);
           }}
-          onPick={onPickLocalFile ? async () => {
-            await onPickLocalFile();
-            setShowWelcome(false);
-          } : undefined}
+          onPick={actions.pickLocalFile}
         />
       ) : null}
     </>

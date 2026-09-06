@@ -6,7 +6,7 @@ import type { Navigation } from "./navigation";
 import { observeRenderedContent } from "./rendered-content";
 import { KineticScroller } from "./kinetic-scroller";
 import { PointerMotion } from "./pointer-motion";
-import type { ReaderCommand } from "./events";
+import type { ReaderCommand } from "./ui/model";
 import {
   claimReaderPointer,
   consumeReaderEvent,

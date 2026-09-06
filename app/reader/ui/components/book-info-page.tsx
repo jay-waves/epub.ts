@@ -1,30 +1,26 @@
-import { useRef, useState } from "react";
-import { VIEWER_EVENTS } from "../../events";
+import { useEffect, useRef } from "react";
 import type { BookInfo } from "../../book-info";
 import { Dialog } from "./ui";
-import { useViewerEvent } from "./use-viewer-event";
 
-const emptyBookInfo: BookInfo = {
-  metadataRows: [],
-  statsRows: [],
-  title: "Book information",
-};
-
-export function BookInfoPage() {
-  const [bookInfo, setBookInfo] = useState<BookInfo>(emptyBookInfo);
+export function BookInfoPage({ bookInfo, onClose, open }: {
+  bookInfo: BookInfo;
+  onClose: () => void;
+  open: boolean;
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  useViewerEvent(VIEWER_EVENTS.bookInfoOpen, () => {
+  useEffect(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  });
-  useViewerEvent(VIEWER_EVENTS.bookInfoUpdate, setBookInfo);
+    if (open && dialog && !dialog.open) dialog.showModal();
+    else if (!open && dialog?.open) dialog.close();
+  }, [open]);
 
   return (
     <Dialog
       id="book-info-modal"
       aria-label="Book information"
       className="toc-modal-box book-info-modal-box"
+      onClose={onClose}
       ref={dialogRef}
     >
       <div className="book-info-root">

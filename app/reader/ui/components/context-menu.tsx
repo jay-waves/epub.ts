@@ -1,10 +1,7 @@
 import { BookOpen, Copy, Highlighter, Languages, SquarePen, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useRef, useState } from "react";
 import { usePointPopover } from "./use-point-popover";
-import { VIEWER_EVENTS } from "../../events";
-import type { ContentContextAction, ContentContextMenuDetail } from "../../events";
-import { useViewerEvent } from "./use-viewer-event";
+import type { ContentContextAction, ContentContextMenuDetail } from "../model";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
@@ -15,28 +12,14 @@ const menuItems = [
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },
 ] as const;
 
-export function ContentContextMenu() {
-  const [state, setState] = useState<ContentContextMenuDetail | null>(null);
-  const stateRef = useRef(state);
-
-  const close = (notify = true) => {
-    const current = stateRef.current;
-    stateRef.current = null;
-    setState(null);
-    if (notify) current?.onClose();
-  };
-
-  useViewerEvent(VIEWER_EVENTS.contextMenuOpen, (detail) => {
-    stateRef.current?.onClose();
-    stateRef.current = detail;
-    setState(detail);
-  });
-  useViewerEvent(VIEWER_EVENTS.contextMenuClose, () => close(false));
-
+export function ContentContextMenu({ onClose, state }: {
+  onClose: () => void;
+  state: ContentContextMenuDetail | null;
+}) {
   const menu = state?.menu;
   const popover = usePointPopover({
     gap: 4,
-    onDismiss: close,
+    onDismiss: onClose,
     open: Boolean(menu),
     x: menu?.x ?? 0,
     y: menu?.y ?? 0,
@@ -59,7 +42,7 @@ export function ContentContextMenu() {
           key={item.action}
           onSelect={(action) => {
             state.onAction(action);
-            close();
+            onClose();
           }}
         />
       ))}

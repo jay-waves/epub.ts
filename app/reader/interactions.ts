@@ -7,6 +7,7 @@ import {
 } from "./interaction-arbiter";
 import { openMediaContext } from "./context-menu/media-context";
 import { bindImageInteractions } from "./image-zoom";
+import type { ReaderUiState } from "./ui/model";
 
 const CURSOR_DELAY = 1_000;
 const TARGET_CLASS = "reader-link-target";
@@ -33,6 +34,7 @@ type InteractionOptions = {
   navigate: (href: string) => Promise<ResolvedNavigationTarget | undefined>;
   openContentMenu: (event: MouseEvent, content: Content, coordinateSpace: "content" | "viewport") => void;
   openExternal: (href: string) => void;
+  updateUi: (state: Partial<ReaderUiState>) => void;
 };
 
 type ViewBinding = {
@@ -155,7 +157,8 @@ export function createInteractions(options: InteractionOptions) {
         const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
         openMediaContext(media,
           frame ? frame.left + event.clientX : event.clientX,
-          frame ? frame.top + event.clientY : event.clientY);
+          frame ? frame.top + event.clientY : event.clientY,
+          options.updateUi);
         return;
       }
       options.openContentMenu(event, content, "content");

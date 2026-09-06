@@ -1,5 +1,5 @@
-import { emitViewerEvent, listenViewerEvent, VIEWER_EVENTS } from "../events";
 import { baseLanguage, translationModelLanguage } from "./translation-language";
+import type { TranslationDetail } from "../ui/model";
 
 type TranslationResource = Pick<Translator, "destroy">;
 
@@ -7,6 +7,12 @@ type TranslationRequest = {
   sourceText: string;
   x: number;
   y: number;
+};
+
+type TranslationOptions = {
+  getSourceLanguage: () => string | undefined;
+  getTargetLanguage: () => string;
+  onUpdate: (detail: TranslationDetail) => void;
 };
 
 const availabilityTimeoutMs = 5 * 1000;
@@ -70,10 +76,7 @@ function isSameTranslationLanguage(sourceLanguage: string, targetLanguage: strin
   }
 }
 
-export function createTranslation(options: {
-  getSourceLanguage: () => string | undefined;
-  getTargetLanguage: () => string;
-}) {
+export function createTranslation(options: TranslationOptions) {
   let activeController: AbortController | null = null;
   let pendingDownload: (() => void) | null = null;
   let cachedTranslator: {
@@ -126,7 +129,7 @@ export function createTranslation(options: {
     };
     let usedTranslator: Translator | null = null;
 
-    emitViewerEvent(VIEWER_EVENTS.translationOpen, {
+    options.onUpdate({
       ...baseDetail,
       message: downloadApproved
         ? "Preparing the built-in translation model..."
@@ -146,7 +149,7 @@ export function createTranslation(options: {
       const sourceLanguage = translationModelLanguage(effectiveLanguage);
       controller.signal.throwIfAborted();
       if (isSameTranslationLanguage(sourceLanguage, targetLanguage)) {
-        emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+        options.onUpdate({
           ...baseDetail,
           message: "Selected text is already in the target language.",
           sourceLanguage,
@@ -180,7 +183,7 @@ export function createTranslation(options: {
             grantDownloadConsent(languagePairKey);
             void translate({ sourceText, x, y }, true);
           };
-          emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+          options.onUpdate({
             ...baseDetail,
             message: availability === "downloading"
               ? "This language model is still downloading. Click to continue."
@@ -193,7 +196,7 @@ export function createTranslation(options: {
       }
 
       if (!translator) {
-        emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+        options.onUpdate({
           ...baseDetail,
           message: "Preparing the built-in translation model...",
           sourceLanguage,
@@ -203,7 +206,7 @@ export function createTranslation(options: {
           monitor(monitor) {
             monitor.addEventListener("downloadprogress", ({ loaded }) => {
               if (controller.signal.aborted) return;
-              emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+              options.onUpdate({
                 ...baseDetail,
                 message: loaded >= 1
                   ? "Preparing the built-in translation model..."
@@ -223,7 +226,7 @@ export function createTranslation(options: {
         grantDownloadConsent(languagePairKey);
       }
 
-      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+      options.onUpdate({
         ...baseDetail,
         message: "Translating...",
         sourceLanguage,
@@ -232,7 +235,7 @@ export function createTranslation(options: {
       const translatedText = await translator.translate(sourceText, { signal: controller.signal });
       controller.signal.throwIfAborted();
 
-      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+      options.onUpdate({
         ...baseDetail,
         sourceLanguage,
         status: "success",
@@ -242,7 +245,7 @@ export function createTranslation(options: {
       if (controller.signal.aborted) return;
       // Do not retain a session after a non-cancellation failure.
       invalidateCachedTranslator(usedTranslator);
-      emitViewerEvent(VIEWER_EVENTS.translationUpdate, {
+      options.onUpdate({
         ...baseDetail,
         message: error instanceof Error ? error.message : "Translation failed.",
         status: "error",
@@ -252,12 +255,11 @@ export function createTranslation(options: {
     }
   };
 
-  const stopListening = listenViewerEvent(VIEWER_EVENTS.translationClose, cancel);
-  const stopDownloadListening = listenViewerEvent(VIEWER_EVENTS.translationDownload, () => {
+  const download = () => {
     const download = pendingDownload;
     pendingDownload = null;
     download?.();
-  });
+  };
 
   return {
     cancel,
@@ -265,9 +267,8 @@ export function createTranslation(options: {
       cancel();
       release(cachedTranslator?.session);
       cachedTranslator = null;
-      stopListening();
-      stopDownloadListening();
     },
+    download,
     setSourceLanguage(language: string | undefined | Promise<string | undefined>) {
       cancel();
       documentLanguage = Promise.resolve(language);

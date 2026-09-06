@@ -1,60 +1,56 @@
 import { useEffect, useRef, useState } from "react";
-import { emitViewerEvent, emitViewerSignal, VIEWER_EVENTS } from "../../events";
-import type { SearchUpdateDetail } from "../../events";
+import type { SearchState } from "../model";
 import { Button, Tooltip } from "./ui";
-import { useViewerEvent } from "./use-viewer-event";
 import { ChevronLeft, ChevronRight, Highlighter, X } from "lucide-react";
 
-export function SearchBar() {
+export function SearchBar({ onClose, onNext, onPrevious, onSearch, state }: {
+  onClose: () => void;
+  onNext: () => void;
+  onPrevious: () => void;
+  onSearch: (query: string, highlightedOnly: boolean) => void;
+  state: SearchState;
+}) {
   const [highlightedOnly, setHighlightedOnly] = useState(false);
   const [query, setQuery] = useState("");
-  const [searchState, setSearchState] = useState<SearchUpdateDetail>({ hitCount: 0, hitIndex: -1, placeholder: "Search text", visible: false });
   const inputRef = useRef<HTMLInputElement>(null);
-  const canNavigate = searchState.hitCount > 0;
+  const canNavigate = state.hitCount > 0;
 
-  useViewerEvent(VIEWER_EVENTS.searchUpdate, (detail) => {
-    setSearchState(detail);
-    if (detail.visible) return;
+  useEffect(() => {
+    if (state.visible) return;
     setHighlightedOnly(false);
     setQuery("");
-  });
+  }, [state.visible]);
   useEffect(() => {
-    if (searchState.visible) inputRef.current?.focus();
-  }, [searchState.visible]);
+    if (state.visible) inputRef.current?.focus();
+  }, [state.visible]);
 
-  const submitSearch = () => {
-    emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly, query });
-  };
+  const submitSearch = () => onSearch(query, highlightedOnly);
 
   const toggleHighlightedOnly = () => {
     const nextHighlightedOnly = !highlightedOnly;
     setHighlightedOnly(nextHighlightedOnly);
-    emitViewerEvent(VIEWER_EVENTS.searchCollect, { highlightedOnly: nextHighlightedOnly, query });
-  };
-
-  const clearSearch = () => {
-    emitViewerSignal(VIEWER_EVENTS.searchClear);
+    onSearch(query, nextHighlightedOnly);
   };
 
   return (
-    <div aria-label="Search book" className="search-nav" hidden={!searchState.visible} role="search">
+    <div aria-label="Search book" className="search-nav" hidden={!state.visible} role="search">
       <Tooltip label="Previous result" side="bottom">
         <Button
           aria-label="Previous result"
           disabled={!canNavigate}
-          onClick={() => emitViewerSignal(VIEWER_EVENTS.searchPrevious)}
+          onClick={onPrevious}
         >
           <ChevronLeft size={20} aria-hidden="true" />
         </Button>
       </Tooltip>
       <span aria-live="polite" className="search-count">
-        {canNavigate ? `${searchState.hitIndex + 1} / ${searchState.hitCount}` : "0 / 0"}
+        {canNavigate ? `${state.hitIndex + 1} / ${state.hitCount}` : "0 / 0"}
       </span>
       <Tooltip label="Next result" side="bottom">
         <Button
           aria-label="Next result"
           disabled={!canNavigate}
-          onClick={() => emitViewerSignal(VIEWER_EVENTS.searchNext)}
+          onClick={onNext}
         >
           <ChevronRight size={20} aria-hidden="true"/>
         </Button>
@@ -70,7 +66,7 @@ export function SearchBar() {
           aria-label="Search text"
           className="search-input"
           type="search"
-          placeholder={searchState.placeholder}
+          placeholder={state.placeholder}
           autoComplete="off"
           ref={inputRef}
           value={query}
@@ -90,7 +86,7 @@ export function SearchBar() {
       <Tooltip label="Close search" side="bottom">
         <Button
           aria-label="Close search"
-          onClick={clearSearch}
+          onClick={onClose}
         >
           <X size={20} aria-hidden="true"/>
         </Button>

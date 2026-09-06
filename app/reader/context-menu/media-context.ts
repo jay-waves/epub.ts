@@ -1,4 +1,4 @@
-import { emitViewerEvent, VIEWER_EVENTS } from "../events";
+import type { ReaderUiState } from "../ui/model";
 
 const PNG_MIME_TYPE = "image/png";
 const SVG_MIME_TYPE = "image/svg+xml";
@@ -15,8 +15,13 @@ async function copyReaderMedia(element: Element) {
   }
 }
 
-export function openMediaContext(element: Element, x: number, y: number) {
-  emitViewerEvent(VIEWER_EVENTS.contextMenuOpen, {
+export function openMediaContext(
+  element: Element,
+  x: number,
+  y: number,
+  updateUi: (state: Partial<ReaderUiState>) => void,
+) {
+  updateUi({ contextMenu: {
     menu: {
       canAnnotate: false,
       canCopy: true,
@@ -34,7 +39,7 @@ export function openMediaContext(element: Element, x: number, y: number) {
       });
     },
     onClose: () => element.ownerDocument.defaultView?.getSelection()?.removeAllRanges(),
-  });
+  } });
 }
 
 async function copySvg(element: Element) {

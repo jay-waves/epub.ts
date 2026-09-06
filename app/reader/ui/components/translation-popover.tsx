@@ -1,53 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, Languages, X } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
-import { emitViewerSignal, VIEWER_EVENTS } from "../../events";
-import type { TranslationDetail } from "../../events";
-import { useViewerEvent } from "./use-viewer-event";
+import type { TranslationDetail } from "../model";
 
-type TranslationState = TranslationDetail & {
-  copied: boolean;
-  open: boolean;
-};
-
-const closedState: TranslationState = {
-  copied: false,
-  open: false,
-  sourceText: "",
-  status: "loading",
-  targetLanguage: navigator.languages[0] ?? navigator.language ?? "en",
-  x: 0,
-  y: 0,
-};
-
-export function TranslationPopover() {
-  const [state, setState] = useState(closedState);
-
-  const show = (detail: TranslationDetail) => {
-    setState({ ...detail, copied: false, open: true });
-  };
-
-  useViewerEvent(VIEWER_EVENTS.translationOpen, show);
-  useViewerEvent(VIEWER_EVENTS.translationUpdate, show);
-  useViewerEvent(VIEWER_EVENTS.translationClose, () => {
-    setState((current) => ({ ...current, open: false }));
-  });
+export function TranslationPopover({ detail, onClose, onDownload }: {
+  detail: TranslationDetail | null;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [detail]);
 
   const popover = usePointPopover({
-    onDismiss: () => emitViewerSignal(VIEWER_EVENTS.translationClose),
-    open: state.open,
-    x: state.x,
-    y: state.y,
+    onDismiss: onClose,
+    open: Boolean(detail),
+    x: detail?.x ?? 0,
+    y: detail?.y ?? 0,
   });
 
-  const translatedText = state.translatedText?.trim() ?? "";
-  const canCopy = state.status === "success" && Boolean(translatedText);
-  const targetLanguageName = getLanguageName(state.targetLanguage);
-  const translationDirection = state.sourceLanguage
-    ? `${getLanguageName(state.sourceLanguage)} → ${targetLanguageName}`
+  if (!detail) return null;
+  const translatedText = detail.translatedText?.trim() ?? "";
+  const canCopy = detail.status === "success" && Boolean(translatedText);
+  const targetLanguageName = getLanguageName(detail.targetLanguage);
+  const translationDirection = detail.sourceLanguage
+    ? `${getLanguageName(detail.sourceLanguage)} → ${targetLanguageName}`
     : targetLanguageName;
 
-  if (!state.open) return null;
   return (
     <section
       aria-label="Translation"
@@ -71,16 +49,16 @@ export function TranslationPopover() {
             onClick={() => {
               if (!translatedText) return;
               void navigator.clipboard.writeText(translatedText)
-                .then(() => setState((current) => ({ ...current, copied: true })))
+                .then(() => setCopied(true))
                 .catch((error) => console.warn("Failed to copy translation.", error));
             }}
           >
-            {state.copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
           </button>
           <button
             aria-label="Close translation"
             type="button"
-            onClick={() => emitViewerSignal(VIEWER_EVENTS.translationClose)}
+            onClick={onClose}
           >
             <X size={15} aria-hidden="true" />
           </button>
@@ -88,21 +66,21 @@ export function TranslationPopover() {
       </header>
 
       <div className="reader-text-popover-body">
-        <p className="reader-text-popover-source">{state.sourceText}</p>
-        {state.status === "success" ? (
+        <p className="reader-text-popover-source">{detail.sourceText}</p>
+        {detail.status === "success" ? (
           <p className="reader-text-popover-result">{translatedText}</p>
-        ) : state.status === "downloadable" ? (
+        ) : detail.status === "downloadable" ? (
           <button
             className="reader-text-popover-download"
             type="button"
-            onClick={() => emitViewerSignal(VIEWER_EVENTS.translationDownload)}
+            onClick={onDownload}
           >
-            {translationDirection}: {state.message ?? "Download this language model and translate."}
+            {translationDirection}: {detail.message ?? "Download this language model and translate."}
           </button>
         ) : (
-          <p className={`reader-text-popover-message${state.status === "error" ? " is-error" : ""}`}>
-            {state.message ?? "Translating..."}
-            {typeof state.progress === "number" ? ` ${Math.round(state.progress * 100)}%` : ""}
+          <p className={`reader-text-popover-message${detail.status === "error" ? " is-error" : ""}`}>
+            {detail.message ?? "Translating..."}
+            {typeof detail.progress === "number" ? ` ${Math.round(detail.progress * 100)}%` : ""}
           </p>
         )}
       </div>

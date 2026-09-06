@@ -1,8 +1,5 @@
-import { useState } from "react";
-import { emitViewerEvent, VIEWER_EVENTS } from "../../events";
-import type { DockAction, DockUpdateDetail } from "../../events";
+import type { DockAction, DockState } from "../model";
 import { Button, Tooltip } from "./ui";
-import { useViewerEvent } from "./use-viewer-event";
 
 import { LayoutTemplate, Palette, Minus, Plus, Minimize2, Maximize2, Save, Search, Info, TableOfContents } from "lucide-react";
 
@@ -27,25 +24,22 @@ const dockItems = [
   { action: "open-info", label: "Book information", icon: Info },
 ] as const;
 
-export function ReaderDock() {
-  const [touchOpen, setTouchOpen] = useState(false);
-  const [dockState, setDockState] = useState<DockUpdateDetail>({
-    canSearch: false, layoutLabel: "Switch to Scrolling", hasUnsavedChanges: false, searchActive: false,
-  });
-
-  useViewerEvent(VIEWER_EVENTS.dockUpdate, setDockState);
-  useViewerEvent(VIEWER_EVENTS.dockToggle, () => setTouchOpen((open) => !open));
-
-  if (dockState.searchActive) return null;
+export function ReaderDock({ onAction, onOpenChange, open, state }: {
+  onAction: (action: DockAction) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  state: DockState;
+}) {
+  if (state.searchActive) return null;
 
   return (
-    <aside aria-label="Reader controls" className={`reader-dock-shell${touchOpen ? " is-touch-open" : ""}`}>
+    <aside aria-label="Reader controls" className={`reader-dock-shell${open ? " is-touch-open" : ""}`}>
       <div className="reader-dock">
         {dockItems.map((item) => {
-          const label = getDockItemLabel(item.action, item.label, dockState);
+          const label = getDockItemLabel(item.action, item.label, state);
           const Icon = item.icon;
-          const disabled = item.action === "toggle-search" && !dockState.canSearch
-            || item.action === "save-book" && !dockState.hasUnsavedChanges;
+          const disabled = item.action === "toggle-search" && !state.canSearch
+            || item.action === "save-book" && !state.hasUnsavedChanges;
 
           return (
             <Tooltip key={item.action} label={label} side="right">
@@ -53,8 +47,8 @@ export function ReaderDock() {
                 aria-label={label}
                 disabled={disabled}
                 onClick={() => {
-                  setTouchOpen(false);
-                  emitViewerEvent(VIEWER_EVENTS.dockAction, item.action);
+                  onOpenChange(false);
+                  onAction(item.action);
                 }}
               >
                 <span className="dock-button-content">
@@ -69,7 +63,7 @@ export function ReaderDock() {
   );
 }
 
-function getDockItemLabel(action: DockAction, fallback: string, dockState: DockUpdateDetail) {
+function getDockItemLabel(action: DockAction, fallback: string, dockState: DockState) {
   if (action === "toggle-layout") return dockState.layoutLabel;
   if (action === "save-book" && dockState.hasUnsavedChanges) return "Save changes";
   return fallback;
