@@ -18,12 +18,25 @@ const READER_THEMES: TypographyTheme[] = [
     id: "light",
     bodyTheme: "lofi",
     mode: "light",
-    background: "#fffefd",
-    foreground: "#1f2933",
-    link: "#1f5f8f",
-    primary: "#2563eb",
+    background: "#ffffff",
+    foreground: "#292929",
+    link: "#454545",
+    primary: "#454545",
+    comment: "#b58b16",
     secondary: "#f4c430",
-    secondaryInk: "#1f2933",
+    secondaryInk: "#292929",
+  },
+  {
+    id: "glacier",
+    bodyTheme: "corporate",
+    mode: "light",
+    background: "#f4fafc",
+    foreground: "#253440",
+    link: "#2878bd",
+    primary: "#2878bd",
+    comment: "#287f9a",
+    secondary: "#72c9d5",
+    secondaryInk: "#253440",
   },
   {
     id: "grey",
@@ -37,7 +50,7 @@ const READER_THEMES: TypographyTheme[] = [
     secondaryInk: "#2d332f",
   },
   {
-    id: "dark",
+    id: "nord",
     bodyTheme: "nord",
     mode: "dark",
     background: "#212830",
@@ -48,7 +61,7 @@ const READER_THEMES: TypographyTheme[] = [
     secondaryInk: "#eceff4",
   },
   {
-    id: "one-dark",
+    id: "dark",
     bodyTheme: "dim",
     mode: "dark",
     background: "#0f1117",
@@ -73,9 +86,10 @@ const READER_THEMES: TypographyTheme[] = [
 
 const READER_THEME_LABELS: Record<TypographyThemeId, string> = {
   light: "Light",
+  glacier: "Glacier",
   grey: "Solar",
-  dark: "Nord",
-  "one-dark": "Dark",
+  nord: "Nord",
+  dark: "Dark",
   gruvbox: "Gruvbox",
 };
 
@@ -108,7 +122,9 @@ export function applyReaderTheme(themeId: TypographyThemeId) {
   document.documentElement.style.setProperty("--reader-accent-primary", theme.primary);
   document.documentElement.style.setProperty("--reader-accent-secondary", theme.secondary);
   document.documentElement.style.setProperty("--reader-annotation-color", theme.secondary);
-  document.documentElement.style.setProperty("--reader-comment-color", theme.secondary);
+  document.documentElement.style.setProperty(
+    "--reader-comment-color", theme.comment ?? theme.primary,
+  );
   document.documentElement.style.setProperty("--reader-search-outline", theme.secondary);
   document.documentElement.style.setProperty("--reader-search-current", theme.primary);
   document.documentElement.style.setProperty(

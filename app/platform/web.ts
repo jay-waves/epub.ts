@@ -1,7 +1,6 @@
-import { readViewerMetadata, writeViewerMetadata } from "./browser-storage";
-import { browserLocalDocumentCapabilities } from "./browser-local-document";
-import { openExternal } from "./external";
-import { createWebReaderProfile } from "./reader-profile";
+import { get as readViewerMetadata, set as writeViewerMetadata } from "idb-keyval";
+import { browserLocalDocumentCapabilities } from "./browser-files";
+import { openExternal, createBundledReaderProfile } from "./shared";
 import type { ViewerPlatform } from "./types";
 
 function getWebAssetUrl(filename: string) {
@@ -9,7 +8,7 @@ function getWebAssetUrl(filename: string) {
 }
 
 export const platform: ViewerPlatform = {
-  readerProfile: createWebReaderProfile(getWebAssetUrl),
+  readerProfile: { ...createBundledReaderProfile(getWebAssetUrl), lineHeightOffset: 0.1 },
   loadInitialDocument: () => undefined,
   ...browserLocalDocumentCapabilities,
   openExternal,

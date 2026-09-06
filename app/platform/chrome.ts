@@ -1,13 +1,16 @@
-import {
-  normalizeSourceUrl,
-  readViewerMetadata,
-  writeViewerMetadata,
-} from "./browser-storage";
-import { BrowserEpubFileHandle } from "./browser-file-handle";
-import { browserLocalDocumentCapabilities } from "./browser-local-document";
-import { openExternal } from "./external";
-import { createBundledReaderProfile } from "./reader-profile";
+import { get as readViewerMetadata, set as writeViewerMetadata } from "idb-keyval";
+import { BrowserEpubFileHandle, browserLocalDocumentCapabilities } from "./browser-files";
+import { openExternal, createBundledReaderProfile } from "./shared";
 import type { ViewerPlatform } from "./types";
+
+function normalizeSourceUrl(sourceUrl: string) {
+  if (!sourceUrl.startsWith("file://")) return sourceUrl;
+  try {
+    return new URL(sourceUrl).href;
+  } catch {
+    return sourceUrl;
+  }
+}
 
 function getInitialSourceUrl() {
   const query = window.location.search;

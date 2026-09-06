@@ -4,10 +4,12 @@ const scaledDocuments = new WeakSet<Document>();
 type FontMeasurement = {
   element: HTMLElement;
   size: number;
+  monospace?: boolean;
 };
 
 const MIN_PUBLISHER_FONT_SIZE = "12px";
 const MIN_PUBLISHER_FONT_SCALE = 0.72;
+const MONO_SELECTOR = 'pre, code, kbd, samp, tt, textarea, .hljs, a[href], [data-reader-role~="mono"]';
 
 /**
  * Preserves the publisher's computed font-size hierarchy while routing its
@@ -36,14 +38,31 @@ export function preservePublisherFontScale(doc: Document) {
     measurements.push({ element: doc.body, size: bodySize });
 
     for (const element of elements.slice(1)) {
-      const size = Number.parseFloat(doc.defaultView.getComputedStyle(element).fontSize);
-      if (Number.isFinite(size) && size > 0) measurements.push({ element, size });
+      const style = doc.defaultView.getComputedStyle(element);
+      const size = Number.parseFloat(style.fontSize);
+      if (Number.isFinite(size) && size > 0) measurements.push({
+        element, size, monospace: /\bmonospace\b/iu.test(style.fontFamily),
+      });
     }
   } finally {
     for (const style of readerStyles) style.disabled = false;
   }
 
-  for (const { element, size } of measurements) {
+  for (const { element, size, monospace } of measurements) {
+    const math = element.closest("math, mjx-container");
+    if (math) {
+      if (math === element) element.style.setProperty("font-size", "var(--reader-math-font-size)", "important");
+      // MathML script levels and MathJax glyph geometry own descendant sizes.
+      continue;
+    }
+    if (monospace || element.closest(MONO_SELECTOR)) {
+      // Use one absolute reader size even for nested links/code and publisher
+      // mono text; inherited publisher sizes must not compound or override it.
+      element.style.setProperty("font-family", "var(--reader-font-mono)", "important");
+      element.style.setProperty("font-size", "var(--reader-code-font-size)", "important");
+      element.style.setProperty("font-size-adjust", "none", "important");
+      continue;
+    }
     const scale = Number((size / bodySize).toFixed(5));
     const scaledSize = `calc(var(--reader-font-size) * ${scale})`;
     const value = element === doc.body

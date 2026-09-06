@@ -1,4 +1,4 @@
-export type TypographyThemeId = "light" | "grey" | "dark" | "one-dark" | "gruvbox";
+export type TypographyThemeId = "light" | "glacier" | "grey" | "nord" | "dark" | "gruvbox";
 export type TypographyTextAlignment = "auto" | "start" | "justify";
 
 export type TypographyFonts = {
@@ -21,6 +21,7 @@ export type TypographyTheme = {
   foreground: string;
   link: string;
   primary: string;
+  comment?: string;
   secondary: string;
   secondaryInk: string;
 };

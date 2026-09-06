@@ -1,7 +1,7 @@
 const READER_FONT_FAMILIES = {
   serif: "var(--reader-font-serif)",
   sans: "var(--reader-font-sans)",
-  mono: "var(--reader-font-mono)",
+  mono: "var(--reader-font-mono, monospace)",
 } as const;
 
 const MONO_FAMILIES = /(?:^|[,\s"'])(?:monospace|courier(?:\s+new)?|consolas|menlo|monaco|inconsolata|source\s+code|noto\s+sans\s+mono)(?=$|[,\s"'])/iu;

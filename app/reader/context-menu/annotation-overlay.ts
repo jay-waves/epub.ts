@@ -66,27 +66,16 @@ export function drawAnnotation(
   if (!lastRect) return group;
 
   const bounds = options.boundsForRect?.(lastRect);
-  const lineSize = Math.min(lastRect.width, lastRect.height);
-  const availableSize = bounds ? Math.max(0, Math.min(bounds.width, bounds.height) - 4) : Infinity;
-  if (availableSize === 0) return group;
-  const iconSize = Math.min(lineSize * 0.68, availableSize);
-  const hitSize = Math.min(Math.max(14, iconSize), availableSize);
-  const gap = lineSize * 0.2;
-  const element = range?.endContainer.nodeType === Node.ELEMENT_NODE
-    ? range.endContainer as Element : range?.endContainer.parentElement;
-  const rtl = element && element.ownerDocument.defaultView?.getComputedStyle(element).direction === "rtl";
-  let hitX = rtl ? lastRect.left - gap - hitSize : lastRect.right + gap;
-  let hitY = lastRect.top + (lastRect.height - hitSize) / 2;
+  const availableSize = bounds ? Math.min(bounds.width, bounds.height) - 4 : 12;
+  const hitSize = Math.min(12, availableSize);
+  if (hitSize <= 0) return group;
+  // Raise the badge like a superscript at the highlight's trailing corner.
+  let hitX = lastRect.right + 1;
+  let hitY = lastRect.top - hitSize * 0.75;
   if (bounds) {
     hitX = Math.max(bounds.left + 2, Math.min(hitX, bounds.right - hitSize - 2));
-    if (hitX < lastRect.right && hitX + hitSize > lastRect.left) {
-      hitY = lastRect.bottom + gap + hitSize <= bounds.bottom - 2
-        ? lastRect.bottom + gap : lastRect.top - gap - hitSize;
-    }
     hitY = Math.max(bounds.top + 2, Math.min(hitY, bounds.bottom - hitSize - 2));
   }
-  const iconX = hitX + (hitSize - iconSize) / 2;
-  const iconY = hitY + (hitSize - iconSize) / 2;
   const badge = createSvgElement("g");
   if (options.annotationValue) badge.setAttribute("data-reader-annotation-badge", options.annotationValue);
   badge.style.cursor = "pointer";
@@ -110,20 +99,19 @@ export function drawAnnotation(
   hitArea.style.pointerEvents = "all";
 
   const icon = createSvgElement("svg");
-  icon.setAttribute("x", String(iconX));
-  icon.setAttribute("y", String(iconY));
-  icon.setAttribute("width", String(iconSize));
-  icon.setAttribute("height", String(iconSize));
+  icon.setAttribute("x", String(hitX));
+  icon.setAttribute("y", String(hitY));
+  icon.setAttribute("width", String(hitSize));
+  icon.setAttribute("height", String(hitSize));
   icon.setAttribute("viewBox", "0 0 24 24");
   icon.setAttribute("fill", "none");
   icon.setAttribute(
     "stroke",
-    "color-mix(in srgb, var(--reader-comment-color, var(--reader-accent-secondary, #f4c430)) 86%, var(--reader-fg-color, #1f2937))",
+    "color-mix(in srgb, var(--reader-comment-color, var(--reader-accent-primary, #2563eb)) 80%, var(--reader-fg-color, #1f2937))",
   );
   icon.setAttribute("stroke-width", "2");
   icon.setAttribute("stroke-linecap", "round");
   icon.setAttribute("stroke-linejoin", "round");
-  icon.setAttribute("opacity", "0.9");
   icon.style.pointerEvents = "none";
 
   const iconPath = createSvgElement("path");

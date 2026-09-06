@@ -3,6 +3,7 @@ import githubDarkHighlightTheme from "highlight.js/styles/github-dark.css?raw";
 import githubLightHighlightTheme from "highlight.js/styles/github.css?raw";
 import gruvboxDarkHighlightTheme from "highlight.js/styles/base16/gruvbox-dark-medium.css?raw";
 import nordHighlightTheme from "highlight.js/styles/nord.css?raw";
+import stackOverflowLightHighlightTheme from "highlight.js/styles/stackoverflow-light.css?raw";
 import { platform } from "#platform";
 import bookStyles from "./book.css?raw";
 import type {
@@ -106,10 +107,11 @@ function normalizeHighlightThemeCss(themeCss: string) {
 }
 
 const READER_CODE_HIGHLIGHT_THEMES: Record<TypographyThemeId, string> = {
-  light: normalizeHighlightThemeCss(githubLightHighlightTheme),
+  light: normalizeHighlightThemeCss(stackOverflowLightHighlightTheme),
+  glacier: normalizeHighlightThemeCss(githubLightHighlightTheme),
   grey: normalizeHighlightThemeCss(atomOneLightHighlightTheme),
-  dark: normalizeHighlightThemeCss(nordHighlightTheme),
-  "one-dark": normalizeHighlightThemeCss(githubDarkHighlightTheme),
+  nord: normalizeHighlightThemeCss(nordHighlightTheme),
+  dark: normalizeHighlightThemeCss(githubDarkHighlightTheme),
   gruvbox: normalizeHighlightThemeCss(gruvboxDarkHighlightTheme),
 };
 
@@ -163,6 +165,7 @@ export function createBookStyles(options: ReaderBookStyleOptions): readonly [str
       --reader-link-color: ${theme.link};
       --reader-accent-primary: ${theme.primary};
       --reader-accent-secondary: ${theme.secondary};
+      --reader-comment-color: ${theme.comment ?? theme.primary};
       --reader-highlight-bg: ${theme.secondary};
       --reader-highlight-fg: ${theme.secondaryInk};
       --reader-selection-color: color-mix(in srgb, ${theme.primary} 38%, transparent);

@@ -37,9 +37,9 @@ export async function prepareTypography(doc: Document, options: {
     ? import("./enhancers/highlighter")
     : null;
 
-  preservePublisherFontScale(doc);
   mapInlinePublisherFontFamilies(doc);
   markReaderSemantics(doc);
+  preservePublisherFontScale(doc);
   enhanceTypography(doc);
   enhanceTables(doc, options.paginated, options.signal);
   labelFootnotes(doc);

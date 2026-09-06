@@ -5,6 +5,8 @@
       --reader-list-paragraph-spacing: calc(var(--reader-paragraph-spacing) * 0.72);
       --reader-media-spacing: max(1em, calc(var(--reader-paragraph-spacing) * 1.15));
       --reader-small-font-size: calc(var(--reader-font-size) * 0.78);
+      --reader-code-font-size: calc(var(--reader-font-size) * 0.7);
+      --reader-math-font-size: calc(var(--reader-font-size) * 0.9);
       --reader-footnote-font-size: calc(var(--reader-font-size) * 0.82);
       --reader-small-line-height: 1.4;
       --reader-font-serif: var(--reader-config-font-serif);
@@ -46,9 +48,11 @@
       color: var(--reader-link-color) !important;
       -webkit-text-fill-color: var(--reader-link-color) !important;
     }
-    :is(code, pre, kbd, samp, tt, textarea, [data-reader-role~="mono"]),
-    :is(code, pre, kbd, samp, tt, [data-reader-role~="mono"]) :where(*) {
+    :is(code, pre, kbd, samp, tt, textarea, .hljs, a[href], [data-reader-role~="mono"]),
+    :is(code, pre, kbd, samp, tt, .hljs, a[href], [data-reader-role~="mono"]) :where(*:not(math):not(math *):not(svg):not(svg *)) {
       font-family: var(--reader-font-mono) !important;
+      font-size: var(--reader-code-font-size) !important;
+      font-size-adjust: none !important;
     }
     :is(code, pre, kbd, samp, textarea, [data-reader-role~="mono"]):not(textarea):not(.hljs),
     :is(code, pre, kbd, samp):not(.hljs) *:not(.hljs *) {
@@ -61,7 +65,8 @@
     }
     math {
       font-family: math !important;
-      font-size: calc(1em + 0.5px) !important;
+      font-size: var(--reader-math-font-size) !important;
+      font-size-adjust: none !important;
       font-synthesis: none !important;
     }
     math :is(mi, mn, mo, mtext) {
@@ -110,6 +115,7 @@
       font-weight: 600 !important;
     }
     mjx-container.reader-math {
+      font-size: var(--reader-math-font-size) !important;
       max-inline-size: none !important;
       margin: 0 0.06em !important;
       padding: 0 !important;
@@ -474,11 +480,11 @@
       word-spacing: inherit !important;
       text-align: inherit !important;
     }
-    :is(code, kbd, samp):not(pre code):not(.hljs) {
+    :is(code, kbd, samp, tt):not(pre *):not(.hljs) {
       display: inline !important;
       vertical-align: 0.1em !important;
 
-      font-size: var(--reader-small-font-size) !important;
+      font-size: var(--reader-code-font-size) !important;
       line-height: var(--reader-small-line-height) !important;
 
       border-radius: 0.25em !important;
@@ -493,7 +499,7 @@
       overflow-wrap: anywhere !important;
       word-break: break-word !important;
 
-      font-size: var(--reader-small-font-size) !important;
+      font-size: var(--reader-code-font-size) !important;
       line-height: var(--reader-small-line-height) !important;
 
       font-family: var(--reader-font-mono) !important;
@@ -519,13 +525,4 @@
       border: 0 !important;
       background: transparent !important;
       padding: 0 !important;
-    }
-    blockquote :is(code, kbd, samp):not(.hljs),
-    blockquote pre,
-    blockquote pre code,
-    blockquote pre .hljs,
-    blockquote .hljs,
-    blockquote .hljs * {
-      font-size: var(--reader-list-font-size) !important;
-      line-height: var(--reader-line-height) !important;
     }

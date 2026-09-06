@@ -69,7 +69,7 @@ export function createMathJaxSvgRenderer() {
     blacker: 12,
     fontCache: "global",
     fontData: MathJaxNewcmFont,
-    scale: 1.35,
+    scale: 1,
     useXlink: false,
   });
   const mathDocument = mathjax.document(sourceDocument, {
@@ -99,7 +99,7 @@ export function createMathJaxSvgRenderer() {
   };
 
   return {
-    cacheKey: "mathjax-newcm-compact-svg-1.35-b12-global",
+    cacheKey: "mathjax-newcm-compact-svg-1-b12-global",
     async render(source: string, options: MathJaxSvgRenderOptions) {
       return await mathDocument.convertPromise(source, options) as Element;
     },

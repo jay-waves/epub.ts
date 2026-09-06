@@ -1,6 +1,5 @@
-import { browserLocalDocumentCapabilities } from "./browser-local-document";
-import { openExternal } from "./external";
-import { createBundledReaderProfile } from "./reader-profile";
+import { browserLocalDocumentCapabilities } from "./browser-files";
+import { openExternal, createBundledReaderProfile } from "./shared";
 import type { ReaderAnnotation } from "../epub/annotation";
 import type {
   EpubFileHandle,
