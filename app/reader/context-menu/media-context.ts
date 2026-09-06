@@ -1,5 +1,4 @@
-import { contextMenuStore } from "./context-menu-store";
-
+import { emitViewerEvent, VIEWER_EVENTS } from "../events";
 
 const PNG_MIME_TYPE = "image/png";
 const SVG_MIME_TYPE = "image/svg+xml";
@@ -17,21 +16,25 @@ async function copyReaderMedia(element: Element) {
 }
 
 export function openMediaContext(element: Element, x: number, y: number) {
-  contextMenuStore.getState().openMenu({
-    canAnnotate: false,
-    canCopy: true,
-    canDelete: false,
-    canHighlight: false,
-    canLookUp: false,
-    canTranslate: false,
-    x,
-    y,
-  }, (action) => {
-    if (action !== "copy") return;
-    void copyReaderMedia(element).catch((error) => {
-      console.warn("Failed to copy reader media.", error);
-    });
-  }, () => element.ownerDocument.defaultView?.getSelection()?.removeAllRanges());
+  emitViewerEvent(VIEWER_EVENTS.contextMenuOpen, {
+    menu: {
+      canAnnotate: false,
+      canCopy: true,
+      canDelete: false,
+      canHighlight: false,
+      canLookUp: false,
+      canTranslate: false,
+      x,
+      y,
+    },
+    onAction: (action) => {
+      if (action !== "copy") return;
+      void copyReaderMedia(element).catch((error) => {
+        console.warn("Failed to copy reader media.", error);
+      });
+    },
+    onClose: () => element.ownerDocument.defaultView?.getSelection()?.removeAllRanges(),
+  });
 }
 
 async function copySvg(element: Element) {

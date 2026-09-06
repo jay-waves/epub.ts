@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import type { Ref } from "react";
 import { ReaderDock } from "./components/reader-dock";
 import { BookInfoPage } from "./components/book-info-page";
 import { ContentContextMenu } from "./components/context-menu";
@@ -8,27 +9,24 @@ import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
 import { ThemeDialog } from "./components/theme-dialog";
-import { listenViewerEvent, VIEWER_EVENTS } from "../events";
+import { VIEWER_EVENTS } from "../events";
+import { useViewerEvent } from "./components/use-viewer-event";
 
 export function App({
   onOpenLocalFile,
   onPickLocalFile,
+  readerRootRef,
   showWelcomeInitially,
 }: {
   onOpenLocalFile: (file: File) => void;
   onPickLocalFile?: () => Promise<void>;
+  readerRootRef?: Ref<HTMLDivElement>;
   showWelcomeInitially: boolean;
 }) {
   const [showWelcome, setShowWelcome] = useState(showWelcomeInitially);
 
-  useEffect(() => {
-    const close = listenViewerEvent(VIEWER_EVENTS.documentOpen, () => setShowWelcome(false));
-    const open = listenViewerEvent(VIEWER_EVENTS.welcomeOpen, () => setShowWelcome(true));
-    return () => {
-      close();
-      open();
-    };
-  }, []);
+  useViewerEvent(VIEWER_EVENTS.documentOpen, () => setShowWelcome(false));
+  useViewerEvent(VIEWER_EVENTS.welcomeOpen, () => setShowWelcome(true));
 
   return (
     <>
@@ -36,7 +34,7 @@ export function App({
         <ReaderDock />
 
         <main className="reader-stage">
-          <div id="reader-root" className="reader-frame" />
+          <div id="reader-root" className="reader-frame" ref={readerRootRef} />
         </main>
 
         <ReadingProgress />

@@ -1,7 +1,6 @@
 import type { TocItem } from "../renderer";
 import type { BookInfo } from "./book-info";
 import type { TypographyThemeId } from "../typography/model";
-import { createStore } from "zustand/vanilla";
 
 export const VIEWER_EVENTS = {
   annotationClose: "reader:annotation-close",
@@ -28,6 +27,8 @@ export const VIEWER_EVENTS = {
   searchUpdate: "reader:search-update",
   bookInfoOpen: "reader:book-info-open",
   bookInfoUpdate: "reader:book-info-update",
+  contextMenuClose: "reader:context-menu-close",
+  contextMenuOpen: "reader:context-menu-open",
   tocOpen: "reader:toc-open",
   tocClose: "reader:toc-close",
   tocNavigate: "reader:toc-navigate",
@@ -57,6 +58,31 @@ export type AnnotationDetail = {
   value: string;
   x: number;
   y: number;
+};
+
+export type ContentContextAction =
+  | "annotate"
+  | "copy"
+  | "delete"
+  | "highlight"
+  | "lookup"
+  | "translate";
+
+export type ContentContextMenu = {
+  canAnnotate: boolean;
+  canCopy: boolean;
+  canDelete: boolean;
+  canHighlight: boolean;
+  canLookUp: boolean;
+  canTranslate: boolean;
+  x: number;
+  y: number;
+};
+
+export type ContentContextMenuDetail = {
+  menu: ContentContextMenu;
+  onAction: (action: ContentContextAction) => void;
+  onClose: () => void;
 };
 
 export type DockAction =
@@ -147,6 +173,8 @@ export type ViewerEventDetailMap = {
   [VIEWER_EVENTS.searchUpdate]: SearchUpdateDetail;
   [VIEWER_EVENTS.bookInfoOpen]: void;
   [VIEWER_EVENTS.bookInfoUpdate]: BookInfo;
+  [VIEWER_EVENTS.contextMenuClose]: void;
+  [VIEWER_EVENTS.contextMenuOpen]: ContentContextMenuDetail;
   [VIEWER_EVENTS.tocOpen]: void;
   [VIEWER_EVENTS.tocClose]: void;
   [VIEWER_EVENTS.tocNavigate]: TocNavigateDetail;
@@ -168,6 +196,7 @@ const VIEWER_SIGNALS = [
   VIEWER_EVENTS.searchNext,
   VIEWER_EVENTS.searchPrevious,
   VIEWER_EVENTS.bookInfoOpen,
+  VIEWER_EVENTS.contextMenuClose,
   VIEWER_EVENTS.tocOpen,
   VIEWER_EVENTS.tocClose,
   VIEWER_EVENTS.welcomeOpen,
@@ -177,22 +206,6 @@ type ViewerSignalName = typeof VIEWER_SIGNALS[number];
 type ViewerPayloadName = Exclude<keyof ViewerEventDetailMap, ViewerSignalName>;
 
 const viewerEvents = new EventTarget();
-const STATE_EVENTS = new Set<string>([
-  VIEWER_EVENTS.dockUpdate,
-  VIEWER_EVENTS.progressUpdate,
-  VIEWER_EVENTS.searchUpdate,
-  VIEWER_EVENTS.bookInfoUpdate,
-  VIEWER_EVENTS.tocUpdate,
-]);
-
-export function isViewerStateEvent(eventName: keyof ViewerEventDetailMap) {
-  return STATE_EVENTS.has(eventName);
-}
-
-type ViewerStateUpdate = { detail: unknown; revision: number };
-type ViewerState = { updates: Record<string, ViewerStateUpdate | undefined> };
-
-export const viewerStore = createStore<ViewerState>(() => ({ updates: {} }));
 
 export function emitViewerSignal(eventName: ViewerSignalName) {
   viewerEvents.dispatchEvent(new Event(eventName));
@@ -202,18 +215,6 @@ export function emitViewerEvent<EventName extends ViewerPayloadName>(
   eventName: EventName,
   detail: ViewerEventDetailMap[EventName],
 ) {
-  if (STATE_EVENTS.has(eventName)) {
-    viewerStore.setState((state) => ({
-      updates: {
-        ...state.updates,
-        [eventName]: {
-          detail,
-          revision: (state.updates[eventName]?.revision ?? 0) + 1,
-        },
-      },
-    }));
-    return;
-  }
   viewerEvents.dispatchEvent(new CustomEvent(eventName, { detail }));
 }
 
@@ -222,18 +223,6 @@ export function listenViewerEvent<EventName extends keyof ViewerEventDetailMap>(
   handler: (detail: ViewerEventDetailMap[EventName]) => void,
   options?: AddEventListenerOptions,
 ) {
-  if (STATE_EVENTS.has(eventName)) {
-    if (options?.signal?.aborted) return () => {};
-    let revision = viewerStore.getState().updates[eventName]?.revision ?? 0;
-    const unsubscribe = viewerStore.subscribe((state) => {
-      const update = state.updates[eventName];
-      if (!update || update.revision === revision) return;
-      revision = update.revision;
-      handler(update.detail as ViewerEventDetailMap[EventName]);
-    });
-    options?.signal?.addEventListener("abort", unsubscribe, { once: true });
-    return unsubscribe;
-  }
   const listener = (event: Event) => {
     handler((event as CustomEvent<ViewerEventDetailMap[EventName]>).detail);
   };

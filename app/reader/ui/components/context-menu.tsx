@@ -1,9 +1,10 @@
 import { BookOpen, Copy, Highlighter, Languages, SquarePen, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useStore } from "zustand";
+import { useRef, useState } from "react";
 import { usePointPopover } from "./use-point-popover";
-import type { ContentContextAction } from "../../context-menu/context-menu-store";
-import { contextMenuStore } from "../../context-menu/context-menu-store";
+import { VIEWER_EVENTS } from "../../events";
+import type { ContentContextAction, ContentContextMenuDetail } from "../../events";
+import { useViewerEvent } from "./use-viewer-event";
 
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
@@ -15,17 +16,34 @@ const menuItems = [
 ] as const;
 
 export function ContentContextMenu() {
-  const state = useStore(contextMenuStore);
+  const [state, setState] = useState<ContentContextMenuDetail | null>(null);
+  const stateRef = useRef(state);
+
+  const close = (notify = true) => {
+    const current = stateRef.current;
+    stateRef.current = null;
+    setState(null);
+    if (notify) current?.onClose();
+  };
+
+  useViewerEvent(VIEWER_EVENTS.contextMenuOpen, (detail) => {
+    stateRef.current?.onClose();
+    stateRef.current = detail;
+    setState(detail);
+  });
+  useViewerEvent(VIEWER_EVENTS.contextMenuClose, () => close(false));
+
+  const menu = state?.menu;
   const popover = usePointPopover({
     gap: 4,
-    onDismiss: state.close,
-    open: state.open,
-    x: state.x,
-    y: state.y,
+    onDismiss: close,
+    open: Boolean(menu),
+    x: menu?.x ?? 0,
+    y: menu?.y ?? 0,
   });
 
-  if (!state.open) return null;
-  const visibleItems = menuItems.filter((item) => state[item.enabledBy]);
+  if (!menu) return null;
+  const visibleItems = menuItems.filter((item) => menu[item.enabledBy]);
 
   return (
     <div
@@ -39,7 +57,10 @@ export function ContentContextMenu() {
         <ContextMenuItem
           {...item}
           key={item.action}
-          onSelect={state.select}
+          onSelect={(action) => {
+            state.onAction(action);
+            close();
+          }}
         />
       ))}
     </div>

@@ -1,6 +1,5 @@
-import type { ContentContextAction } from "./context-menu-store";
-import { contextMenuStore } from "./context-menu-store";
-import { emitViewerSignal, VIEWER_EVENTS } from "../events";
+import { emitViewerEvent, emitViewerSignal, VIEWER_EVENTS } from "../events";
+import type { ContentContextAction } from "../events";
 import { createTranslation } from "./translation";
 
 type TextContextRequest<Context> = {
@@ -51,7 +50,7 @@ export function createTextContext<Context>(options: TextContextOptions) {
     events.dispatchEvent(new Event("close"));
   };
   const close = () => {
-    contextMenuStore.getState().close();
+    emitViewerSignal(VIEWER_EVENTS.contextMenuClose);
     clear();
   };
   const run = (task: Promise<unknown>, message: string) => {
@@ -94,15 +93,19 @@ export function createTextContext<Context>(options: TextContextOptions) {
     open(request: TextContextRequest<Context>) {
       current = request;
       const canLookUp = request.canHighlight && Boolean(getLookupTerm(request.text));
-      contextMenuStore.getState().openMenu({
-        canAnnotate: true,
-        canCopy: true,
-        canDelete: request.canDelete,
-        canHighlight: request.canHighlight,
-        canLookUp,
-        canTranslate: true,
-        ...request.point,
-      }, handleAction, clear);
+      emitViewerEvent(VIEWER_EVENTS.contextMenuOpen, {
+        menu: {
+          canAnnotate: true,
+          canCopy: true,
+          canDelete: request.canDelete,
+          canHighlight: request.canHighlight,
+          canLookUp,
+          canTranslate: true,
+          ...request.point,
+        },
+        onAction: handleAction,
+        onClose: clear,
+      });
     },
     setTranslationSourceLanguage: translation.setSourceLanguage,
   };

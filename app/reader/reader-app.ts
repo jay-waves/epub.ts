@@ -1,5 +1,4 @@
-import { createElement } from "react";
-import { flushSync } from "react-dom";
+import { createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   applyReaderFonts,
@@ -110,22 +109,8 @@ function goToProgress(progress: number) {
   });
 }
 
-const reactRoot = createRoot(appRoot);
-flushSync(() => {
-  const { openLocalDocument, pickLocalDocument } = platform;
-  reactRoot.render(createElement(App, {
-    onOpenLocalFile: (file) => {
-      void openBook(openLocalDocument(file));
-    },
-    onPickLocalFile: pickLocalDocument ? async () => {
-      const selectedDocument = await pickLocalDocument();
-      if (selectedDocument) void openBook(selectedDocument);
-    } : undefined,
-    showWelcomeInitially: !initialDocument,
-  }));
-});
-
-const readerRoot = queryRequired<HTMLDivElement>("#reader-root");
+let readerRoot: HTMLDivElement;
+let renderState: ReturnType<typeof createRenderState>;
 const initialDocumentTitle = document.title;
 const session: BookSession = {
   bookKey: "",
@@ -139,17 +124,6 @@ const session: BookSession = {
 const readerLayoutTarget = {
   get view() { return getView(); },
 };
-const renderState = createRenderState(readerRoot);
-runtime.interactions = createInteractions({
-  navigate: async (href) => {
-    const navigation = getNavigation();
-    return navigation ? renderState.run(() => navigation.go(href)) : undefined;
-  },
-  openContentMenu: (event, content, coordinateSpace) =>
-    annotationState.openContextMenu(event, content, coordinateSpace),
-  openExternal: platform.openExternal,
-});
-
 function queryRequired<T extends Element>(selector: string) {
   const node = document.querySelector<T>(selector);
   if (!node) throw new Error(`Missing required element: ${selector}`);
@@ -808,9 +782,6 @@ async function disposeViewer() {
   await reader?.dispose();
   await clearMathCache();
   session.document = null;
-
-  reactRoot.unmount();
-  window.removeEventListener("pagehide", handlePageHide);
 }
 
 function handlePageHide(event: PageTransitionEvent) {
@@ -819,5 +790,43 @@ function handlePageHide(event: PageTransitionEvent) {
   }
 }
 
-window.addEventListener("pagehide", handlePageHide);
-void bootstrap().catch((error) => console.error("Failed to start viewer.", error));
+function initializeReaderRoot(node: HTMLDivElement | null) {
+  if (!node || readerRoot) return;
+  readerRoot = node;
+  renderState = createRenderState(node);
+  runtime.interactions = createInteractions({
+    navigate: async (href) => {
+      const navigation = getNavigation();
+      return navigation ? renderState.run(() => navigation.go(href)) : undefined;
+    },
+    openContentMenu: (event, content, coordinateSpace) =>
+      annotationState.openContextMenu(event, content, coordinateSpace),
+    openExternal: platform.openExternal,
+  });
+}
+
+function ReaderApplication() {
+  useEffect(() => {
+    window.addEventListener("pagehide", handlePageHide);
+    void bootstrap().catch((error) => console.error("Failed to start viewer.", error));
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      void disposeViewer().catch((error) => console.warn("Failed to dispose viewer cleanly.", error));
+    };
+  }, []);
+
+  const { openLocalDocument, pickLocalDocument } = platform;
+  return createElement(App, {
+    onOpenLocalFile: (file) => {
+      void openBook(openLocalDocument(file));
+    },
+    onPickLocalFile: pickLocalDocument ? async () => {
+      const selectedDocument = await pickLocalDocument();
+      if (selectedDocument) void openBook(selectedDocument);
+    } : undefined,
+    readerRootRef: initializeReaderRoot,
+    showWelcomeInitially: !initialDocument,
+  });
+}
+
+createRoot(appRoot).render(createElement(ReaderApplication));
