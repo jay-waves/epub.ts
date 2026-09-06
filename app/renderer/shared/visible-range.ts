@@ -1,12 +1,5 @@
 type MappedRect = { left: number; right: number };
 
-export type VisibleLocationView = {
-  document: Document;
-  extent: number;
-  mapRect: (rect: DOMRect) => MappedRect;
-  visibleRange: (start: number, end: number) => Range | undefined;
-};
-
 const makeRange = (doc: Document, node: Node, start: number, end = start) => {
   const range = doc.createRange();
   range.setStart(node, start);

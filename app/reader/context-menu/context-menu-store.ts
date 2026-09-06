@@ -16,7 +16,6 @@ export type ContentContextMenu = {
   canHighlight: boolean;
   canLookUp: boolean;
   canTranslate: boolean;
-  kind: "media" | "text";
   x: number;
   y: number;
 };
@@ -39,7 +38,6 @@ const closedMenu: ContentContextMenu = {
   canHighlight: false,
   canLookUp: false,
   canTranslate: false,
-  kind: "text",
   x: 0,
   y: 0,
 };

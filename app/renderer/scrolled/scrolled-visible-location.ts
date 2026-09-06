@@ -1,8 +1,8 @@
 import type { SpineEntry } from "../shared/spine-state";
-import type { VisibleLocationView } from "../shared/visible-range";
+import type { SpineTrackView } from "../shared/spine-state";
 import { clampFraction } from "../shared/navigation";
 
-type Options<View extends VisibleLocationView> = {
+type Options<View extends SpineTrackView> = {
   continuous: boolean;
   current?: SpineEntry<View>;
   entryOffset: (entry: SpineEntry<View>) => number;
@@ -17,7 +17,7 @@ export function scrolledReadingEdge(start: number, margin: number) {
   return Math.max(0, start + margin);
 }
 
-export function resolveScrolledLocation<View extends VisibleLocationView>(options: Options<View>) {
+export function resolveScrolledLocation<View extends SpineTrackView>(options: Options<View>) {
   const readingEdge = scrolledReadingEdge(options.start, options.margin);
   const entry = options.continuous ? options.findAt(readingEdge) : options.current;
   if (!entry) return undefined;

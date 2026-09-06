@@ -168,26 +168,30 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             }
         }) as EventListener)
     }
-    attributeChangedCallback(name: string, _oldValue: string | null, value: string | null) {
-        if (value == null) return
-        switch (name) {
-            case 'gap':
-            case 'margin':
-                this.#top.style.setProperty('--_' + name, value)
-                break
-            case 'max-inline-size':
-                // needs explicit `render()` as it doesn't necessarily resize
-                this.#top.style.setProperty('--_' + name, value)
-                this.#scheduleRender()
-                break
-        }
+    attributeChangedCallback(name: string, oldValue: string | null, value: string | null) {
+        if (value == null || value === oldValue) return
+        this.#top.style.setProperty('--_' + name, value)
+        // These values affect the iframe layout, not the observed viewport.
+        this.#scheduleRender()
     }
     open(book: Book) {
         this.#bookDir = book.dir
         this.#spine.open(book)
     }
     #layoutEntries() {
-        if (!this.#spine.entries.length || !this.continuous) return
+        if (!this.#spine.entries.length) return
+        if (!this.continuous) {
+            const view = this.#spine.currentView
+            if (!view) return
+            const { style } = view.element
+            style.removeProperty('position')
+            style.removeProperty('left')
+            style.removeProperty('top')
+            this.#spine.track.reset()
+            this.#track.style.width = '100%'
+            this.#track.style.height = '100%'
+            return
+        }
         const layout = this.#spine.layout()
         for (const { entry, physicalStart } of layout.placements) {
             const { style } = entry.view.element
@@ -222,22 +226,11 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         this.#rtl = direction.rtl
         this.#writingMode = direction.writingMode
         this.#margin = entry.view.margin
-        this.#top.classList.toggle('vertical', direction.vertical)
         this.setAttribute('dir', direction.writingMode === 'vertical-rl' ? 'rtl' : 'ltr')
-        this.#top.style.padding = '0'
         if (!this.continuous) {
             if (this.#spine.entries.length > 1) this.#spine.removeOtherThanCurrent()
-            const { style } = entry.view.element
-            style.removeProperty('position')
-            style.removeProperty('left')
-            style.removeProperty('top')
-            this.#spine.track.reset()
-            this.#track.style.width = '100%'
-            this.#track.style.height = '100%'
-        } else if (changed) {
-            this.#spine.track.reset()
-            this.#layoutEntries()
         }
+        if (changed || !this.continuous) this.#layoutEntries()
     }
     render() {
         const view = this.#spine.currentView
@@ -246,27 +239,16 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         // the same way as section content expansion.
         this.#scrolledViewport.flush()
         if (!this.#navigation.beginReflow()) return
-        const entry = this.#entryForView()
+        const entry = this.#spine.entryForView()
         const anchor = entry
             ? anchorForPosition(this.#position, entry.index, entry.view.document)
             : fractionAnchor(0)
         if (!this.continuous && this.#spine.entries.length > 1)
             this.#spine.removeOtherThanCurrent()
-        for (const { view } of this.#spine.entries) {
-            view.render(this.#beforeRender({
-                vertical: this.#vertical,
-                rtl: this.#rtl,
-                writingMode: this.#writingMode,
-            }), false)
-        }
-        if (!this.continuous) {
-            const { style } = view.element
-            style.removeProperty('position')
-            style.removeProperty('left')
-            style.removeProperty('top')
-            this.#track.style.width = '100%'
-            this.#track.style.height = '100%'
-        } else this.#layoutEntries()
+        const layout = this.#beforeRender(view.direction)
+        for (const { view } of this.#spine.entries) view.render(layout, false)
+        this.#layoutEntries()
+        this.#margin = layout.margin
         // Clear overflow accidentally retained on the inactive axis.
         this.#container[this.#vertical ? 'scrollTop' : 'scrollLeft'] = 0
         void this.#scrollToAnchor(anchor, 'anchor', entry).catch(error => {
@@ -323,21 +305,12 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         const { scrollProp } = this
         element[scrollProp] += delta
     }
-    // allows one to process rects as if they were LTR and horizontal
-    #getRectMapper(view: SectionFrame | null = this.#spine.currentView) {
-        return (rect: DOMRect) => view?.mapRect(rect) ?? rect
-    }
-    #entryForView(view: SectionFrame | null = this.#spine.currentView) {
-        return this.#spine.entryForView(view)
-    }
     #entryAtReadingEdge() {
-        if (!this.continuous) return this.#entryForView()
+        if (!this.continuous) return this.#spine.entryForView()
         const edge = scrolledReadingEdge(this.start, this.#margin)
-        return this.#spine.entries.find(entry =>
-            edge >= entry.start && edge < entry.start + entry.extent)
-            ?? this.#spine.entries.at(-1)
+        return this.#spine.findAt(edge)
     }
-    #entryOffset(entry = this.#entryForView()) {
+    #entryOffset(entry = this.#spine.entryForView()) {
         return this.#spine.entryOffset(entry)
     }
     #restoreViewport(offset: number) {
@@ -354,7 +327,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             if (this.#destroyed) return false
             const location = resolveScrolledLocation({
                 continuous: this.continuous,
-                current: this.#entryForView(),
+                current: this.#spine.entryForView(),
                 entryOffset: entry => this.#entryOffset(entry),
                 findAt: value => this.#spine.findAt(value),
                 margin: this.#margin,
@@ -406,7 +379,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     async #scrollToAnchor(
         anchor: RenderedAnchor,
         reason: RelocationReason = 'anchor',
-        entry = this.#entryForView(),
+        entry = this.#spine.entryForView(),
     ) {
         if (!entry) return false
         this.#scrolledViewport.cancel()
@@ -437,7 +410,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
                 }
             }
             const offset = getRectTarget(this.#entryOffset(entry),
-                this.#getRectMapper(entry.view)(rect).left, this.#margin)
+                entry.view.mapRect(rect).left, this.#margin)
             return this.#scrollTo(offset, reason, false, preferred)
         }
         return false
@@ -486,7 +459,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     }
     async goTo(target: ResolvedNavigationTarget) {
         const revision = this.#navigation.revision
-        if (this.#destroyed || revision !== this.#navigation.revision) return
+        if (this.#destroyed) return
         if (this.#spine.contains(target.index))
             await this.#enqueueNavigation(
                 current => this.#goTo(target, current), revision)
@@ -499,12 +472,12 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     }
     #adjacentIndex(dir: -1 | 1) {
         return this.#spine.adjacent(
-            this.#entryForView()?.index ?? this.#position?.index ?? -1, dir)
+            this.#spine.entryForView()?.index ?? this.#position?.index ?? -1, dir)
     }
     #crossCacheWindow(dir: -1 | 1, reason: RelocationReason = 'scroll') {
         const boundary = this.continuous
             ? (dir < 0 ? this.#spine.first : this.#spine.last)?.index
-            : this.#entryForView()?.index ?? this.#position?.index
+            : this.#spine.entryForView()?.index ?? this.#position?.index
         if (boundary == null) return
         const index = this.#spine.adjacent(boundary, dir)
         if (index == null) return

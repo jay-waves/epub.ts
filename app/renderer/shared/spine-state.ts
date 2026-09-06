@@ -155,7 +155,7 @@ export class SpineBuffer<View> {
 
     const needsMore = (await Promise.all([fill(-1), fill(1)])).some(Boolean);
     if (this.#revision !== revision) throw abortError("Stale spine reconcile");
-    const added = [...prepend.reverse(), ...append].sort((a, b) => a.index - b.index);
+    const added = [...prepend, ...append].sort((a, b) => a.index - b.index);
     const prependedExtent = prepend.reduce((sum, entry) => sum + entry.extent, 0);
     const plannedViewportStart = viewportStart + prependedExtent;
     const plannedViewportEnd = viewportEnd + prependedExtent;
@@ -236,9 +236,6 @@ export class SpineBuffer<View> {
 }
 
 export type SpineTrackView = {
-  columnCount: number;
-  columnStep: number;
-  contentColumns: number;
   extent: number;
 };
 

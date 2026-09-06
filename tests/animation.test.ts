@@ -83,16 +83,24 @@ test("programmatic scrolling suppresses its delayed scrollend commit", () => {
   const environment = installAnimationEnvironment();
   try {
     const container = new EventTarget() as HTMLElement;
+    container.scrollLeft = 0;
+    container.scrollTop = 0;
     let updates = 0;
     const coordinator = new ScrollCoordinator(container, () => updates += 1);
 
-    coordinator.schedule();
-    coordinator.cancel(true);
+    coordinator.scrollTo("scrollTop", 100);
+    container.dispatchEvent(new Event("scroll"));
     container.dispatchEvent(new Event("scrollend"));
     assert.equal(updates, 0);
+    assert.equal(environment.pending(), 0);
 
-    // A subsequent user scroll schedules an update and clears the suppression.
-    coordinator.schedule();
+    // A subsequent user scroll still commits, once, at the actual offset.
+    container.scrollTop = 150;
+    container.dispatchEvent(new Event("scroll"));
+    assert.equal(environment.pending(), 1);
+    container.dispatchEvent(new Event("scrollend"));
+    assert.equal(updates, 1);
+    assert.equal(environment.pending(), 0);
     container.dispatchEvent(new Event("scrollend"));
     assert.equal(updates, 1);
     coordinator.destroy();

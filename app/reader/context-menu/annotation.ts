@@ -61,9 +61,7 @@ export function createAnnotations(options: AnnotationOptions) {
     const context = detail.context;
     if (!context) return;
     const { action, point } = detail;
-    if (action === "copy" || action === "lookup" || action === "translate") {
-      options.getNavigation()?.clearSelection();
-    } else if (action === "highlight" && context.selection) {
+    if (action === "highlight" && context.selection) {
       run(track(highlightSelectedText(context.selection)), "Failed to save highlight.");
     } else if (action === "annotate") {
       run(track(annotateContextText(context, point)), "Failed to create annotation.");
@@ -80,6 +78,9 @@ export function createAnnotations(options: AnnotationOptions) {
   textContext.events.addEventListener("action", ((event: CustomEvent<TextContextActionDetail<AnnotationContext>>) => {
     handleTextContextAction(event.detail);
   }) as EventListener, { signal: viewerEvents.signal });
+  textContext.events.addEventListener("close", () => {
+    options.getNavigation()?.clearSelection();
+  }, { signal: viewerEvents.signal });
 
   listenViewerEvent(VIEWER_EVENTS.annotationSave, (detail) => {
     run(track(saveAnnotationNote(detail.value, detail.note)), "Failed to save annotation note.");

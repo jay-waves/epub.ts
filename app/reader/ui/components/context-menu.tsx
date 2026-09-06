@@ -30,7 +30,7 @@ export function ContentContextMenu() {
   return (
     <div
       className="reader-context-menu"
-      popover="auto"
+      popover="manual"
       ref={popover.setPopover}
       role="menu"
       style={popover.popoverStyle}

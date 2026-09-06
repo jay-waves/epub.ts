@@ -141,7 +141,6 @@ const readerLayoutTarget = {
 };
 const renderState = createRenderState(readerRoot);
 runtime.interactions = createInteractions({
-  closeContentMenu: () => annotationState.dismiss(),
   navigate: async (href) => {
     const navigation = getNavigation();
     return navigation ? renderState.run(() => navigation.go(href)) : undefined;

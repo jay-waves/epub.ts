@@ -6,7 +6,13 @@ import type {
   SpineTrackView,
 } from "../shared/spine-state";
 
-export class PaginatedTrack<View extends SpineTrackView> implements SpineTrack<View> {
+type PaginatedTrackView = SpineTrackView & {
+  columnCount: number;
+  columnStep: number;
+  contentColumns: number;
+};
+
+export class PaginatedTrack<View extends PaginatedTrackView> implements SpineTrack<View> {
   #leadingRemainder = 0;
   #contentExtent = 0;
   #physicalExtent = 0;

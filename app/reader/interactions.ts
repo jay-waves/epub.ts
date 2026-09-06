@@ -30,7 +30,6 @@ const TARGET_STYLE = `
 type Point = { x: number; y: number };
 
 type InteractionOptions = {
-  closeContentMenu: () => void;
   navigate: (href: string) => Promise<ResolvedNavigationTarget | undefined>;
   openContentMenu: (event: MouseEvent, content: Content, coordinateSpace: "content" | "viewport") => void;
   openExternal: (href: string) => void;
@@ -147,10 +146,6 @@ export function createInteractions(options: InteractionOptions) {
       }
     }, { capture: true, signal });
 
-    const dismissContentMenu = () => options.closeContentMenu();
-    doc.addEventListener("pointerdown", dismissContentMenu, { capture: true, signal });
-    doc.addEventListener("keydown", dismissContentMenu, { capture: true, signal });
-    doc.addEventListener("scroll", dismissContentMenu, { capture: true, signal });
     doc.addEventListener("contextmenu", (event) => {
       const content = view.renderer.getContents().find((item) => item.index === index);
       if (!content) return;

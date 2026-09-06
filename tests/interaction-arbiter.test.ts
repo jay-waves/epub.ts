@@ -31,7 +31,7 @@ test("a descendant highlight claim supersedes a retargeted content claim", () =>
   }
 });
 
-test("a light-dismiss control claim cannot be downgraded to content", () => {
+test("a control claim cannot be downgraded to content", () => {
   const previousNode = globalThis.Node;
   Object.defineProperty(globalThis, "Node", {
     configurable: true,

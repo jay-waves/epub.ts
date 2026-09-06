@@ -101,7 +101,6 @@ export function createTextContext<Context>(options: TextContextOptions) {
         canHighlight: request.canHighlight,
         canLookUp,
         canTranslate: true,
-        kind: "text",
         ...request.point,
       }, handleAction, clear);
     },

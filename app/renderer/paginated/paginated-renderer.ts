@@ -297,8 +297,8 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         }) as EventListener)
 
     }
-    attributeChangedCallback(name: string, _oldValue: string | null, value: string | null) {
-        if (value == null) return
+    attributeChangedCallback(name: string, oldValue: string | null, value: string | null) {
+        if (value == null || value === oldValue) return
         switch (name) {
             case 'gap':
             case 'margin':
@@ -412,7 +412,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         const view = this.#spine.currentView
         if (!view) return
         if (!this.#navigation.beginReflow()) return
-        const entry = this.#entryForView()
+        const entry = this.#spine.entryForView()
         const anchor = entry
             ? anchorForPosition(this.#position, entry.index, entry.view.document)
             : fractionAnchor(0)
@@ -420,13 +420,9 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
             this.#spine.track.reset()
             this.#trackLayoutInvalid = false
         }
-        for (const { view } of this.#spine.entries) {
-            view.render(this.#beforeRender({
-                vertical: this.#vertical,
-                rtl: this.#rtl,
-                writingMode: this.#writingMode,
-            }), false)
-        }
+        // All entries in this window share a writing direction and viewport.
+        const layout = this.#beforeRender(view.direction)
+        for (const { view } of this.#spine.entries) view.render(layout, false)
         this.#layoutEntries()
         // Position restoration must use the geometry produced by this reflow,
         // not the page pitch retained from before the viewport resize.
@@ -532,21 +528,12 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
             void this.#snap(velocityX, velocityY).catch(error =>
                 console.warn('Failed to snap reader page.', error))
     }
-    // allows one to process rects as if they were LTR and horizontal
-    #getRectMapper(view: SectionFrame | null = this.#spine.currentView) {
-        return (rect: DOMRect) => view?.mapRect(rect) ?? rect
-    }
-    #entryForView(view: SectionFrame | null = this.#spine.currentView) {
-        return this.#spine.entryForView(view)
-    }
     #entryAtReadingEdge() {
         const firstOffset = this.#entryOffset(this.#spine.first)
         const edge = paginatedReadingEdge(this.start, firstOffset)
-        return this.#spine.entries.find(entry =>
-            edge >= entry.start && edge < entry.start + entry.extent)
-            ?? this.#spine.entries.at(-1)
+        return this.#spine.findAt(edge)
     }
-    #entryOffset(entry = this.#entryForView()) {
+    #entryOffset(entry = this.#spine.entryForView()) {
         return this.#spine.entryOffset(entry)
     }
     #toPhysicalOffset(logicalOffset: number) {
@@ -572,7 +559,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
             ]
             if (reason === null) return true
             const location = resolvePaginatedLocation({
-                current: this.#entryForView(),
+                current: this.#spine.entryForView(),
                 end: this.end,
                 entryOffset: entry => this.#entryOffset(entry),
                 findAt: value => this.#spine.findAt(value),
@@ -635,7 +622,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         return this.#scrollTo(this.#toPhysicalOffset(logicalOffset), reason, smooth)
     }
     async #scrollToAnchor(anchor: RenderedAnchor, reason: RelocationReason | null = 'anchor',
-        entry = this.#entryForView()) {
+        entry = this.#spine.entryForView()) {
         if (!entry) return false
         this.#targetAnchor = anchor
         const projection = this.#resolveAnchorProjection(anchor, entry)
@@ -649,7 +636,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
         }
         const rect = getAnchorRect(uncollapseRange(anchor))
         if (!rect) return
-        const mapped = this.#getRectMapper(entry.view)(rect)
+        const mapped = entry.view.mapRect(rect)
         return { localOffset: mapped.left, target: anchor }
     }
     async #projectTarget(entry: SpineEntry<SectionFrame>, localOffset: number,
@@ -714,7 +701,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
     }
     async goTo(target: ResolvedNavigationTarget) {
         const revision = this.#navigation.revision
-        if (this.#destroyed || revision !== this.#navigation.revision) return
+        if (this.#destroyed) return
         if (this.#spine.contains(target.index))
             await this.#enqueueNavigation(
                 current => this.#goTo(target, current), revision)
@@ -727,7 +714,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
     }
     #adjacentIndex(dir: -1 | 1) {
         return this.#spine.adjacent(
-            this.#entryForView()?.index ?? this.#position?.index ?? -1, dir)
+            this.#spine.entryForView()?.index ?? this.#position?.index ?? -1, dir)
     }
     async #crossCacheWindow(dir: -1 | 1, reason: RelocationReason | null = 'page') {
         const boundary = (dir < 0 ? this.#spine.first : this.#spine.last)?.index

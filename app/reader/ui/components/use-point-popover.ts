@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
-import { claimReaderPointer } from "../../interaction-arbiter";
+import { overlayInput } from "../../overlay-input";
 
 const VIEWPORT_GUTTER = 8;
 
@@ -18,47 +18,27 @@ export function usePointPopover({
   y: number;
 }) {
   const popoverRef = useRef<HTMLElement | null>(null);
-  const openRef = useRef(open);
   const onDismissRef = useRef(onDismiss);
-  openRef.current = open;
   onDismissRef.current = onDismiss;
 
+  // React owns visibility; the input lock owns all outside/Escape dismissal.
   useLayoutEffect(() => {
     const popover = popoverRef.current;
-    if (!popover) return;
-    const handleDismiss = (event: Event) => {
-      if ((event as ToggleEvent).newState === "closed" && openRef.current) {
-        // Let the browser finish light-dismiss before React unmounts the node.
-        // The completed toggle is the single close boundary for the popover.
-        openRef.current = false;
-        onDismissRef.current();
-      }
-    };
-    popover.addEventListener("toggle", handleDismiss);
+    if (!open || !popover) return;
+    const release = overlayInput.register({
+      contains: (event) => event.composedPath().includes(popover),
+      dismiss: () => onDismissRef.current(),
+    });
+    popover.showPopover();
     return () => {
-      popover.removeEventListener("toggle", handleDismiss);
+      if (popover.matches(":popover-open")) popover.hidePopover();
+      release();
     };
   }, [open]);
 
   useLayoutEffect(() => {
     const popover = popoverRef.current;
     if (!open || !popover) return;
-    const claimLightDismiss = (event: PointerEvent) => {
-      if (!event.composedPath().includes(popover)) claimReaderPointer(event, "control");
-    };
-    window.addEventListener("pointerdown", claimLightDismiss, { capture: true });
-    return () => window.removeEventListener("pointerdown", claimLightDismiss, { capture: true });
-  }, [open]);
-
-  useLayoutEffect(() => {
-    const popover = popoverRef.current;
-    if (!popover) return;
-    if (!open) {
-      if (popover.matches(":popover-open")) popover.hidePopover();
-      return;
-    }
-
-    if (!popover.matches(":popover-open")) popover.showPopover();
 
     const position = () => {
       const { height, width } = popover.getBoundingClientRect();

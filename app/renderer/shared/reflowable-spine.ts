@@ -85,7 +85,6 @@ export class ReflowableSpine {
   get currentView() { return this.#currentView ?? null; }
   get physicalExtent() { return this.track.physicalExtent; }
 
-  #find(index: number) { return this.#buffer.find(index); }
   findAt(offset: number) { return this.#buffer.findAt(offset); }
   contains(index: number) {
     return Number.isInteger(index) && index >= 0 && index < (this.#book?.sections.length ?? 0);
@@ -141,7 +140,7 @@ export class ReflowableSpine {
   }
 
   async prepare(index: number) {
-    let entry = this.#find(index);
+    let entry = this.#buffer.find(index);
     if (!entry) {
       const adjacentToWindow = this.#options.continuous() && this.entries.some(candidate =>
         this.adjacent(candidate.index, -1) === index
@@ -149,7 +148,7 @@ export class ReflowableSpine {
       if (!adjacentToWindow) this.clear();
       const prepared = await this.#buffer.prepare(index);
       this.commit(this.#buffer.changeFor([prepared]));
-      entry = this.#find(index);
+      entry = this.#buffer.find(index);
     }
     if (!entry) throw new DOMException("Stale spine entry", "AbortError");
     return entry;

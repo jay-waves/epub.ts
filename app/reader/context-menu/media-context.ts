@@ -24,7 +24,6 @@ export function openMediaContext(element: Element, x: number, y: number) {
     canHighlight: false,
     canLookUp: false,
     canTranslate: false,
-    kind: "media",
     x,
     y,
   }, (action) => {
@@ -32,7 +31,7 @@ export function openMediaContext(element: Element, x: number, y: number) {
     void copyReaderMedia(element).catch((error) => {
       console.warn("Failed to copy reader media.", error);
     });
-  }, () => {});
+  }, () => element.ownerDocument.defaultView?.getSelection()?.removeAllRanges());
 }
 
 async function copySvg(element: Element) {

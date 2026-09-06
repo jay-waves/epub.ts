@@ -1,6 +1,10 @@
 import type { SpineEntry } from "../shared/spine-state";
-import type { VisibleLocationView } from "../shared/visible-range";
 import { clampFraction } from "../shared/navigation";
+
+type VisibleLocationView = {
+  extent: number;
+  visibleRange: (start: number, end: number) => Range | undefined;
+};
 
 type Options<View extends VisibleLocationView> = {
   current?: SpineEntry<View>;

@@ -73,7 +73,7 @@ export function AnnotationPopover() {
       aria-label="Annotation"
       aria-live="polite"
       className="reader-text-popover"
-      popover="auto"
+      popover="manual"
       ref={popover.setPopover}
       role="dialog"
       style={popover.popoverStyle}
