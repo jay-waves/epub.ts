@@ -30,7 +30,7 @@ const READER_THEMES: TypographyTheme[] = [
     id: "glacier",
     bodyTheme: "corporate",
     mode: "light",
-    background: "#f4fafc",
+    background: "#f9fcfd",
     foreground: "#253440",
     link: "#2878bd",
     primary: "#2878bd",
