@@ -10,7 +10,9 @@ Available as:
 
 - A Chrome extension
 - A web app
-- A browser-powered desktop app
+- A browser-powered desktop app (linux, windows and macos)
+
+[Try it now !](https://jay-waves.cn/epub.ts)
 
 ## Features
 
