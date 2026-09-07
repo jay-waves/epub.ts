@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DockAction, DockState } from "../model";
 import { Button, Tooltip } from "./ui";
 
@@ -30,10 +31,39 @@ export function ReaderDock({ onAction, onOpenChange, open, state }: {
   open: boolean;
   state: DockState;
 }) {
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelHide = useCallback(() => {
+    if (hideTimer.current !== null) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    setHoverOpen(false);
+    return cancelHide;
+  }, [state.searchActive, cancelHide]);
+
   if (state.searchActive) return null;
 
   return (
-    <aside aria-label="Reader controls" className={`reader-dock-shell${open ? " is-touch-open" : ""}`}>
+    <aside
+      aria-label="Reader controls"
+      className={`reader-dock-shell${open ? " is-touch-open" : ""}${hoverOpen ? " is-hover-open" : ""}`}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "touch" || !window.matchMedia("(hover: hover)").matches) return;
+        cancelHide();
+        setHoverOpen(true);
+      }}
+      onPointerLeave={() => {
+        cancelHide();
+        hideTimer.current = setTimeout(() => {
+          hideTimer.current = null;
+          setHoverOpen(false);
+        }, 350);
+      }}
+    >
       <div className="reader-dock">
         {dockItems.map((item) => {
           const label = getDockItemLabel(item.action, item.label, state);

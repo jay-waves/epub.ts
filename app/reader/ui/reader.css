@@ -237,7 +237,10 @@
   }
 
   .reader-dock-shell {
-    @apply fixed inset-y-0 left-0 z-20 flex w-16 items-center justify-start;
+    @apply fixed left-0 z-20;
+    top: 46%;
+    padding-left: 0.9rem;
+    transform: translateY(-50%);
     pointer-events: none;
   }
 
@@ -266,27 +269,44 @@
   }
 
   .reader-dock {
-    @apply pointer-events-auto relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
-    opacity: 0;
-    transform: translateX(calc(-100% + 0.5rem)) translateY(-4vh) scale(0.96);
-    transition:
-      opacity 220ms ease,
-      transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+    @apply relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-1.5;
+    transform: translateX(calc(-100% - 2rem)) scale(0.96);
+    pointer-events: none;
+    transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .reader-dock::after {
-    position: absolute;
-    inset-block: 0;
-    right: 100%;
-    width: 0.75rem;
-    content: "";
-  }
-
-  .reader-dock-shell:hover .reader-dock,
   .reader-dock-shell:focus-within .reader-dock,
   .reader-dock-shell.is-touch-open .reader-dock {
-    opacity: 1;
-    transform: translateX(0.9rem) translateY(-4vh) scale(1);
+    transform: translateX(0) scale(1);
+    pointer-events: auto;
+  }
+
+  @media (hover: hover) {
+    /* Keep the edge target stationary and limited to the dock's height.
+       Once entered, bridge the gap to the buttons without moving the target. */
+    .reader-dock-shell::before {
+      position: absolute;
+      inset-block: 0;
+      left: 0;
+      width: 0.5rem;
+      pointer-events: auto;
+      content: "";
+    }
+
+    .reader-dock-shell.is-hover-open::before {
+      width: 100%;
+    }
+
+    .reader-dock-shell.is-hover-open .reader-dock {
+      transform: translateX(0) scale(1);
+      pointer-events: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reader-dock {
+      transition: none;
+    }
   }
 
   .reader-dock button {
@@ -907,10 +927,6 @@
 }
 
 @media (max-width: 960px) {
-  .reader-dock-shell {
-    @apply w-14;
-  }
-
   .reader-dock button {
     @apply h-9 w-9;
   }
