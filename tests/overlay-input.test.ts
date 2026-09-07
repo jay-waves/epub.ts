@@ -101,3 +101,36 @@ test("pointer cancellation does not leave a lock after the overlay closes", () =
   f.release();
   assert.equal(f.input.locked, false);
 });
+
+test("context gestures cancel pending input before the menu mounts", () => {
+  for (const type of ["pointerdown", "mousedown", "contextmenu"]) {
+    const input = new OverlayInput();
+    let pending = true;
+    input.subscribe(() => { pending = false; });
+    const event = new Event(type, { cancelable: true });
+    Object.defineProperty(event, "button", { value: 2 });
+    input.capture(event);
+    assert.equal(pending, false);
+    assert.equal(input.locked, true);
+    assert.equal(event.defaultPrevented, false, "the menu must still receive its trigger");
+    input.capture(new Event("pointerup"));
+    input.capture(new Event("auxclick"));
+    assert.equal(input.locked, true, "release cannot turn a page before menu registration");
+    const release = input.register({ contains: () => true, dismiss() {} });
+    release();
+    assert.equal(input.locked, true, "closing cannot revive the triggering gesture");
+    input.capture(new Event("pointerdown"));
+    assert.equal(input.locked, false, "a fresh gesture restores input");
+  }
+});
+
+test("Control-click cancels input before its contextmenu event", () => {
+  const input = new OverlayInput();
+  let cancellations = 0;
+  input.subscribe(() => cancellations++);
+  const event = new Event("pointerdown");
+  Object.defineProperties(event, { button: { value: 0 }, ctrlKey: { value: true } });
+  input.capture(event);
+  assert.equal(input.locked, true);
+  assert.equal(cancellations, 1);
+});

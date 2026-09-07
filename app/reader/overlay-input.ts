@@ -8,9 +8,10 @@ export class OverlayInput {
   #overlays = new Set<Overlay>();
   #listeners = new Set<() => void>();
   #dismissGesture = false;
+  #contextGesture = false;
 
   get locked() {
-    return this.#overlays.size > 0 || this.#dismissGesture;
+    return this.#overlays.size > 0 || this.#dismissGesture || this.#contextGesture;
   }
 
   register(overlay: Overlay) {
@@ -27,7 +28,20 @@ export class OverlayInput {
   capture = (event: Event) => {
     const overlay = [...this.#overlays].at(-1);
     // A fresh press starts a new gesture, including after a cancelled click.
-    if (event.type === "pointerdown") this.#dismissGesture = false;
+    if (event.type === "pointerdown") {
+      this.#dismissGesture = false;
+      this.#contextGesture = false;
+    }
+    if (event.type === "keydown") this.#contextGesture = false;
+    // Cancel before React mounts the menu, and before a secondary-button
+    // release can finish a gesture. mousedown also covers chorded buttons.
+    if (event.type === "contextmenu"
+      || ((event.type === "pointerdown" || event.type === "mousedown")
+        && ((event as MouseEvent).button === 2
+          || ((event as MouseEvent).button === 0 && (event as MouseEvent).ctrlKey)))) {
+      this.#contextGesture = true;
+      this.#listeners.forEach((listener) => listener());
+    }
     const outside = overlay && !overlay.contains(event);
     const escape = overlay && event.type === "keydown" && (event as KeyboardEvent).key === "Escape";
     if (!this.#dismissGesture && !outside && !escape) return;

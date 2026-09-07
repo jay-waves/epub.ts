@@ -1,5 +1,6 @@
 import { overlayInput, overlayInputEvents } from "./overlay-input";
 import { WheelGestures } from "wheel-gestures";
+import { WheelInputSession } from "./wheel-input-session";
 import type { ReadingDirection, StepDirection } from "./model";
 import type { ReaderView } from "../renderer";
 import type { Navigation } from "./navigation";
@@ -324,6 +325,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     const targetWindow = sourceDocument.defaultView ?? window;
     let session: PointerSession | null = null;
     let mouseSelection: {
+      claimEvent: PointerEvent;
       pointerId: number;
       startX: number;
       startY: number;
@@ -376,6 +378,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       if (event.button !== 0 || resolveReaderPointerIntent(event.target) !== "content") return;
       claimReaderPointer(event, "content");
       mouseSelection = {
+        claimEvent: event,
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
@@ -406,6 +409,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     };
     const handleMouseClick = (event: Event) => {
       const click = event as MouseEvent;
+      if (click.button !== 0 || click.ctrlKey || click.metaKey || click.altKey || click.shiftKey) return;
       if (!canTurnPage()) {
         clearPendingMouseClick();
         return;
@@ -440,7 +444,8 @@ export function createViewerInput(options: ViewerInputOptions) {
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!canTurnPage() || !eventBelongsToReader(event) || !event.isPrimary) return;
+      if (!canTurnPage() || !eventBelongsToReader(event) || !event.isPrimary
+        || event.button !== 0 || event.ctrlKey) return;
       if (event.pointerType === "mouse") {
         handleMousePointerDown(event);
         return;
@@ -516,7 +521,10 @@ export function createViewerInput(options: ViewerInputOptions) {
     // before the delayed click or pointer release would otherwise run.
     const cancelPendingInput = () => {
       clearPendingMouseClick();
-      mouseSelection = null;
+      if (mouseSelection) {
+        consumeReaderPointerClaim(mouseSelection.claimEvent);
+        mouseSelection = null;
+      }
       if (session) endPointerSession(session);
     };
     const stopOverlaySubscription = overlayInput.subscribe(cancelPendingInput);
@@ -553,14 +561,21 @@ export function createViewerInput(options: ViewerInputOptions) {
   const createWheelGesture = () => {
     const wheel = WheelGestures({ preventWheelAction: false });
     let swipeConsumed = false;
+    const session = new WheelInputSession();
+    const stopOverlaySubscription = overlayInput.subscribe(() => {
+      session.cancel();
+      swipeConsumed = true;
+    });
     const stopListening = wheel.on("wheel", (state) => {
       if (state.isStart) {
+        session.start();
         inertia.stop();
         wheelActive = true;
         swipeConsumed = false;
         if (wheelBoundaryDirection === null) wheelBoundaryConsumed = false;
       }
       if (state.isEnding || state.isMomentumCancel) {
+        session.end();
         wheelActive = false;
         swipeConsumed = false;
         if (wheelBoundaryDirection === null) {
@@ -572,7 +587,8 @@ export function createViewerInput(options: ViewerInputOptions) {
 
       const event = state.event as WheelEvent;
       if (!eventBelongsToReader(event) || event.ctrlKey || event.metaKey) return;
-      if (!canTurnPage()) {
+      if (!canTurnPage() || session.cancelled) {
+        session.cancel();
         consumeReaderEvent(event);
         swipeConsumed = true;
         inertia.stop();
@@ -596,7 +612,9 @@ export function createViewerInput(options: ViewerInputOptions) {
           // the browser's effective wheel direction here, just as deltaX and
           // deltaY above do, so OS natural-scrolling preferences are honored.
           const nativeMovementX = -movementX;
-          dispatchStep(nativeMovementX < 0 ? "left" : "right");
+          session.queueTurn(() => {
+            if (canTurnPage()) dispatchStep(nativeMovementX < 0 ? "left" : "right");
+          });
           return;
         }
       }
@@ -614,8 +632,12 @@ export function createViewerInput(options: ViewerInputOptions) {
       else scrollWheelBy(delta);
     });
     return {
-      observe: (target: Document) => wheel.observe(target),
+      // Feed at window capture before overlay exclusion. Even blocked wheel
+      // events must reach the recognizer so its stream and momentum can end.
+      feed: (event: Event) => wheel.feedWheel(event as WheelEvent),
       destroy: () => {
+        stopOverlaySubscription();
+        session.cancel();
         stopListening();
         wheel.disconnect();
       },
@@ -653,6 +675,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     function handleMouseDown(event: MouseEvent) {
       if (event.button !== 3 && event.button !== 4) return;
       stopSideButtonEvent(event);
+      if (!canTurnPage()) return;
       pressedButton = event.button;
       startTracking();
     }
@@ -661,7 +684,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       stopSideButtonEvent(event);
       const shouldNavigate = pressedButton === event.button;
       stopTracking();
-      if (shouldNavigate) {
+      if (shouldNavigate && canTurnPage()) {
         options.dispatchCommand(event.button === 3 ? "paginate-previous" : "paginate-next");
       }
     }
@@ -683,6 +706,11 @@ export function createViewerInput(options: ViewerInputOptions) {
   const bindInputTarget = (targetDocument: Document) => {
     if (inputTargets.has(targetDocument)) return;
     const events = new AbortController();
+    (targetDocument.defaultView ?? targetDocument).addEventListener("wheel", wheelGesture.feed, {
+      capture: true,
+      passive: false,
+      signal: events.signal,
+    });
     for (const type of overlayInputEvents) {
       (targetDocument.defaultView ?? targetDocument).addEventListener(type, overlayInput.capture, {
         capture: true,
@@ -699,11 +727,9 @@ export function createViewerInput(options: ViewerInputOptions) {
     const stopPointer = targetDocument === document
       ? () => {}
       : bindPointerInput(targetDocument, targetDocument);
-    const stopWheel = wheelGesture.observe(targetDocument);
     const stopSideButtons = bindSideButtonNavigation(targetDocument);
     inputTargets.set(targetDocument, () => {
       stopPointer();
-      stopWheel();
       stopSideButtons();
       events.abort();
       touchStyle?.remove();
