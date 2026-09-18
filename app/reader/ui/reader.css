@@ -249,7 +249,8 @@
   .toc-modal-box,
   .reader-context-menu,
   .reader-text-popover,
-  .theme-modal-box {
+  .theme-modal-box,
+  .settings-modal-box {
     border-color: var(--reader-glass-border);
     background-color: var(--reader-glass-bg);
     box-shadow: var(--reader-glass-shadow);
@@ -652,6 +653,7 @@
   .reader-text-popover-result {
     background-color: var(--reader-field-bg);
     color: var(--reader-control-strong-fg);
+    white-space: pre-wrap;
   }
 
   .reader-text-popover-download {
@@ -878,6 +880,67 @@
   .theme-dialog-header h2 {
     @apply m-0 text-sm font-semibold;
   }
+
+  .settings-modal-box {
+    width: min(34rem, calc(100vw - 2rem));
+    max-height: min(42rem, calc(100vh - 2rem));
+    border: 1px solid var(--reader-glass-border);
+    border-radius: 1.35rem;
+    background-color: var(--reader-glass-bg, #fffefd) !important;
+    box-shadow: var(--reader-glass-shadow) !important;
+    color: var(--reader-control-strong-fg);
+  }
+
+  .settings-root {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+    max-height: min(42rem, calc(100vh - 2rem));
+    overflow: hidden;
+  }
+
+  .settings-header h2 {
+    @apply m-0 text-base font-semibold;
+    color: var(--reader-control-strong-fg);
+  }
+
+  .settings-form {
+    display: grid;
+    gap: .7rem;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .settings-field {
+    display: grid;
+    gap: .3rem;
+    color: var(--reader-control-fg);
+    font-size: .75rem;
+  }
+
+  .settings-field input {
+    @apply w-full rounded-md border-0 px-2 py-1.5 text-xs outline-none;
+    background: var(--reader-field-bg);
+    color: var(--reader-control-strong-fg);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-control-fg) 16%, transparent);
+  }
+
+  .settings-field input::placeholder { color: color-mix(in srgb, var(--reader-control-fg) 52%, transparent); }
+  .settings-field input:focus-visible { box-shadow: inset 0 0 0 1px var(--reader-accent-primary), 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary) 18%, transparent); }
+  .settings-field textarea { @apply w-full resize-y rounded-md border-0 px-2 py-1.5 text-xs leading-5 outline-none; background: var(--reader-field-bg); color: var(--reader-control-strong-fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-control-fg) 16%, transparent); }
+  .settings-field textarea:focus-visible { box-shadow: inset 0 0 0 1px var(--reader-accent-primary), 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary) 18%, transparent); }
+
+  .settings-reset {
+    @apply justify-self-start rounded-md px-2 py-1 text-xs outline-none;
+    color: var(--reader-control-fg);
+  }
+
+  .settings-reset:hover, .settings-reset:focus-visible { background: color-mix(in srgb, var(--reader-control-fg) 10%, transparent); }
+
+  .settings-actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+  .settings-test { @apply rounded-md px-2 py-1 text-xs outline-none; background: var(--reader-accent-primary); color: white; }
+  .settings-test:disabled { opacity: .45; }
+  .settings-test-status { color: var(--reader-control-fg); font-size: .75rem; }
 
   .theme-dialog-form {
     @apply grid gap-5 p-4.5;

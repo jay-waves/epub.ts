@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, Languages, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Languages } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
 import type { TranslationDetail } from "../model";
 
-export function TranslationPopover({ detail, onClose, onDownload }: {
+export function TranslationPopover({ detail, onClose, onDownload, onExternal }: {
   detail: TranslationDetail | null;
   onClose: () => void;
   onDownload: () => void;
+  onExternal: (detail: TranslationDetail) => void;
 }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => setCopied(false), [detail]);
@@ -25,6 +26,9 @@ export function TranslationPopover({ detail, onClose, onDownload }: {
   const translationDirection = detail.sourceLanguage
     ? `${getLanguageName(detail.sourceLanguage)} → ${targetLanguageName}`
     : targetLanguageName;
+  const externalUrl = detail.kind === "lookup"
+    ? `https://en.wiktionary.org/wiki/${encodeURIComponent(detail.sourceText.trim())}`
+    : `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(detail.targetLanguage)}&text=${encodeURIComponent(detail.sourceText)}&op=translate`;
 
   return (
     <section
@@ -39,7 +43,7 @@ export function TranslationPopover({ detail, onClose, onDownload }: {
       <header className="reader-text-popover-header">
         <div className="reader-text-popover-title">
           <Languages size={16} aria-hidden="true" />
-          <span>Translate to {targetLanguageName}</span>
+          <span>{detail.kind === "lookup" ? "Dictionary" : `Translate to ${targetLanguageName}`}</span>
         </div>
         <div className="reader-text-popover-actions">
           <button
@@ -56,11 +60,12 @@ export function TranslationPopover({ detail, onClose, onDownload }: {
             {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
           </button>
           <button
-            aria-label="Close translation"
+            aria-label="Open external link"
+            title={externalUrl}
             type="button"
-            onClick={onClose}
+            onClick={() => onExternal(detail)}
           >
-            <X size={15} aria-hidden="true" />
+            <ExternalLink size={15} aria-hidden="true" />
           </button>
         </div>
       </header>

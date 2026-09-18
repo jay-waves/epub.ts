@@ -41,6 +41,7 @@ export const Dialog = forwardRef<
   };
   return (
     <dialog
+      {...props}
       className={cn("reader-modal", className)}
       ref={ref}
       onPointerDown={(event) => {
@@ -63,7 +64,6 @@ export const Dialog = forwardRef<
         onPointerCancel?.(event);
         backdropPointer.current = null;
       }}
-      {...props}
     >
       {children}
     </dialog>

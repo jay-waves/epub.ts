@@ -14,10 +14,15 @@ type AnnotationOptions = {
   getNavigation: () => Navigation | null;
   getProgress: () => number;
   getView: () => ReaderView | null;
-  getTranslationSourceLanguage: () => string | undefined;
   getTranslationTargetLanguage: () => string;
-  onUnsaved: () => void;
+  getLlmApiKey: () => string;
+  getLlmBaseUrl: () => string;
+  getLlmModel: () => string;
+  getLlmTranslationPrompt: () => string;
+  getLlmLookupPrompt: () => string;
+  requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
   openExternal: (url: string) => void;
+  onUnsaved: () => void;
   updateUi: (state: Partial<ReaderUiState>) => void;
 };
 
@@ -74,11 +79,16 @@ export function createAnnotations(options: AnnotationOptions) {
 
   const textContext = createTextContext<AnnotationContext>({
     closeAnnotation: options.closeAnnotation,
-    getTranslationSourceLanguage: options.getTranslationSourceLanguage,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
+    getLlmApiKey: options.getLlmApiKey,
+    getLlmBaseUrl: options.getLlmBaseUrl,
+    getLlmModel: options.getLlmModel,
+    getLlmTranslationPrompt: options.getLlmTranslationPrompt,
+    getLlmLookupPrompt: options.getLlmLookupPrompt,
+    requestAi: options.requestAi,
+    openExternal: options.openExternal,
     onAction: handleTextContextAction,
     onClose: () => options.getNavigation()?.clearSelection(),
-    openExternal: options.openExternal,
     updateUi: options.updateUi,
   });
 

@@ -9,6 +9,8 @@ import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
 import { ThemeDialog } from "./components/theme-dialog";
+import { SettingsDialog } from "./components/settings-dialog";
+import type { AdvancedReaderSettings } from "../advanced-settings";
 import type { ReaderUiActions, ReaderUiState } from "./model";
 
 const StableAnnotationPopover = memo(AnnotationPopover);
@@ -24,10 +26,16 @@ export function App({
   actions,
   readerRootRef,
   state,
+  settings,
+  settingsActions,
+  requestAi,
 }: {
   actions: ReaderUiActions;
   readerRootRef?: Ref<HTMLDivElement>;
   state: ReaderUiState;
+  settings: AdvancedReaderSettings;
+  settingsActions: Parameters<typeof SettingsDialog>[0]["actions"];
+  requestAi?: Parameters<typeof SettingsDialog>[0]["requestAi"];
 }) {
   return (
     <>
@@ -55,6 +63,7 @@ export function App({
         <StableBookInfoPage bookInfo={state.bookInfo} onClose={actions.closeBookInfo} open={state.bookInfoOpen} />
         <StableTocPage onClose={actions.closeToc} onNavigate={actions.navigateToc} open={state.tocOpen} state={state.toc} />
         <StableThemeDialog onClose={actions.closeTheme} onSelect={actions.selectTheme} selected={state.theme} />
+        <SettingsDialog open={state.settingsOpen} settings={settings} actions={settingsActions} requestAi={requestAi} onClose={actions.closeSettings} />
         <StableContentContextMenu onClose={actions.closeContextMenu} state={state.contextMenu} />
         <StableAnnotationPopover
           detail={state.annotation}
@@ -66,6 +75,7 @@ export function App({
           detail={state.translation}
           onClose={actions.closeTranslation}
           onDownload={actions.downloadTranslation}
+          onExternal={actions.openTranslationExternal}
         />
       </div>
       {state.welcome ? (

@@ -89,6 +89,7 @@ export type TocState = {
 };
 
 export type TranslationDetail = {
+  kind?: "translation" | "lookup";
   message?: string;
   progress?: number;
   sourceLanguage?: string;
@@ -111,6 +112,7 @@ export type ReaderUiState = {
   progressReturnRequest: number;
   search: SearchState;
   theme: TypographyThemeId | null;
+  settingsOpen: boolean;
   toc: TocState;
   tocOpen: boolean;
   translation: TranslationDetail | null;
@@ -123,8 +125,10 @@ export type ReaderUiActions = {
   closeContextMenu: () => void;
   closeSearch: () => void;
   closeTheme: () => void;
+  closeSettings: () => void;
   closeToc: () => void;
   closeTranslation: () => void;
+  openTranslationExternal: (detail: TranslationDetail) => void;
   collectSearch: (query: string, highlightedOnly: boolean) => void;
   deleteAnnotation: (value: string) => void;
   downloadTranslation: () => void;

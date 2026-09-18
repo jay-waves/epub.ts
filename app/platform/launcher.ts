@@ -7,6 +7,7 @@ import type {
   ViewerPlatform,
 } from "./types";
 import { startupTrace } from "../startup-trace";
+import type { AiRequest } from "./types";
 
 type WriteResponse = {
   version: string;
@@ -178,4 +179,16 @@ export const platform: ViewerPlatform = {
   writeViewerMetadata: (key, value) => launcher
     ? launcher.writeMetadata(key, value)
     : Promise.reject(new Error("The launcher document is unavailable.")),
+  requestAi: async (request: AiRequest) => {
+    if (!launcher) throw new Error("The desktop launcher is unavailable.");
+    const response = await fetch(new URL("/api/control/ai", window.location.origin), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const result = await response.json().catch(() => ({})) as { text?: string; message?: string };
+    if (!response.ok) throw new Error(result.message ?? `AI request failed (${response.status}).`);
+    if (typeof result.text !== "string") throw new Error("The launcher returned an invalid AI response.");
+    return result.text;
+  },
 };

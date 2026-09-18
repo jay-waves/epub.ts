@@ -191,7 +191,15 @@ export function createViewerInput(options: ViewerInputOptions) {
       progressPrefix = "";
       return;
     }
-    if (event.ctrlKey && event.key.toLowerCase() === "o") {
+    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "o") {
+      progressPrefix = "";
+      consumeReaderEvent(event);
+      if (event.repeat) return;
+      options.dispatchCommand("open-toc");
+      return;
+    }
+
+    if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "o") {
       progressPrefix = "";
       consumeReaderEvent(event);
       if (event.repeat) return;

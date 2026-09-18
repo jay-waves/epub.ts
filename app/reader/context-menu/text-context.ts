@@ -1,3 +1,4 @@
+import { createLlmTranslation } from "./llm-translation";
 import { createTranslation } from "./translation";
 import type { ContentContextAction, ReaderUiState } from "../ui/model";
 
@@ -18,11 +19,16 @@ export type TextContextActionDetail<Context> = {
 
 type TextContextOptions<Context> = {
   closeAnnotation: () => void;
-  getTranslationSourceLanguage: () => string | undefined;
   getTranslationTargetLanguage: () => string;
+  getLlmApiKey: () => string;
+  getLlmBaseUrl: () => string;
+  getLlmModel: () => string;
+  getLlmTranslationPrompt: () => string;
+  getLlmLookupPrompt: () => string;
+  requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
+  openExternal: (url: string) => void;
   onAction: (detail: TextContextActionDetail<Context>) => void;
   onClose: () => void;
-  openExternal: (url: string) => void;
   updateUi: (state: Partial<ReaderUiState>) => void;
 };
 
@@ -34,17 +40,24 @@ function getLookupTerm(text: string) {
     : null;
 }
 
-function wiktionaryUrl(term: string) {
-  return `https://en.wiktionary.org/wiki/${encodeURIComponent(term)}`;
-}
-
 /** Generic text actions over plain text and viewport coordinates. */
 export function createTextContext<Context>(options: TextContextOptions<Context>) {
-  const translation = createTranslation({
-    getSourceLanguage: options.getTranslationSourceLanguage,
-    getTargetLanguage: options.getTranslationTargetLanguage,
-    onUpdate: (detail) => options.updateUi({ translation: detail }),
-  });
+  const translation = options.requestAi
+    ? createLlmTranslation({
+      getTargetLanguage: options.getTranslationTargetLanguage,
+      onUpdate: (detail) => options.updateUi({ translation: detail }),
+      getApiKey: options.getLlmApiKey,
+      getBaseUrl: options.getLlmBaseUrl,
+      getModel: options.getLlmModel,
+      requestAi: options.requestAi,
+      getTranslationPrompt: options.getLlmTranslationPrompt,
+      getLookupPrompt: options.getLlmLookupPrompt,
+    })
+    : createTranslation({
+      getSourceLanguage: () => undefined,
+      getTargetLanguage: options.getTranslationTargetLanguage,
+      onUpdate: (detail) => options.updateUi({ translation: detail }),
+    });
   let current: TextContextRequest<Context> | null = null;
 
   const clear = () => {
@@ -68,11 +81,21 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
         break;
       case "lookup": {
         const term = getLookupTerm(request.text);
-        if (term) options.openExternal(wiktionaryUrl(term));
+        if (term) {
+          if (options.requestAi) {
+            void (translation as ReturnType<typeof createLlmTranslation>).request({ text: term, ...request.point, lookup: true });
+          } else {
+            void (translation as ReturnType<typeof createTranslation>).translate({ sourceText: term, ...request.point });
+          }
+        }
         break;
       }
       case "translate":
-        void translation.translate({ sourceText: request.text, ...request.point });
+        if (options.requestAi) {
+          void (translation as ReturnType<typeof createLlmTranslation>).request({ text: request.text, ...request.point, lookup: false });
+        } else {
+          void (translation as ReturnType<typeof createTranslation>).translate({ sourceText: request.text, ...request.point });
+        }
         break;
     }
     options.onAction({ action, context: request.context, point: request.point, text: request.text });
@@ -82,7 +105,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     close,
     destroy() {
       close();
-      translation.destroy();
+      translation.cancel();
     },
     dismiss() {
       close();
@@ -111,7 +134,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
       translation.cancel();
       options.updateUi({ translation: null });
     },
-    downloadTranslation: translation.download,
-    setTranslationSourceLanguage: translation.setSourceLanguage,
+    downloadTranslation: "download" in translation ? translation.download : () => {},
+    setTranslationSourceLanguage: "setSourceLanguage" in translation ? translation.setSourceLanguage : (_language: string | undefined | Promise<string | undefined>) => {},
   };
 }

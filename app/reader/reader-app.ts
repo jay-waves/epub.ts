@@ -155,11 +155,15 @@ const annotationState = createAnnotations({
   getNavigation,
   getProgress: () => session.progress,
   getView,
-  getTranslationSourceLanguage: () =>
-    advancedSettings.value.translationSourceLanguage ?? undefined,
   getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
-  onUnsaved: () => setHasUnsavedChanges(true),
+  getLlmApiKey: () => advancedSettings.value.llmApiKey,
+  getLlmBaseUrl: () => advancedSettings.value.llmBaseUrl,
+  getLlmModel: () => advancedSettings.value.llmModel,
+  getLlmTranslationPrompt: () => advancedSettings.value.llmTranslationPrompt,
+  getLlmLookupPrompt: () => advancedSettings.value.llmLookupPrompt,
+  requestAi: platform.requestAi,
   openExternal: platform.openExternal,
+  onUnsaved: () => setHasUnsavedChanges(true),
   updateUi,
 });
 
@@ -824,6 +828,7 @@ function createInitialUiState(): ReaderUiState {
     progressReturnRequest: 0,
     search: { hitCount: 0, hitIndex: -1, placeholder: "Search text", visible: false },
     theme: null,
+    settingsOpen: false,
     toc: { currentHref: "", items: [] },
     tocOpen: false,
     translation: null,
@@ -850,6 +855,17 @@ function ReaderApplication() {
   }, []);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === ",") {
+        event.preventDefault();
+        updateUi({ settingsOpen: true });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
     window.addEventListener("pagehide", handlePageHide);
     void bootstrap().catch((error) => console.error("Failed to start viewer.", error));
     return () => {
@@ -868,8 +884,15 @@ function ReaderApplication() {
     },
     closeSearch: () => { clearSearchState(); },
     closeTheme: () => updateUi({ theme: null }),
+    closeSettings: () => updateUi({ settingsOpen: false }),
     closeToc: () => updateUi({ tocOpen: false }),
     closeTranslation: annotationState.closeTranslation,
+    openTranslationExternal: (detail) => {
+      const url = detail.kind === "lookup"
+        ? `https://en.wiktionary.org/wiki/${encodeURIComponent(detail.sourceText.trim())}`
+        : `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(detail.targetLanguage)}&text=${encodeURIComponent(detail.sourceText)}&op=translate`;
+      platform.openExternal(url);
+    },
     collectSearch: (query, highlightedOnly) => {
       void runtime.search?.collect(query, highlightedOnly);
     },
@@ -908,6 +931,9 @@ function ReaderApplication() {
     actions,
     readerRootRef: initializeReaderRoot,
     state,
+    settings: advancedSettings.value,
+    settingsActions: advancedSettings,
+    requestAi: platform.requestAi,
   });
 }
 

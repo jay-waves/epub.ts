@@ -6,6 +6,11 @@ export type AdvancedReaderSettings = {
   textAlignment: TypographyTextAlignment;
   translationSourceLanguage: string | null;
   translationTargetLanguage: string;
+  llmApiKey: string;
+  llmBaseUrl: string;
+  llmModel: string;
+  llmTranslationPrompt: string;
+  llmLookupPrompt: string;
 };
 
 type EpubSettingsApi = {
@@ -13,6 +18,9 @@ type EpubSettingsApi = {
   readonly sourceLanguage: string | null;
   readonly textAlignment: TypographyTextAlignment;
   readonly translationTargetLanguage: string;
+  readonly llmApiKey: string;
+  readonly llmBaseUrl: string;
+  readonly llmModel: string;
   reset(): Promise<void>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
@@ -20,6 +28,11 @@ type EpubSettingsApi = {
   setSourceLanguage(language: string | null): Promise<void>;
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
   setTranslationTargetLanguage(language: string): Promise<void>;
+  setLlmApiKey(apiKey: string): Promise<void>;
+  setLlmBaseUrl(baseUrl: string): Promise<void>;
+  setLlmModel(model: string): Promise<void>;
+  setLlmTranslationPrompt(prompt: string): Promise<void>;
+  setLlmLookupPrompt(prompt: string): Promise<void>;
 };
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
@@ -55,6 +68,9 @@ export function createAdvancedSettingsController(
     get translationTargetLanguage() {
       return value.translationTargetLanguage;
     },
+    get llmApiKey() { return value.llmApiKey; },
+    get llmBaseUrl() { return value.llmBaseUrl; },
+    get llmModel() { return value.llmModel; },
     setSerifFont: (fontFamily) => setFont("serif", fontFamily),
     setSansFont: (fontFamily) => setFont("sans", fontFamily),
     setMonoFont: (fontFamily) => setFont("mono", fontFamily),
@@ -84,6 +100,21 @@ export function createAdvancedSettingsController(
         `[epub.ts] Translation target language changed to "${translationTargetLanguage}". Browser default: "${getBrowserLanguage()}".`,
       );
     },
+    async setLlmApiKey(apiKey) {
+      await commit({ ...value, llmApiKey: apiKey.trim() }, false);
+      console.log("[epub.ts] LLM API key updated.");
+    },
+    async setLlmBaseUrl(baseUrl) {
+      const normalized = baseUrl.trim().replace(/\/$/, "");
+      await commit({ ...value, llmBaseUrl: normalized }, false);
+      console.log(`[epub.ts] LLM base URL changed to "${normalized}".`);
+    },
+    async setLlmModel(model) {
+      await commit({ ...value, llmModel: model.trim() }, false);
+      console.log(`[epub.ts] LLM model changed to "${model.trim()}".`);
+    },
+    async setLlmTranslationPrompt(prompt) { await commit({ ...value, llmTranslationPrompt: prompt }, false); },
+    async setLlmLookupPrompt(prompt) { await commit({ ...value, llmLookupPrompt: prompt }, false); },
     async reset() {
       if (!Object.keys(getSettingsOverrides(value)).length) return;
       value = getDefaults();
@@ -97,11 +128,6 @@ export function createAdvancedSettingsController(
     },
   };
 
-  const consoleGlobal = globalThis as typeof globalThis & {
-    epub?: Record<string, unknown> & { settings?: EpubSettingsApi };
-  };
-  consoleGlobal.epub = { ...consoleGlobal.epub, settings: api };
-
   return {
     get value() {
       return value;
@@ -112,6 +138,18 @@ export function createAdvancedSettingsController(
       console.log("[epub.ts] Active advanced setting overrides.", overrides);
       return true;
     },
+    setSerifFont: api.setSerifFont,
+    setSansFont: api.setSansFont,
+    setMonoFont: api.setMonoFont,
+    setSourceLanguage: api.setSourceLanguage,
+    setTextAlignment: api.setTextAlignment,
+    setTranslationTargetLanguage: api.setTranslationTargetLanguage,
+    setLlmApiKey: api.setLlmApiKey,
+    setLlmBaseUrl: api.setLlmBaseUrl,
+    setLlmModel: api.setLlmModel,
+    setLlmTranslationPrompt: api.setLlmTranslationPrompt,
+    setLlmLookupPrompt: api.setLlmLookupPrompt,
+    reset: api.reset,
   };
 }
 
@@ -149,7 +187,12 @@ function getDefaults(): AdvancedReaderSettings {
     fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },
     textAlignment: "auto",
     translationSourceLanguage: null,
-    translationTargetLanguage: getBrowserLanguage(),
+      translationTargetLanguage: "zh-cn",
+      llmApiKey: "",
+      llmBaseUrl: "",
+      llmModel: "",
+      llmTranslationPrompt: "Translate the supplied text into the target language. Preserve meaning, tone, names, formatting, and paragraph breaks. Do not explain your choices.",
+      llmLookupPrompt: "Give a concise definition in the target language, part of speech, and a short explanation of the word's usage. Keep the answer brief and do not use markdown headings.",
   };
 }
 
@@ -161,8 +204,17 @@ function loadSettings(): AdvancedReaderSettings {
       textAlignment?: unknown;
       translationSourceLanguage?: unknown;
       translationTargetLanguage?: unknown;
+      llmApiKey?: unknown;
+      llmBaseUrl?: unknown;
+      llmModel?: unknown;
+      llmTranslationPrompt?: unknown;
+      llmLookupPrompt?: unknown;
     } | null;
     if (!saved) return defaults;
+    if ("llmApiKey" in saved) {
+      delete saved.llmApiKey;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    }
     return {
       fonts: {
         serif: normalizeFontFamily(saved.fonts?.serif, defaults.fonts.serif),
@@ -175,6 +227,11 @@ function loadSettings(): AdvancedReaderSettings {
         saved.translationTargetLanguage,
         defaults.translationTargetLanguage,
       ),
+      llmApiKey: "",
+      llmBaseUrl: typeof saved.llmBaseUrl === "string" ? saved.llmBaseUrl : defaults.llmBaseUrl,
+      llmModel: typeof saved.llmModel === "string" ? saved.llmModel : defaults.llmModel,
+      llmTranslationPrompt: typeof saved.llmTranslationPrompt === "string" ? saved.llmTranslationPrompt : defaults.llmTranslationPrompt,
+      llmLookupPrompt: typeof saved.llmLookupPrompt === "string" ? saved.llmLookupPrompt : defaults.llmLookupPrompt,
     };
   } catch (error) {
     console.warn("[epub.ts] Could not read advanced settings; defaults are active.", error);
@@ -184,7 +241,8 @@ function loadSettings(): AdvancedReaderSettings {
 
 function persistSettings(settings: AdvancedReaderSettings) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    const { llmApiKey: _llmApiKey, ...persisted } = settings;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
   } catch (error) {
     console.warn("[epub.ts] Could not persist advanced settings.", error);
   }
