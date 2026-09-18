@@ -36,29 +36,9 @@ export function drawAnnotation(
   const group = createSvgElement("g");
   group.append(Overlay.highlight(rects, { color: options.color }));
   if (options.annotationValue && !rangeTouchesLink(range)) {
-    const hitTarget = createSvgElement("g");
-    hitTarget.setAttribute("data-reader-interaction", "highlight");
-    hitTarget.setAttribute("data-reader-highlight-value", options.annotationValue);
-    hitTarget.style.cursor = "pointer";
-    hitTarget.style.pointerEvents = "all";
-    for (const rect of Array.from(rects)) {
-      const hitRect = createSvgElement("rect");
-      hitRect.setAttribute("x", String(rect.left));
-      hitRect.setAttribute("y", String(rect.top));
-      hitRect.setAttribute("width", String(rect.width));
-      hitRect.setAttribute("height", String(rect.height));
-      hitRect.setAttribute("fill", "transparent");
-      hitRect.style.pointerEvents = "all";
-      hitTarget.append(hitRect);
-    }
-    bindHighlightPointer(hitTarget);
-    const activate = (event: MouseEvent) => {
-      consumeReaderEvent(event, "immediate");
-      options.onActivate?.(event);
-    };
-    hitTarget.addEventListener("click", activate);
-    hitTarget.addEventListener("contextmenu", activate);
-    group.append(hitTarget);
+    // Highlight rectangles are handled by Overlay.hitTest on contextmenu.
+    // Keeping a hit layer here would intercept native text selection when a
+    // drag starts over the highlight.
   }
 
   if (!options.showBadge || rects.length === 0) return group;
@@ -78,7 +58,7 @@ export function drawAnnotation(
   }
   const badge = createSvgElement("g");
   if (options.annotationValue) badge.setAttribute("data-reader-annotation-badge", options.annotationValue);
-  badge.style.cursor = "pointer";
+  badge.style.cursor = "text";
   badge.style.pointerEvents = "auto";
   bindHighlightPointer(badge);
   badge.addEventListener("click", (event) => {

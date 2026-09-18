@@ -375,6 +375,11 @@ export function createViewerInput(options: ViewerInputOptions) {
       }, 0);
     };
     const handleMousePointerDown = (event: PointerEvent) => {
+      if (event.button === 2) {
+        // A secondary press must never complete a previously queued tap.
+        clearPendingMouseClick();
+        return;
+      }
       if (event.button !== 0 || resolveReaderPointerIntent(event.target) !== "content") return;
       claimReaderPointer(event, "content");
       mouseSelection = {
@@ -441,6 +446,10 @@ export function createViewerInput(options: ViewerInputOptions) {
         return;
       }
       queueMouseClick(click, region);
+    };
+
+    const handleSecondaryMouseDown = (event: MouseEvent) => {
+      if (event.button === 2) clearPendingMouseClick();
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -530,6 +539,10 @@ export function createViewerInput(options: ViewerInputOptions) {
     const stopOverlaySubscription = overlayInput.subscribe(cancelPendingInput);
 
     target.addEventListener("click", handleMouseClick, { capture: true, signal: events.signal });
+    target.addEventListener("mousedown", handleSecondaryMouseDown as EventListener, {
+      capture: true,
+      signal: events.signal,
+    });
     target.addEventListener("pointerdown", handlePointerDown as EventListener, {
       capture: true,
       signal: events.signal,

@@ -216,20 +216,51 @@ export function createAnnotations(options: AnnotationOptions) {
     });
   };
 
-  const openFromAnnotation = (detail: { index: number; range?: Range; value: string }) => {
+  const getVisibleRangeRect = (range: Range, viewport: DOMRect) => {
+    let best: DOMRect | undefined;
+    let bestArea = 0;
+    for (const rect of Array.from(range.getClientRects())) {
+      const left = Math.max(rect.left, 0);
+      const top = Math.max(rect.top, 0);
+      const right = Math.min(rect.right, viewport.width);
+      const bottom = Math.min(rect.bottom, viewport.height);
+      const area = Math.max(0, right - left) * Math.max(0, bottom - top);
+      if (area > bestArea) {
+        bestArea = area;
+        best = new DOMRect(left, top, right - left, bottom - top);
+      }
+    }
+    return best;
+  };
+
+  const openFromAnnotation = (detail: {
+    index: number;
+    range?: Range;
+    value: string;
+    point?: { x: number; y: number };
+  }) => {
     const highlight = annotationRepository.getByCfi(detail.value);
     if (!highlight) return;
 
     const frameBounds = getContentFrameBounds(findContentByIndex(detail.index));
-    const rangeBounds = detail.range?.getBoundingClientRect();
-    const point = frameBounds && rangeBounds
+    const rangeBounds = frameBounds && detail.range
+      ? getVisibleRangeRect(detail.range, frameBounds)
+      : undefined;
+    const point = detail.point && frameBounds
+      ? { x: frameBounds.left + detail.point.x, y: frameBounds.top + detail.point.y }
+      : frameBounds && rangeBounds
       ? {
           x: frameBounds.left + rangeBounds.left + rangeBounds.width / 2,
           y: frameBounds.top + rangeBounds.bottom,
         }
       : getViewportCenter();
 
-    open({ highlight, pageX: point.x, pageY: point.y });
+    open({
+      highlight,
+      pageX: point.x,
+      pageY: point.y,
+      selection: getSelectedReaderContext() ?? undefined,
+    });
   };
 
   const drawAnnotation = (detail: {

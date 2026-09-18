@@ -133,7 +133,7 @@ type ViewEvents = {
     load: { doc: Document, index: number }
     unload: { doc: Document }
     relocate: RelocateDetail
-    'show-annotation': { index: number, range?: Range, value: string }
+    'show-annotation': { index: number, range?: Range, value: string, point?: { x: number, y: number } }
 }
 
 export class ReaderView extends HTMLElement {
@@ -383,11 +383,12 @@ export class ReaderView extends HTMLElement {
     #createOverlay({ doc, index }: { doc: Document, index: number }, renderer: Renderer) {
         const overlay = new Overlay()
         const signal = this.#contents.get(doc)?.signal
-        doc.addEventListener('click', e => {
+        doc.addEventListener('contextmenu', e => {
             const [value, range] = overlay.hitTest(e)
-            if (value && !this.#decorations.get(index)?.has(value)) {
-                this.#emit('show-annotation', { value, index, range })
-            }
+            if (!value) return
+            if (e.cancelable) e.preventDefault()
+            e.stopImmediatePropagation()
+            this.#emit('show-annotation', { value, index, range, point: { x: e.clientX, y: e.clientY } })
         }, { signal })
 
         const decorations = this.#decorations.get(index)
