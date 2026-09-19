@@ -7,91 +7,33 @@
   }
 
   :root {
-    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 93%, transparent);
-    --reader-glass-filter: blur(24px) saturate(110%);
-    --reader-glass-border: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 10%, transparent);
-    --reader-glass-highlight: rgb(255 255 255 / 72%);
-    --reader-glass-shadow:
-      0 1px 3px rgb(15 23 42 / 4%),
-      0 8px 24px rgb(15 23 42 / 8%);
-    --reader-control-filter: blur(12px) saturate(125%);
-    --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
-    --reader-control-fg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 78%, transparent);
+    --reader-ui-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --reader-edge-inset: 0.75rem;
+    --reader-surface-bg: var(--reader-chrome-bg, #fffefd);
+    --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 14%, var(--reader-surface-bg));
+    --reader-control-fg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 76%, var(--reader-surface-bg));
     --reader-control-strong-fg: var(--reader-chrome-fg, #1f2933);
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 6%, transparent);
-    --reader-control-hover-fg: var(--reader-chrome-fg, #1f2933);
+    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 6%, var(--reader-surface-bg));
+    --reader-control-hover-fg: var(--reader-control-strong-fg);
+    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 3%, var(--reader-surface-bg));
+    --reader-field-placeholder: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 52%, var(--reader-surface-bg));
+    --reader-selection-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 10%, var(--reader-surface-bg));
+    --reader-toc-hover-bg: var(--reader-control-hover-bg);
     --reader-danger-fg: #a65f5f;
-    --reader-danger-hover-bg: color-mix(in srgb, #a65f5f 9%, transparent);
-    --reader-danger-hover-fg: #8f4f4f;
-    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 88%, var(--reader-chrome-fg, #1f2933) 4%);
-    --reader-selection-bg: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 10%, transparent);
-    --reader-field-placeholder: #94a3b8;
-    --reader-toc-hover-bg: color-mix(
-      in srgb,
-      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 92%, var(--reader-chrome-fg, #1f2933)) 84%,
-      transparent
-    );
-  }
-
-  html[data-reader-theme="light"] {
-    --reader-glass-bg: rgb(250 250 250 / 93%);
-    --reader-control-filter: blur(12px);
-    --reader-glass-border: rgb(0 0 0 / 7%);
-    --reader-glass-highlight: rgb(255 255 255 / 92%);
-    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 94%, var(--reader-chrome-fg, #1f2933));
-    --reader-selection-bg: color-mix(
-      in srgb,
-      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 93%, var(--reader-chrome-fg, #1f2933)) 78%,
-      transparent
-    );
-    --reader-control-hover-bg: color-mix(
-      in srgb,
-      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 90%, var(--reader-chrome-fg, #1f2933)) 88%,
-      transparent
-    );
-    --reader-toc-hover-bg: color-mix(
-      in srgb,
-      color-mix(in srgb, var(--reader-chrome-bg, #fffefd) 93%, var(--reader-chrome-fg, #1f2933)) 86%,
-      transparent
-    );
+    --reader-danger-hover-bg: color-mix(in srgb, var(--reader-danger-fg) 9%, var(--reader-surface-bg));
+    --reader-danger-hover-fg: var(--reader-danger-fg);
+    --reader-panel-shadow: 0 3px 12px rgb(0 0 0 / 6%);
+    --reader-glass-bg: var(--reader-surface-bg);
+    --reader-glass-border: var(--reader-border-subtle);
+    --reader-glass-highlight: transparent;
+    --reader-glass-shadow: var(--reader-panel-shadow);
+    --reader-glass-filter: none;
+    --reader-control-filter: none;
   }
 
   html[data-reader-mode="dark"] {
-    --reader-glass-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 93%, transparent);
-    --reader-glass-border: rgb(255 255 255 / 10%);
-    --reader-glass-highlight: rgb(255 255 255 / 8%);
-    --reader-glass-shadow:
-      0 1px 3px rgb(0 0 0 / 12%),
-      0 8px 24px rgb(0 0 0 / 20%);
-    --reader-border-subtle: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 8%, transparent);
-    --reader-control-fg: #d8dee9;
-    --reader-control-strong-fg: #e5ebf3;
-    --reader-control-hover-bg: color-mix(in srgb, var(--reader-chrome-fg, #e5ebf3) 14%, transparent);
-    --reader-control-hover-fg: white;
+    --reader-panel-shadow: 0 3px 12px rgb(0 0 0 / 14%);
     --reader-danger-fg: #d09a9a;
-    --reader-danger-hover-bg: rgb(208 154 154 / 11%);
-    --reader-danger-hover-fg: #dfabab;
-    --reader-field-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, var(--reader-chrome-fg, #e5ebf3) 6%);
-    --reader-field-placeholder: #8ea0b3;
-    --reader-toc-hover-bg: color-mix(in srgb, var(--reader-chrome-bg, #212830) 78%, white 10%);
-  }
-
-  html[data-reader-theme="gruvbox"] {
-    --reader-glass-bg: rgb(50 48 47 / 93%);
-    --reader-glass-border: rgb(235 219 178 / 10%);
-    --reader-glass-highlight: rgb(249 245 215 / 12%);
-    --reader-border-subtle: #3c3836;
-    --reader-control-fg: #d5c4a1;
-    --reader-control-strong-fg: #ebdbb2;
-    --reader-control-hover-bg: color-mix(
-      in srgb,
-      color-mix(in srgb, var(--reader-accent-primary) 10%, #3c3836) 86%,
-      transparent
-    );
-    --reader-control-hover-fg: #f9f5d7;
-    --reader-field-bg: #3c3836;
-    --reader-field-placeholder: #a89984;
-    --reader-toc-hover-bg: rgb(60 56 54 / 76%);
   }
 
   html,
@@ -113,7 +55,12 @@
     background: var(--reader-chrome-bg, #fbfaf7);
     color: var(--reader-chrome-fg, #1f2933);
     color-scheme: var(--reader-color-scheme, light);
+    font-family: var(--reader-ui-font);
     overflow: hidden;
+  }
+
+  :where(button, input, textarea, select) {
+    font-family: var(--reader-ui-font);
   }
 }
 
@@ -191,8 +138,6 @@
 
   .reader-modal::backdrop {
     background: color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 7%, transparent);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
   }
 
   .reader-modal[open],
@@ -203,7 +148,7 @@
   }
 
   .ui-button {
-    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-transparent p-0 text-sm font-medium text-current outline-none transition-[background-color,color,transform,box-shadow] duration-150;
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-sm font-medium text-current outline-none transition-[background-color,color,box-shadow] duration-150;
   }
 
   .ui-button:focus-visible {
@@ -221,7 +166,7 @@
   }
 
   .ui-button:active {
-    transform: scale(0.94);
+    background-color: var(--reader-selection-bg);
   }
 
   .reader-app {
@@ -233,7 +178,7 @@
 
   .reader-dock-shell {
     @apply fixed inset-x-0 top-0 z-20 flex justify-center;
-    padding-top: 0.75rem;
+    padding-top: var(--reader-edge-inset);
     pointer-events: none;
   }
 
@@ -485,7 +430,7 @@
 
   .reader-progress-shell {
     @apply fixed left-1/2 z-20 flex h-12 w-[min(24rem,76vw)] -translate-x-1/2 items-center px-2;
-    bottom: max(2rem, env(safe-area-inset-bottom));
+    bottom: max(var(--reader-edge-inset), env(safe-area-inset-bottom));
   }
 
   .reader-progress-row {
@@ -790,20 +735,12 @@
     color: var(--reader-control-fg);
   }
 
-  /* Text surfaces share a denser, quieter material inside the glass shell. */
-  .toc-root,
-  .settings-form,
   .book-info-stat {
-    border: 1px solid var(--reader-border-subtle);
-    background: color-mix(in srgb, var(--reader-field-bg) 96%, transparent);
-    box-shadow:
-      0 1px 2px rgb(0 0 0 / 4%),
-      0 3px 8px rgb(0 0 0 / 5%),
-      inset 0 1px 0 color-mix(in srgb, var(--reader-glass-highlight) 22%, transparent);
+    background: var(--reader-field-bg);
   }
 
   .toc-root {
-    @apply rounded-lg p-1;
+    @apply p-1;
   }
 
   .toc-list-item,
@@ -828,7 +765,7 @@
   }
 
   .toc-link {
-    @apply flex h-auto min-h-8 w-full cursor-pointer items-center rounded-md bg-transparent px-2 py-1.5 text-left text-[13px] font-medium leading-5 no-underline outline-none transition-colors duration-150;
+    @apply flex h-auto min-h-9 w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-1.5 text-left text-[13px] font-normal leading-5 no-underline outline-none transition-colors duration-150;
     color: var(--reader-control-fg);
   }
 
@@ -846,7 +783,7 @@
   .toc-link[data-selected="true"] {
     @apply font-semibold;
     color: var(--reader-accent-primary, #2563eb);
-    background: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 8%, transparent);
+    background: var(--reader-selection-bg);
   }
 
   .toc-link-label {
@@ -859,7 +796,7 @@
   }
 
   .toc-modal-box {
-    @apply w-[min(30rem,calc(100vw-2rem))] min-w-0 max-w-[calc(100vw-2rem)] rounded-xl border p-2;
+    @apply w-[min(30rem,calc(100vw-2rem))] min-w-0 max-w-[calc(100vw-2rem)] rounded-xl border p-3;
     height: fit-content;
     max-height: calc(100vh - 2rem);
     color: var(--reader-control-strong-fg);
@@ -867,7 +804,7 @@
   }
 
   .toc-dialog-box {
-    width: min(34rem, calc(100vw - 2rem));
+    width: min(36rem, calc(100vw - 2rem));
     max-height: min(42rem, calc(100vh - 2rem));
   }
 
@@ -928,20 +865,21 @@
   }
 
   .theme-modal-box {
-    @apply h-fit w-[min(21rem,calc(100vw-2rem))] rounded-xl border;
+    @apply h-fit w-[min(24rem,calc(100vw-2rem))] rounded-xl border;
   }
 
   .theme-dialog-header {
-    @apply border-b px-3 py-2.5;
+    @apply px-5 pt-5 pb-2;
     border-color: var(--reader-border-subtle);
   }
 
   .theme-dialog-header h2 {
-    @apply m-0 text-sm font-semibold;
+    @apply m-0 text-base font-semibold;
   }
 
   .settings-modal-box {
-    width: min(34rem, calc(100vw - 2rem));
+    width: min(36rem, calc(100vw - 2rem));
+    height: min(42rem, calc(100dvh - 2rem));
     max-height: min(42rem, calc(100vh - 2rem));
     border: 1px solid var(--reader-glass-border);
     border-radius: 0.75rem;
@@ -951,9 +889,10 @@
   .settings-root {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: 1rem;
-    padding: 1.125rem;
+    gap: 1.5rem;
+    padding: 1.5rem;
     max-height: min(42rem, calc(100vh - 2rem));
+    height: 100%;
     overflow: hidden;
   }
 
@@ -963,67 +902,92 @@
     letter-spacing: -0.012em;
   }
   .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: .125rem; }
-  .settings-tabs { display: flex; flex: none; gap: .125rem; padding: .1875rem; border-radius: .625rem; background: var(--reader-field-bg); box-shadow: inset 0 0 0 1px var(--reader-border-subtle); }
-  .settings-tabs button { @apply rounded-md border-0 bg-transparent px-3 py-1.5 text-xs font-medium outline-none transition-[background-color,color,box-shadow]; color: var(--reader-control-fg); }
+  .settings-tabs { display: flex; flex: none; gap: .25rem; }
+  .settings-tabs button { @apply rounded-md border-0 bg-transparent px-3 py-1.5 text-xs font-semibold outline-none transition-[background-color,color,box-shadow]; color: var(--reader-control-fg); }
   .settings-tabs button:hover { color: var(--reader-control-strong-fg); }
   .settings-tabs button:focus-visible { box-shadow: inset 0 0 0 1px var(--reader-accent-primary); }
-  .settings-tabs button[aria-selected="true"] { background: var(--reader-glass-bg); color: var(--reader-control-strong-fg); box-shadow: 0 1px 3px rgb(0 0 0 / 8%), inset 0 0 0 1px var(--reader-glass-border); }
+  .settings-tabs button[aria-selected="true"] { background: var(--reader-selection-bg); color: var(--reader-control-strong-fg); }
 
   .settings-form {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: .75rem;
+    gap: 1rem;
     overflow-y: auto;
     min-height: 0;
-    padding: .875rem;
-    border-radius: .75rem;
+    padding: .125rem;
     scrollbar-width: thin;
+  }
+
+  .settings-form-llm {
+    grid-template-rows: auto auto auto minmax(7rem, 1fr);
+  }
+
+  .settings-form-llm .settings-field-prompt {
+    min-height: 0;
+  }
+
+  .settings-form-llm .settings-field-prompt textarea {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .settings-language-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
   }
 
   .settings-field {
     display: grid;
     align-content: start;
-    gap: .375rem;
+    gap: .5rem;
     min-width: 0;
     color: var(--reader-control-fg);
     font-size: .75rem;
-    font-weight: 500;
+    font-weight: 600;
   }
 
-  .settings-field input {
-    @apply h-9 w-full rounded-lg border-0 px-2.5 text-[13px] font-normal outline-none transition-[background-color,box-shadow];
+  .settings-field input,
+  .settings-field select,
+  .settings-field textarea {
+    @apply w-full rounded-md border px-3 py-2 text-[13px] font-normal outline-none transition-[background-color,border-color];
     background: var(--reader-field-bg);
     color: var(--reader-control-strong-fg);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-control-fg) 16%, transparent);
+    border-color: var(--reader-border-subtle);
   }
 
-  .settings-field input::placeholder { color: color-mix(in srgb, var(--reader-control-fg) 52%, transparent); }
-  .settings-field input:focus-visible { box-shadow: inset 0 0 0 1px var(--reader-accent-primary), 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary) 18%, transparent); }
-  .settings-field textarea { @apply w-full resize-y rounded-lg border-0 px-2.5 py-2 text-[13px] font-normal leading-5 outline-none transition-[background-color,box-shadow]; min-height: 5rem; background: var(--reader-field-bg); color: var(--reader-control-strong-fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-control-fg) 16%, transparent); }
-  .settings-field textarea:focus-visible { box-shadow: inset 0 0 0 1px var(--reader-accent-primary), 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary) 18%, transparent); }
+  .settings-field input, .settings-field select { height: 2.5rem; }
+  .settings-field textarea { @apply resize-y leading-6; min-height: 7rem; }
+  .settings-field input::placeholder, .settings-field textarea::placeholder { color: var(--reader-field-placeholder); }
+  .settings-field :is(input, select, textarea):focus-visible {
+    border-color: var(--reader-accent-primary);
+    outline: 2px solid var(--reader-accent-primary);
+    outline-offset: 1px;
+  }
 
   .settings-reset {
-    @apply justify-self-start rounded-lg px-2.5 py-1.5 text-xs font-medium outline-none transition-colors;
+    @apply justify-self-start rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none transition-colors;
     color: var(--reader-control-fg);
   }
 
   .settings-reset:hover, .settings-reset:focus-visible { background: color-mix(in srgb, var(--reader-control-fg) 10%, transparent); }
 
   .settings-actions { display: flex; align-items: center; gap: .5rem; min-height: 2rem; flex-wrap: wrap; }
-  .settings-test { @apply rounded-lg px-3 py-1.5 text-xs font-semibold outline-none transition-[filter,opacity,box-shadow]; background: var(--reader-accent-primary); color: white; box-shadow: 0 2px 8px color-mix(in srgb, var(--reader-accent-primary) 20%, transparent); }
-  .settings-test:hover { filter: brightness(1.06); }
+  .settings-test { @apply rounded-md border px-3 py-1.5 text-xs font-semibold outline-none transition-[background-color,opacity,box-shadow]; background: var(--reader-field-bg); color: var(--reader-control-strong-fg); border-color: var(--reader-border-subtle); }
+  .settings-test:hover { background: var(--reader-control-hover-bg); }
   .settings-test:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--reader-accent-primary) 25%, transparent); }
   .settings-test:disabled { opacity: .45; }
   .settings-test-status { color: var(--reader-control-fg); font-size: .75rem; }
 
   @media (max-width: 540px) {
-    .settings-root { padding: .875rem; }
+    .settings-root { padding: 1rem; gap: 1.25rem; }
     .settings-header { align-items: flex-start; }
     .settings-form { padding: .75rem; }
+    .settings-language-row { grid-template-columns: minmax(0, 1fr); }
   }
 
   .theme-dialog-form {
-    @apply grid gap-4 p-3;
+    @apply grid gap-4 p-5;
   }
 
   .theme-group {
@@ -1036,23 +1000,21 @@
   }
 
   .theme-option {
-    @apply relative grid min-w-0 cursor-pointer gap-2 rounded-xl border border-transparent bg-transparent p-1.5 text-inherit outline-none transition-[background-color,border-color,transform,box-shadow] duration-150;
+    @apply relative grid min-w-0 cursor-pointer gap-2 rounded-md border border-transparent bg-transparent p-1.5 text-inherit outline-none transition-[background-color,border-color] duration-150;
   }
 
   .theme-option:hover {
     background: var(--reader-control-hover-bg);
-    transform: translateY(-1px);
   }
 
   .theme-option:focus-visible,
   .theme-option[data-state="checked"] {
     border-color: var(--reader-accent-primary);
     background: var(--reader-selection-bg);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-accent-primary) 12%, transparent);
   }
 
   .theme-preview {
-    @apply flex h-10 overflow-hidden rounded-lg;
+    @apply flex h-10 overflow-hidden rounded;
   }
 
   .theme-preview > span {
@@ -1060,7 +1022,7 @@
   }
 
   .theme-option-label {
-    @apply overflow-hidden text-center text-[11px] font-medium leading-4 text-ellipsis whitespace-nowrap;
+    @apply overflow-hidden text-center text-xs font-medium leading-5 text-ellipsis whitespace-nowrap;
     color: var(--reader-control-fg);
   }
 
@@ -1093,7 +1055,7 @@
     radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--reader-accent-secondary, #f4c430) 11%, transparent), transparent 36%),
     var(--reader-chrome-bg, #fffefd);
   color: var(--reader-chrome-fg, #1f2933);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--reader-ui-font);
 }
 
 .welcome-frame {

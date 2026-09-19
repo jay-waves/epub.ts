@@ -348,6 +348,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     } | null = null;
     let suppressMouseClick = false;
     let suppressMouseClickTimer: number | undefined;
+    let suppressSecondaryClickTimer: number | undefined;
     let pendingMouseClick: { event: MouseEvent; region: "left" | "right" } | null = null;
     let pendingMouseClickTimer: number | undefined;
     const clearPendingMouseClick = () => {
@@ -388,6 +389,18 @@ export function createViewerInput(options: ViewerInputOptions) {
         suppressMouseClick = false;
         suppressMouseClickTimer = undefined;
       }, 0);
+    };
+    const suppressSecondaryClick = () => {
+      suppressMouseClick = true;
+      if (suppressMouseClickTimer !== undefined) {
+        window.clearTimeout(suppressMouseClickTimer);
+        suppressMouseClickTimer = undefined;
+      }
+      if (suppressSecondaryClickTimer !== undefined) window.clearTimeout(suppressSecondaryClickTimer);
+      suppressSecondaryClickTimer = window.setTimeout(() => {
+        suppressMouseClick = false;
+        suppressSecondaryClickTimer = undefined;
+      }, 500);
     };
     const handleMousePointerDown = (event: PointerEvent) => {
       if (event.button === 2) {
@@ -430,19 +443,21 @@ export function createViewerInput(options: ViewerInputOptions) {
     const handleMouseClick = (event: Event) => {
       const click = event as MouseEvent;
       if (click.button !== 0 || click.ctrlKey || click.metaKey || click.altKey || click.shiftKey) return;
+      if (suppressMouseClick) {
+        suppressMouseClick = false;
+        if (suppressMouseClickTimer !== undefined) window.clearTimeout(suppressMouseClickTimer);
+        suppressMouseClickTimer = undefined;
+        if (suppressSecondaryClickTimer !== undefined) window.clearTimeout(suppressSecondaryClickTimer);
+        suppressSecondaryClickTimer = undefined;
+        clearPendingMouseClick();
+        return;
+      }
       if (!canTurnPage()) {
         clearPendingMouseClick();
         return;
       }
       if (!eventBelongsToReader(click) || resolveReaderPointerIntent(click.target) !== "content") return;
       if ("pointerType" in click && (click as PointerEvent).pointerType !== "mouse") return;
-      if (suppressMouseClick) {
-        suppressMouseClick = false;
-        if (suppressMouseClickTimer !== undefined) window.clearTimeout(suppressMouseClickTimer);
-        suppressMouseClickTimer = undefined;
-        clearPendingMouseClick();
-        return;
-      }
       const region = tapRegion(sourceDocument, click.clientX, click.clientY);
       if (options.getFlow() !== "paginated" || (region !== "left" && region !== "right")) return;
 
@@ -464,7 +479,14 @@ export function createViewerInput(options: ViewerInputOptions) {
     };
 
     const handleSecondaryMouseDown = (event: MouseEvent) => {
-      if (event.button === 2) clearPendingMouseClick();
+      if (event.button === 2) {
+        clearPendingMouseClick();
+        suppressSecondaryClick();
+      }
+    };
+    const handleSecondaryContextMenu = () => {
+      clearPendingMouseClick();
+      suppressSecondaryClick();
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -558,6 +580,10 @@ export function createViewerInput(options: ViewerInputOptions) {
       capture: true,
       signal: events.signal,
     });
+    target.addEventListener("contextmenu", handleSecondaryContextMenu, {
+      capture: true,
+      signal: events.signal,
+    });
     target.addEventListener("pointerdown", handlePointerDown as EventListener, {
       capture: true,
       signal: events.signal,
@@ -582,6 +608,7 @@ export function createViewerInput(options: ViewerInputOptions) {
       stopOverlaySubscription();
       cancelPendingInput();
       if (suppressMouseClickTimer !== undefined) window.clearTimeout(suppressMouseClickTimer);
+      if (suppressSecondaryClickTimer !== undefined) window.clearTimeout(suppressSecondaryClickTimer);
       events.abort();
     };
   };

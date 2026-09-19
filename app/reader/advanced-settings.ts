@@ -6,11 +6,11 @@ export type AdvancedReaderSettings = {
   textAlignment: TypographyTextAlignment;
   translationSourceLanguage: string | null;
   translationTargetLanguage: string;
+  translator: "builtin" | "llm";
   llmApiKey: string;
   llmBaseUrl: string;
   llmModel: string;
   llmTranslationPrompt: string;
-  llmLookupPrompt: string;
 };
 
 type EpubSettingsApi = {
@@ -18,6 +18,7 @@ type EpubSettingsApi = {
   readonly sourceLanguage: string | null;
   readonly textAlignment: TypographyTextAlignment;
   readonly translationTargetLanguage: string;
+  readonly translator: "builtin" | "llm";
   readonly llmApiKey: string;
   readonly llmBaseUrl: string;
   readonly llmModel: string;
@@ -28,15 +29,17 @@ type EpubSettingsApi = {
   setSourceLanguage(language: string | null): Promise<void>;
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
   setTranslationTargetLanguage(language: string): Promise<void>;
+  setTranslator(mode: "builtin" | "llm"): Promise<void>;
   setLlmApiKey(apiKey: string): Promise<void>;
   setLlmBaseUrl(baseUrl: string): Promise<void>;
   setLlmModel(model: string): Promise<void>;
   setLlmTranslationPrompt(prompt: string): Promise<void>;
-  setLlmLookupPrompt(prompt: string): Promise<void>;
 };
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
 const DEFAULT_TRANSLATION_TARGET_LANGUAGE = "zh-cn";
+const DEFAULT_LLM_TRANSLATION_PROMPT = "Translate the following text into Chinese. Preserve meaning, tone, names, formatting, and paragraph breaks. Output only the translation.\n\n{{selectedText}}";
+const LEGACY_DEFAULT_LLM_TRANSLATION_PROMPT = "Translate the following text into Chinese. Preserve meaning, tone, names, formatting, and paragraph breaks. Output only the translation.\n\n%s";
 
 export function createAdvancedSettingsController(
   onChange: (settings: AdvancedReaderSettings) => Promise<void> | void,
@@ -69,6 +72,7 @@ export function createAdvancedSettingsController(
     get translationTargetLanguage() {
       return value.translationTargetLanguage;
     },
+    get translator() { return value.translator; },
     get llmApiKey() { return value.llmApiKey; },
     get llmBaseUrl() { return value.llmBaseUrl; },
     get llmModel() { return value.llmModel; },
@@ -101,6 +105,10 @@ export function createAdvancedSettingsController(
         `[epub.ts] Translation target language changed to "${translationTargetLanguage}". Browser default: "${getBrowserLanguage()}".`,
       );
     },
+    async setTranslator(translator) {
+      if (translator !== "builtin" && translator !== "llm") throw new TypeError("Invalid translator.");
+      if (translator !== value.translator) await commit({ ...value, translator }, false);
+    },
     async setLlmApiKey(apiKey) {
       await commit({ ...value, llmApiKey: apiKey.trim() }, false);
       console.log("[epub.ts] LLM API key updated.");
@@ -115,7 +123,6 @@ export function createAdvancedSettingsController(
       console.log(`[epub.ts] LLM model changed to "${model.trim()}".`);
     },
     async setLlmTranslationPrompt(prompt) { await commit({ ...value, llmTranslationPrompt: prompt }, false); },
-    async setLlmLookupPrompt(prompt) { await commit({ ...value, llmLookupPrompt: prompt }, false); },
     async reset() {
       value = getDefaults();
       try {
@@ -145,11 +152,11 @@ export function createAdvancedSettingsController(
     setSourceLanguage: api.setSourceLanguage,
     setTextAlignment: api.setTextAlignment,
     setTranslationTargetLanguage: api.setTranslationTargetLanguage,
+    setTranslator: api.setTranslator,
     setLlmApiKey: api.setLlmApiKey,
     setLlmBaseUrl: api.setLlmBaseUrl,
     setLlmModel: api.setLlmModel,
     setLlmTranslationPrompt: api.setLlmTranslationPrompt,
-    setLlmLookupPrompt: api.setLlmLookupPrompt,
     reset: api.reset,
   };
 }
@@ -180,6 +187,7 @@ function getSettingsOverrides(settings: AdvancedReaderSettings) {
       default: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
     };
   }
+  if (settings.translator !== "builtin") overrides.translator = { current: settings.translator, default: "builtin" };
   return overrides;
 }
 
@@ -189,11 +197,11 @@ function getDefaults(): AdvancedReaderSettings {
     textAlignment: "auto",
     translationSourceLanguage: null,
     translationTargetLanguage: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
+    translator: "builtin",
     llmApiKey: "",
     llmBaseUrl: "",
     llmModel: "",
-    llmTranslationPrompt: "Translate the following text into Chinese. Preserve meaning, tone, names, formatting, and paragraph breaks. Output only the translation.\n\n%s",
-    llmLookupPrompt: "For the word below, write exactly 3 lines: POS abbreviation; Chinese definition; brief Chinese usage. No labels.\n\n%s",
+    llmTranslationPrompt: DEFAULT_LLM_TRANSLATION_PROMPT,
   };
 }
 
@@ -205,15 +213,16 @@ function loadSettings(): AdvancedReaderSettings {
       textAlignment?: unknown;
       translationSourceLanguage?: unknown;
       translationTargetLanguage?: unknown;
+      translator?: unknown;
       llmApiKey?: unknown;
       llmBaseUrl?: unknown;
       llmModel?: unknown;
       llmTranslationPrompt?: unknown;
-      llmLookupPrompt?: unknown;
     } | null;
     if (!saved) return defaults;
-    if ("llmApiKey" in saved) {
+    if ("llmApiKey" in saved || "llmLookupPrompt" in saved) {
       delete saved.llmApiKey;
+      delete (saved as { llmLookupPrompt?: unknown }).llmLookupPrompt;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     }
     return {
@@ -228,11 +237,13 @@ function loadSettings(): AdvancedReaderSettings {
         saved.translationTargetLanguage,
         defaults.translationTargetLanguage,
       ),
+      translator: saved.translator === "llm" ? "llm" : "builtin",
       llmApiKey: "",
       llmBaseUrl: typeof saved.llmBaseUrl === "string" ? saved.llmBaseUrl : defaults.llmBaseUrl,
       llmModel: typeof saved.llmModel === "string" ? saved.llmModel : defaults.llmModel,
-      llmTranslationPrompt: typeof saved.llmTranslationPrompt === "string" ? saved.llmTranslationPrompt : defaults.llmTranslationPrompt,
-      llmLookupPrompt: typeof saved.llmLookupPrompt === "string" ? saved.llmLookupPrompt : defaults.llmLookupPrompt,
+      llmTranslationPrompt: saved.llmTranslationPrompt === LEGACY_DEFAULT_LLM_TRANSLATION_PROMPT
+        ? defaults.llmTranslationPrompt
+        : typeof saved.llmTranslationPrompt === "string" ? saved.llmTranslationPrompt : defaults.llmTranslationPrompt,
     };
   } catch (error) {
     console.warn("[epub.ts] Could not read advanced settings; defaults are active.", error);

@@ -5,7 +5,6 @@ import { buildLlmPrompt } from "./llm-prompt";
 type Request = { text: string; x: number; y: number; lookup: boolean };
 type Options = {
   getTranslationPrompt: () => string;
-  getLookupPrompt: () => string;
   requestAi: (request: AiRequest) => Promise<string>;
   onUpdate: (detail: TranslationDetail) => void;
 };
@@ -20,8 +19,7 @@ export function createLlmTranslation(options: Options) {
     const base = { kind: lookup ? "lookup" as const : "translation" as const, sourceText: text, targetLanguage, x, y, status: "loading" as const };
     options.onUpdate({ ...base, message: lookup ? "Looking up…" : "Translating…" });
     try {
-      const template = lookup ? options.getLookupPrompt() : options.getTranslationPrompt();
-      const result = await options.requestAi({ prompt: buildLlmPrompt(template, text) });
+      const result = await options.requestAi({ prompt: buildLlmPrompt(options.getTranslationPrompt(), text) });
       if (controller.signal.aborted) return;
       options.onUpdate({ ...base, status: "success", translatedText: result.trim() });
     } catch (error) {

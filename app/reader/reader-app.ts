@@ -156,11 +156,11 @@ const annotationState = createAnnotations({
   getProgress: () => session.progress,
   getView,
   getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
+  getTranslator: () => advancedSettings.value.translator,
   getLlmApiKey: () => advancedSettings.value.llmApiKey,
   getLlmBaseUrl: () => advancedSettings.value.llmBaseUrl,
   getLlmModel: () => advancedSettings.value.llmModel,
   getLlmTranslationPrompt: () => advancedSettings.value.llmTranslationPrompt,
-  getLlmLookupPrompt: () => advancedSettings.value.llmLookupPrompt,
   requestAi: platform.requestAi,
   openExternal: platform.openExternal,
   onUnsaved: () => setHasUnsavedChanges(true),
@@ -799,6 +799,13 @@ function handlePageHide(event: PageTransitionEvent) {
   }
 }
 
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!session.dirty) return;
+  event.preventDefault();
+  // Required by browsers to trigger the built-in unsaved-changes prompt.
+  event.returnValue = "";
+}
+
 function initializeReaderRoot(node: HTMLDivElement | null) {
   if (!node || readerRoot) return;
   readerRoot = node;
@@ -871,9 +878,11 @@ function ReaderApplication() {
 
   useEffect(() => {
     window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handleBeforeUnload);
     void bootstrap().catch((error) => console.error("Failed to start viewer.", error));
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       void disposeViewer().catch((error) => console.warn("Failed to dispose viewer cleanly.", error));
     };
   }, []);

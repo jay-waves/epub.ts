@@ -15,11 +15,11 @@ type AnnotationOptions = {
   getProgress: () => number;
   getView: () => ReaderView | null;
   getTranslationTargetLanguage: () => string;
+  getTranslator: () => "builtin" | "llm";
   getLlmApiKey: () => string;
   getLlmBaseUrl: () => string;
   getLlmModel: () => string;
   getLlmTranslationPrompt: () => string;
-  getLlmLookupPrompt: () => string;
   requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
   openExternal: (url: string) => void;
   onUnsaved: () => void;
@@ -80,8 +80,8 @@ export function createAnnotations(options: AnnotationOptions) {
   const textContext = createTextContext<AnnotationContext>({
     closeAnnotation: options.closeAnnotation,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
+    getTranslator: options.getTranslator,
     getLlmTranslationPrompt: options.getLlmTranslationPrompt,
-    getLlmLookupPrompt: options.getLlmLookupPrompt,
     requestAi: options.requestAi,
     openExternal: options.openExternal,
     onAction: handleTextContextAction,

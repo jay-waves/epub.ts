@@ -20,8 +20,8 @@ export type TextContextActionDetail<Context> = {
 type TextContextOptions<Context> = {
   closeAnnotation: () => void;
   getTranslationTargetLanguage: () => string;
+  getTranslator: () => "builtin" | "llm";
   getLlmTranslationPrompt: () => string;
-  getLlmLookupPrompt: () => string;
   requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
   openExternal: (url: string) => void;
   onAction: (detail: TextContextActionDetail<Context>) => void;
@@ -39,18 +39,20 @@ function getLookupTerm(text: string) {
 
 /** Generic text actions over plain text and viewport coordinates. */
 export function createTextContext<Context>(options: TextContextOptions<Context>) {
-  const translation = options.requestAi
+  const llmTranslation = options.requestAi
     ? createLlmTranslation({
       getTranslationPrompt: options.getLlmTranslationPrompt,
-      getLookupPrompt: options.getLlmLookupPrompt,
       onUpdate: (detail) => options.updateUi({ translation: detail }),
       requestAi: options.requestAi,
     })
-    : createTranslation({
+    : null;
+  const browserTranslation = createTranslation({
       getSourceLanguage: () => undefined,
       getTargetLanguage: options.getTranslationTargetLanguage,
       onUpdate: (detail) => options.updateUi({ translation: detail }),
     });
+  const useLlm = () => options.getTranslator() === "llm" && llmTranslation !== null;
+  const cancelTranslation = () => { llmTranslation?.cancel(); browserTranslation.cancel(); };
   let current: TextContextRequest<Context> | null = null;
 
   const clear = () => {
@@ -73,10 +75,11 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
         run(navigator.clipboard.writeText(request.text), "Failed to copy reader text.");
         break;
       case "translate":
-        if (options.requestAi) {
-          void (translation as ReturnType<typeof createLlmTranslation>).request({ text: request.text, ...request.point, lookup: false });
+        cancelTranslation();
+        if (useLlm()) {
+          void llmTranslation!.request({ text: request.text, ...request.point, lookup: false });
         } else {
-          void (translation as ReturnType<typeof createTranslation>).translate({ sourceText: request.text, ...request.point });
+          void browserTranslation.translate({ sourceText: request.text, ...request.point });
         }
         break;
     }
@@ -85,10 +88,11 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
   const lookup = ({ sourceText, x, y }: Pick<import("../ui/model").TranslationDetail, "sourceText" | "x" | "y">) => {
     const term = getLookupTerm(sourceText);
     if (!term) return;
-    if (options.requestAi) {
-      void (translation as ReturnType<typeof createLlmTranslation>).request({ text: term, x, y, lookup: true });
+    cancelTranslation();
+    if (useLlm()) {
+      void llmTranslation!.request({ text: term, x, y, lookup: true });
     } else {
-      void (translation as ReturnType<typeof createTranslation>).translate({ sourceText: term, x, y });
+      void browserTranslation.translate({ sourceText: term, x, y });
     }
   };
 
@@ -96,11 +100,12 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     close,
     destroy() {
       close();
-      translation.cancel();
+      cancelTranslation();
+      browserTranslation.destroy();
     },
     dismiss() {
       close();
-      translation.cancel();
+      cancelTranslation();
       options.closeAnnotation();
       options.updateUi({ translation: null });
     },
@@ -120,11 +125,11 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
       } });
     },
     closeTranslation() {
-      translation.cancel();
+      cancelTranslation();
       options.updateUi({ translation: null });
     },
-    downloadTranslation: "download" in translation ? translation.download : () => {},
+    downloadTranslation: browserTranslation.download,
     lookup,
-    setTranslationSourceLanguage: "setSourceLanguage" in translation ? translation.setSourceLanguage : (_language: string | undefined | Promise<string | undefined>) => {},
+    setTranslationSourceLanguage: browserTranslation.setSourceLanguage,
   };
 }
