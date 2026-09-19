@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { SearchState } from "../model";
 import { Button, Tooltip } from "./ui";
-import { ChevronLeft, ChevronRight, Highlighter, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Highlighter, X } from "lucide-react";
 
-export function SearchBar({ onClose, onNext, onPrevious, onSearch, state }: {
+export function SearchBar({ onBack, onClose, onNext, onPrevious, onSearch, state }: {
+  onBack?: () => void;
   onClose: () => void;
   onNext: () => void;
   onPrevious: () => void;
@@ -40,7 +41,7 @@ export function SearchBar({ onClose, onNext, onPrevious, onSearch, state }: {
           disabled={!canNavigate}
           onClick={onPrevious}
         >
-          <ChevronLeft size={20} aria-hidden="true" />
+          <ArrowLeft size={17} strokeWidth={2.25} aria-hidden="true" />
         </Button>
       </Tooltip>
       <span aria-live="polite" className="search-count">
@@ -52,7 +53,7 @@ export function SearchBar({ onClose, onNext, onPrevious, onSearch, state }: {
           disabled={!canNavigate}
           onClick={onNext}
         >
-          <ChevronRight size={20} aria-hidden="true"/>
+          <ArrowRight size={17} strokeWidth={2.25} aria-hidden="true"/>
         </Button>
       </Tooltip>
       <form
@@ -80,15 +81,15 @@ export function SearchBar({ onClose, onNext, onPrevious, onSearch, state }: {
           className={highlightedOnly ? "search-mode-active" : undefined}
           onClick={toggleHighlightedOnly}
         >
-          <Highlighter size={20} aria-hidden="true"/>
+          <Highlighter size={17} strokeWidth={2.25} aria-hidden="true"/>
         </Button>
       </Tooltip>
       <Tooltip label="Close search" side="bottom">
         <Button
           aria-label="Close search"
-          onClick={onClose}
+          onClick={onBack ?? onClose}
         >
-          <X size={20} aria-hidden="true"/>
+          <X size={17} strokeWidth={2.25} aria-hidden="true"/>
         </Button>
       </Tooltip>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AdvancedReaderSettings } from "../../advanced-settings";
+import { buildLlmPrompt } from "../../context-menu/llm-prompt";
 import { Dialog } from "./ui";
 
 type SettingsActions = {
@@ -14,57 +15,133 @@ type SettingsActions = {
   setLlmModel(value: string): Promise<void>;
   setLlmTranslationPrompt(value: string): Promise<void>;
   setLlmLookupPrompt(value: string): Promise<void>;
-  reset(): Promise<void>;
+  reset(): Promise<AdvancedReaderSettings>;
 };
 
-export function SettingsDialog({ open, settings, actions, onClose, requestAi }: {
+export function SettingsDialog({ open, settings, actions, onClose, requestAi, getAiConfig, setAiConfig }: {
   open: boolean;
   settings: AdvancedReaderSettings;
   actions: SettingsActions;
   onClose: () => void;
   requestAi?: (request: import("../../../platform/types").AiRequest) => Promise<string>;
+  getAiConfig?: () => Promise<import("../../../platform/types").AiConfig>;
+  setAiConfig?: (config: import("../../../platform/types").AiConfigUpdate) => Promise<void>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [values, setValues] = useState(() => fields(settings));
   const [testStatus, setTestStatus] = useState("");
-  useEffect(() => setValues(fields(settings)), [settings]);
+  const [backendConfig, setBackendConfig] = useState<import("../../../platform/types").AiConfig | null>(null);
+  const [section, setSection] = useState<"general" | "llm">("general");
+  const editRevision = useRef(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    if (!open) return;
+    editRevision.current++;
+    setValues(fields(settings));
+    setTestStatus("");
+    setBackendConfig(null);
+  }, [open]);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (open && dialog && !dialog.open) dialog.showModal();
     else if (!open && dialog?.open) dialog.close();
   }, [open]);
+  useEffect(() => {
+    if (!open || !getAiConfig) return;
+    let cancelled = false;
+    const revision = editRevision.current;
+    void saveQueue.current.catch(() => {}).then(getAiConfig).then((config) => {
+      if (cancelled) return;
+      if (revision === editRevision.current) {
+        setBackendConfig(config);
+        setValues((current) => ({ ...current, baseUrl: config.baseUrl, model: config.model }));
+      }
+    }).catch((error: unknown) => {
+      if (!cancelled) setTestStatus(error instanceof Error ? error.message : "Could not load LLM settings.");
+    });
+    return () => { cancelled = true; };
+  }, [open, getAiConfig]);
+
+  const queueBackendUpdate = (config: import("../../../platform/types").AiConfigUpdate) => {
+    if (!setAiConfig) return Promise.resolve();
+    const next = saveQueue.current.catch(() => {}).then(() => setAiConfig(config));
+    saveQueue.current = next;
+    return next;
+  };
 
   const update = (key: keyof ReturnType<typeof fields>, value: string) => {
     setValues((current) => ({ ...current, [key]: value }));
-    void commit(key, value, actions);
+    setTestStatus("");
+    if (key !== "apiKey" && key !== "baseUrl" && key !== "model") {
+      void commit(key, value, actions);
+    }
+    if (key === "apiKey" || key === "baseUrl" || key === "model") {
+      const revision = ++editRevision.current;
+      void queueBackendUpdate({ [key]: value }).then(() => {
+        if (revision === editRevision.current && key === "apiKey") {
+          setBackendConfig((current) => ({
+            apiKeyConfigured: Boolean(value),
+            baseUrl: current?.baseUrl ?? values.baseUrl,
+            model: current?.model ?? values.model,
+          }));
+        }
+      }, (error: unknown) => {
+        if (revision === editRevision.current) {
+          setTestStatus(error instanceof Error ? error.message : "Could not save LLM settings.");
+        }
+      });
+    }
+  };
+
+  const reset = async () => {
+    try {
+      await queueBackendUpdate({ apiKey: "", baseUrl: "", model: "" });
+      const defaults = await actions.reset();
+      editRevision.current++;
+      setValues(fields(defaults));
+      setBackendConfig({ apiKeyConfigured: false, baseUrl: "", model: "" });
+      setTestStatus("");
+    } catch (error) {
+      setTestStatus(error instanceof Error ? error.message : "Could not reset settings.");
+    }
+  };
+
+  const testConnection = async () => {
+    if (!requestAi) return;
+    setTestStatus("Testing…");
+    try {
+      await saveQueue.current;
+      await requestAi({ prompt: buildLlmPrompt(values.translationPrompt, "hello") });
+      setTestStatus("LLM connection successful.");
+    } catch (error) {
+      setTestStatus(error instanceof Error ? error.message : "LLM connection failed.");
+    }
   };
 
   return <Dialog id="settings-modal" aria-labelledby="settings-dialog-title" className="settings-modal-box" onClose={onClose} ref={dialogRef}>
     <div className="settings-root">
-      <header className="settings-header"><h2 id="settings-dialog-title">Settings</h2></header>
-      <div className="settings-form">
+      <header className="settings-header"><h2 id="settings-dialog-title">Settings</h2><nav aria-label="Settings sections" className="settings-tabs" role="tablist"><button type="button" role="tab" onClick={() => setSection("general")} aria-selected={section === "general"}>General</button><button type="button" role="tab" onClick={() => setSection("llm")} aria-selected={section === "llm"}>LLM</button></nav></header>
+      <div className="settings-form" role="tabpanel">
+        {section === "general" ? <>
         <Setting label="Serif font" value={values.serif} placeholder={settings.fonts.serif} onChange={(v) => update("serif", v)} />
         <Setting label="Sans font" value={values.sans} placeholder={settings.fonts.sans} onChange={(v) => update("sans", v)} />
         <Setting label="Monospace font" value={values.mono} placeholder={settings.fonts.mono} onChange={(v) => update("mono", v)} />
         <Setting label="Source language" value={values.source} placeholder="Auto detect" onChange={(v) => update("source", v)} />
         <Setting label="Target language" value={values.target} placeholder="zh-CN" onChange={(v) => update("target", v)} />
         <Setting label="Text alignment" value={values.alignment} placeholder="auto, start, or justify" onChange={(v) => update("alignment", v)} />
-        <Setting label="LLM API key" value={values.apiKey} placeholder="Required for desktop AI" type="password" onChange={(v) => update("apiKey", v)} />
-        <Setting label="LLM base URL" value={values.baseUrl} placeholder="https://api.openai.com/v1" onChange={(v) => update("baseUrl", v)} />
+        </> : <>
+        <Setting label="LLM API key" value={values.apiKey} placeholder={backendConfig?.apiKeyConfigured ? "********" : "Required for desktop AI"} type="password" onChange={(v) => update("apiKey", v)} />
+        <Setting label="LLM base URL (include https://)" value={values.baseUrl} placeholder="https://api.deepseek.com" onChange={(v) => update("baseUrl", v)} />
         <Setting label="LLM model" value={values.model} placeholder="Model name" onChange={(v) => update("model", v)} />
         <PromptSetting label="Translation prompt" value={values.translationPrompt} placeholder="Translation instructions" onChange={(v) => update("translationPrompt", v)} />
         <PromptSetting label="Lookup prompt" value={values.lookupPrompt} placeholder="Dictionary lookup instructions" onChange={(v) => update("lookupPrompt", v)} />
+        </>}
       </div>
-      <div className="settings-actions">
-        <button className="settings-reset" type="button" onClick={() => void actions.reset()}>Reset settings</button>
-        <button className="settings-test" type="button" disabled={!requestAi} onClick={() => {
-          if (!requestAi) return;
-          setTestStatus("Testing…");
-          void requestAi({ text: "hello", targetLanguage: "zh-cn", lookup: false, apiKey: values.apiKey || settings.llmApiKey, baseUrl: values.baseUrl, model: values.model, translationPrompt: values.translationPrompt, lookupPrompt: values.lookupPrompt })
-            .then(() => setTestStatus("LLM connection successful."), (error: unknown) => setTestStatus(error instanceof Error ? error.message : "LLM connection failed."));
-        }}>Test LLM</button>
+      {section === "llm" ? <div className="settings-actions">
+        <button className="settings-reset" type="button" onClick={() => void reset()}>Reset settings</button>
+        <button className="settings-test" type="button" disabled={!requestAi} onClick={() => void testConnection()}>Test LLM</button>
         {testStatus ? <span className="settings-test-status" role="status">{testStatus}</span> : null}
-      </div>
+      </div> : null}
     </div>
   </Dialog>;
 }
@@ -74,7 +151,7 @@ function Setting({ label, value, placeholder, type = "text", onChange }: { label
 }
 
 function PromptSetting({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange(value: string): void }) {
-  return <label className="settings-field"><span>{label}</span><textarea value={value} placeholder={placeholder} rows={3} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="settings-field settings-field-prompt"><span>{label}</span><textarea value={value} placeholder={placeholder} rows={3} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function fields(settings: AdvancedReaderSettings) {

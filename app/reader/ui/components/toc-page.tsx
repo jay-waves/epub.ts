@@ -40,7 +40,7 @@ export function TocPage({ onClose, onNavigate, open, state }: {
     <Dialog
       id="toc-modal"
       aria-label="Table of contents"
-      className="toc-modal-box"
+      className="toc-modal-box toc-dialog-box"
       onClose={onClose}
       ref={dialogRef}
     >

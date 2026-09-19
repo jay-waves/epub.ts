@@ -27,7 +27,6 @@ export function openMediaContext(
       canCopy: true,
       canDelete: false,
       canHighlight: false,
-      canLookUp: false,
       canTranslate: false,
       x,
       y,

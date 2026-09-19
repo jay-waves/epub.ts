@@ -4,19 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
 )
 
 type aiRequest struct {
-	Text              string `json:"text"`
-	TargetLanguage    string `json:"targetLanguage"`
-	Lookup            bool   `json:"lookup"`
-	APIKey            string `json:"apiKey"`
-	BaseURL           string `json:"baseUrl"`
-	Model             string `json:"model"`
-	TranslationPrompt string `json:"translationPrompt"`
-	LookupPrompt      string `json:"lookupPrompt"`
+	Prompt string `json:"prompt"`
 }
 
 type aiResponse struct {
@@ -24,9 +18,65 @@ type aiResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-const aiSystemPrompt = `You are a precise reading assistant. Use non-thinking mode and answer only with the requested result.
-For translation, translate the supplied text into the target language. Preserve meaning, tone, names, formatting, and paragraph breaks. Do not explain your choices.
-For dictionary lookup, give a concise definition in the target language, part of speech, and a short explanation of the word's usage. Keep the answer brief and do not use markdown headings.`
+type aiConfig struct {
+	APIKey           string `json:"-"`
+	APIKeyConfigured bool   `json:"apiKeyConfigured"`
+	BaseURL          string `json:"baseUrl"`
+	Model            string `json:"model"`
+}
+
+type aiConfigUpdate struct {
+	APIKey  *string `json:"apiKey"`
+	BaseURL *string `json:"baseUrl"`
+	Model   *string `json:"model"`
+}
+
+var desktopAIConfig aiConfig
+var desktopAIConfigMutex sync.RWMutex
+
+func currentAIConfig() aiConfig {
+	desktopAIConfigMutex.RLock()
+	defer desktopAIConfigMutex.RUnlock()
+	return desktopAIConfig
+}
+
+func (app *App) handleAIConfig(response http.ResponseWriter, request *http.Request) {
+	if !app.sameOrigin(request) {
+		writeJSONError(response, http.StatusForbidden, "forbidden_origin", "The AI config request did not come from this epub.ts instance.")
+		return
+	}
+	switch request.Method {
+	case http.MethodGet:
+		config := currentAIConfig()
+		config.APIKeyConfigured = config.APIKey != ""
+		writeJSON(response, http.StatusOK, config)
+	case http.MethodPut:
+		var input aiConfigUpdate
+		if err := json.NewDecoder(http.MaxBytesReader(response, request.Body, 64<<10)).Decode(&input); err != nil {
+			writeJSONError(response, http.StatusBadRequest, "invalid_ai_config", "Invalid AI config.")
+			return
+		}
+		desktopAIConfigMutex.Lock()
+		config := desktopAIConfig
+		if input.APIKey != nil {
+			config.APIKey = *input.APIKey
+		}
+		if input.BaseURL != nil {
+			config.BaseURL = *input.BaseURL
+		}
+		if input.Model != nil {
+			config.Model = *input.Model
+		}
+		desktopAIConfig = config
+		desktopAIConfigMutex.Unlock()
+		response.WriteHeader(http.StatusNoContent)
+	default:
+		response.Header().Set("Allow", "GET, PUT")
+		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+const aiSystemPrompt = "Follow the user's reading request. Return only the requested result."
 
 func (app *App) handleAI(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
@@ -43,21 +93,18 @@ func (app *App) handleAI(response http.ResponseWriter, request *http.Request) {
 		writeJSONError(response, http.StatusBadRequest, "invalid_ai_request", "Invalid AI request.")
 		return
 	}
-	if input.Text == "" || input.APIKey == "" || input.BaseURL == "" || input.Model == "" {
+	aiConfig := currentAIConfig()
+	if input.Prompt == "" || aiConfig.APIKey == "" || aiConfig.BaseURL == "" || aiConfig.Model == "" {
 		writeJSONError(response, http.StatusBadRequest, "invalid_ai_request", "Text, API key, base URL, and model are required.")
 		return
 	}
-	config := openai.DefaultConfig(input.APIKey)
-	config.BaseURL = strings.TrimRight(input.BaseURL, "/")
+	config := openai.DefaultConfig(aiConfig.APIKey)
+	config.BaseURL = strings.TrimRight(aiConfig.BaseURL, "/")
 	client := openai.NewClientWithConfig(config)
-	prompt := input.TranslationPrompt + "\nTarget language: " + input.TargetLanguage + ". Text:\n" + input.Text
-	if input.Lookup {
-		prompt = input.LookupPrompt + "\nTarget language: " + input.TargetLanguage + ". Word: " + input.Text
-	}
 	completion, err := client.CreateChatCompletion(request.Context(), openai.ChatCompletionRequest{
-		Model:       input.Model,
-		Messages:    []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: aiSystemPrompt}, {Role: openai.ChatMessageRoleUser, Content: prompt}},
-		Temperature: 0,
+		Model:           aiConfig.Model,
+		Messages:        []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: aiSystemPrompt}, {Role: openai.ChatMessageRoleUser, Content: input.Prompt}},
+		ReasoningEffort: "none",
 	})
 	if err != nil {
 		writeJSON(response, http.StatusBadGateway, aiResponse{Message: err.Error()})

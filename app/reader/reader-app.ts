@@ -186,6 +186,7 @@ function ensureViewerInput() {
       progressReturnRequest: state.progressReturnRequest + 1,
     })),
     dispatchProgressSeek: goToProgress,
+    dispatchSettings: () => updateUi({ settingsOpen: true }),
   });
   const view = getView();
   if (view) runtime.input.bindReaderView(view);
@@ -672,6 +673,9 @@ async function runReaderStyleChange(action: () => void | Promise<void>) {
 
 async function handleDockAction(action: DockAction) {
   switch (action) {
+    case "open-settings":
+      updateUi({ settingsOpen: true });
+      return;
     case "open-info":
       updateBookInfo();
       updateUi({ bookInfoOpen: true });
@@ -901,6 +905,7 @@ function ReaderApplication() {
       updateUi({ annotation: null });
     },
     downloadTranslation: annotationState.downloadTranslation,
+    lookupTranslation: annotationState.lookupTranslation,
     navigateToc,
     nextSearchResult: () => { void runtime.search?.next(); },
     openLocalFile: (file) => {
@@ -934,6 +939,8 @@ function ReaderApplication() {
     settings: advancedSettings.value,
     settingsActions: advancedSettings,
     requestAi: platform.requestAi,
+    getAiConfig: platform.getAiConfig,
+    setAiConfig: platform.setAiConfig,
   });
 }
 

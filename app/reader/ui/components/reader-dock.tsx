@@ -1,35 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DockAction, DockState } from "../model";
+import type { LucideIcon } from "lucide-react";
+import type { DockAction, DockState, SearchState } from "../model";
 import { Button, Tooltip } from "./ui";
+import { SearchBar } from "./search-bar";
 
-import { LayoutTemplate, Palette, Minus, Plus, Minimize2, Maximize2, Save, Search, Info, TableOfContents } from "lucide-react";
+import { Settings, Search, Save, Info, TableOfContents, Palette, Minus, Plus, Minimize2, Maximize2 } from "lucide-react";
 
-const dockItems = [
-  {
-    action: "toggle-layout",
-    label: "Switch to scrolling mode",
-    icon: LayoutTemplate,
-  },
-  {
-    action: "open-theme",
-    label: "Themes",
-    icon: Palette,
-  },
-  { action: "decrease-font", label: "Decrease font size", icon: Minus },
-  { action: "increase-font", label: "Increase font size", icon: Plus },
-  { action: "increase-width", label: "Zoom in", icon: Maximize2 },
-  { action: "decrease-width", label: "Zoom out", icon: Minimize2 },
-  { action: "toggle-search", label: "Search", icon: Search },
-  { action: "open-toc", label: "Table of contents", icon: TableOfContents },
-  { action: "save-book", label: "Save", icon: Save },
-  { action: "open-info", label: "Book information", icon: Info },
-] as const;
-
-export function ReaderDock({ onAction, onOpenChange, open, state }: {
+export function ReaderDock({
+  onAction,
+  onOpenChange,
+  open,
+  state,
+  search,
+  onCloseSearch,
+  onNextSearch,
+  onPreviousSearch,
+  onSearch,
+}: {
   onAction: (action: DockAction) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   state: DockState;
+  search: SearchState;
+  onCloseSearch: () => void;
+  onNextSearch: () => void;
+  onPreviousSearch: () => void;
+  onSearch: (query: string, highlightedOnly: boolean) => void;
 }) {
   const [hoverOpen, setHoverOpen] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,12 +36,11 @@ export function ReaderDock({ onAction, onOpenChange, open, state }: {
     }
   }, []);
 
-  useEffect(() => {
-    setHoverOpen(false);
-    return cancelHide;
-  }, [state.searchActive, cancelHide]);
-
-  if (state.searchActive) return null;
+  useEffect(() => cancelHide, [cancelHide]);
+  const run = (action: DockAction) => {
+    onOpenChange(false);
+    onAction(action);
+  };
 
   return (
     <aside
@@ -64,37 +59,37 @@ export function ReaderDock({ onAction, onOpenChange, open, state }: {
         }, 350);
       }}
     >
-      <div className="reader-dock">
-        {dockItems.map((item) => {
-          const label = getDockItemLabel(item.action, item.label, state);
-          const Icon = item.icon;
-          const disabled = item.action === "toggle-search" && !state.canSearch
-            || item.action === "save-book" && !state.hasUnsavedChanges;
-
-          return (
-            <Tooltip key={item.action} label={label} side="right">
-              <Button
-                aria-label={label}
-                disabled={disabled}
-                onClick={() => {
-                  onOpenChange(false);
-                  onAction(item.action);
-                }}
-              >
-                <span className="dock-button-content">
-                  <Icon size={20} aria-hidden="true" />
-                </span>
-              </Button>
-            </Tooltip>
-          );
-        })}
+      <div className="reader-dock-toolbar">
+        {!state.searchActive ? (
+          <div className="reader-dock reader-dock-primary" aria-label="Reader toolbar">
+            <DockButton label="Settings" icon={Settings} onClick={() => run("open-settings")} />
+            <DockButton label="Themes" icon={Palette} onClick={() => run("open-theme")} />
+            <DockButton label="Decrease font size" icon={Minus} onClick={() => onAction("decrease-font")} />
+            <DockButton label="Increase font size" icon={Plus} onClick={() => onAction("increase-font")} />
+            <DockButton label="Zoom out" icon={Minimize2} onClick={() => onAction("decrease-width")} />
+            <DockButton label="Zoom in" icon={Maximize2} onClick={() => onAction("increase-width")} />
+            <span className="reader-dock-divider" aria-hidden="true" />
+            <DockButton label="Search" icon={Search} disabled={!state.canSearch} onClick={() => onAction("toggle-search")} />
+            <DockButton label="Outline" icon={TableOfContents} onClick={() => run("open-toc")} />
+            <DockButton label={state.hasUnsavedChanges ? "Save changes" : "Save"} icon={Save} disabled={!state.hasUnsavedChanges} onClick={() => run("save-book")} />
+            <DockButton label="Book information" icon={Info} onClick={() => run("open-info")} />
+          </div>
+        ) : (
+          <div className="reader-dock-search">
+            <SearchBar onBack={onCloseSearch} onClose={onCloseSearch} onNext={onNextSearch} onPrevious={onPreviousSearch} onSearch={onSearch} state={search} />
+          </div>
+        )}
       </div>
     </aside>
   );
 }
 
-function getDockItemLabel(action: DockAction, fallback: string, dockState: DockState) {
-  if (action === "toggle-layout") return dockState.layoutLabel;
-  if (action === "save-book" && dockState.hasUnsavedChanges) return "Save changes";
-  return fallback;
+function DockButton({ label, icon: Icon, disabled, onClick }: { label: string; icon: LucideIcon; disabled?: boolean; onClick: () => void }) {
+  return (
+    <Tooltip label={label} side="bottom">
+      <Button className="reader-dock-icon-button" aria-label={label} disabled={disabled} onClick={onClick}>
+        <Icon size={16} strokeWidth={2.25} aria-hidden="true" />
+      </Button>
+    </Tooltip>
+  );
 }

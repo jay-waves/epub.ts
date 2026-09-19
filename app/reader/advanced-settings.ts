@@ -21,7 +21,7 @@ type EpubSettingsApi = {
   readonly llmApiKey: string;
   readonly llmBaseUrl: string;
   readonly llmModel: string;
-  reset(): Promise<void>;
+  reset(): Promise<AdvancedReaderSettings>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
   setSerifFont(fontFamily: string): Promise<void>;
@@ -36,6 +36,7 @@ type EpubSettingsApi = {
 };
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
+const DEFAULT_TRANSLATION_TARGET_LANGUAGE = "zh-cn";
 
 export function createAdvancedSettingsController(
   onChange: (settings: AdvancedReaderSettings) => Promise<void> | void,
@@ -116,7 +117,6 @@ export function createAdvancedSettingsController(
     async setLlmTranslationPrompt(prompt) { await commit({ ...value, llmTranslationPrompt: prompt }, false); },
     async setLlmLookupPrompt(prompt) { await commit({ ...value, llmLookupPrompt: prompt }, false); },
     async reset() {
-      if (!Object.keys(getSettingsOverrides(value)).length) return;
       value = getDefaults();
       try {
         localStorage.removeItem(STORAGE_KEY);
@@ -125,6 +125,7 @@ export function createAdvancedSettingsController(
       }
       await onChange(value);
       console.log("[epub.ts] Advanced settings reset to defaults.");
+      return value;
     },
   };
 
@@ -173,10 +174,10 @@ function getSettingsOverrides(settings: AdvancedReaderSettings) {
       default: "auto",
     };
   }
-  if (settings.translationTargetLanguage !== getBrowserLanguage()) {
+  if (settings.translationTargetLanguage !== DEFAULT_TRANSLATION_TARGET_LANGUAGE) {
     overrides.translationTargetLanguage = {
       current: settings.translationTargetLanguage,
-      default: getBrowserLanguage(),
+      default: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
     };
   }
   return overrides;
@@ -187,12 +188,12 @@ function getDefaults(): AdvancedReaderSettings {
     fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },
     textAlignment: "auto",
     translationSourceLanguage: null,
-      translationTargetLanguage: "zh-cn",
-      llmApiKey: "",
-      llmBaseUrl: "",
-      llmModel: "",
-      llmTranslationPrompt: "Translate the supplied text into the target language. Preserve meaning, tone, names, formatting, and paragraph breaks. Do not explain your choices.",
-      llmLookupPrompt: "Give a concise definition in the target language, part of speech, and a short explanation of the word's usage. Keep the answer brief and do not use markdown headings.",
+    translationTargetLanguage: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
+    llmApiKey: "",
+    llmBaseUrl: "",
+    llmModel: "",
+    llmTranslationPrompt: "Translate the following text into Chinese. Preserve meaning, tone, names, formatting, and paragraph breaks. Output only the translation.\n\n%s",
+    llmLookupPrompt: "For the word below, write exactly 3 lines: POS abbreviation; Chinese definition; brief Chinese usage. No labels.\n\n%s",
   };
 }
 
@@ -241,7 +242,7 @@ function loadSettings(): AdvancedReaderSettings {
 
 function persistSettings(settings: AdvancedReaderSettings) {
   try {
-    const { llmApiKey: _llmApiKey, ...persisted } = settings;
+    const { llmApiKey: _llmApiKey, llmBaseUrl: _llmBaseUrl, llmModel: _llmModel, ...persisted } = settings;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
   } catch (error) {
     console.warn("[epub.ts] Could not persist advanced settings.", error);

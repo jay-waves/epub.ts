@@ -1,4 +1,4 @@
-import { BookOpen, Copy, Highlighter, Languages, SquarePen, Trash2 } from "lucide-react";
+import { Copy, Highlighter, Languages, SquarePen, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
 import type { ContentContextAction, ContentContextMenuDetail } from "../model";
@@ -6,7 +6,6 @@ import type { ContentContextAction, ContentContextMenuDetail } from "../model";
 const menuItems = [
   { action: "copy", enabledBy: "canCopy", icon: Copy, label: "Copy" },
   { action: "translate", enabledBy: "canTranslate", icon: Languages, label: "Translate" },
-  { action: "lookup", enabledBy: "canLookUp", icon: BookOpen, label: "Look Up" },
   { action: "highlight", enabledBy: "canHighlight", icon: Highlighter, label: "Highlight" },
   { action: "annotate", enabledBy: "canAnnotate", icon: SquarePen, label: "Annotate" },
   { action: "delete", destructive: true, enabledBy: "canDelete", icon: Trash2, label: "Delete" },

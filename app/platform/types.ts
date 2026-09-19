@@ -47,15 +47,13 @@ export interface ViewerPlatform {
   readViewerMetadata<Value>(key: string): Promise<Value | undefined>;
   writeViewerMetadata<Value>(key: string, value: Value): Promise<void>;
   requestAi?(request: AiRequest): Promise<string>;
+  getAiConfig?(): Promise<AiConfig>;
+  setAiConfig?(config: AiConfigUpdate): Promise<void>;
 }
 
+export type AiConfig = { apiKeyConfigured: boolean; baseUrl: string; model: string };
+export type AiConfigUpdate = Partial<Omit<AiConfig, "apiKeyConfigured">> & { apiKey?: string };
+
 export type AiRequest = {
-  text: string;
-  targetLanguage: string;
-  lookup: boolean;
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  translationPrompt: string;
-  lookupPrompt: string;
+  prompt: string;
 };

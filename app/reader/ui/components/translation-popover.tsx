@@ -1,17 +1,14 @@
-import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, Languages } from "lucide-react";
+import { BookOpen, ExternalLink, Languages } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
 import type { TranslationDetail } from "../model";
 
-export function TranslationPopover({ detail, onClose, onDownload, onExternal }: {
+export function TranslationPopover({ detail, onClose, onDownload, onExternal, onLookup }: {
   detail: TranslationDetail | null;
   onClose: () => void;
   onDownload: () => void;
   onExternal: (detail: TranslationDetail) => void;
+  onLookup: (detail: TranslationDetail) => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => setCopied(false), [detail]);
-
   const popover = usePointPopover({
     onDismiss: onClose,
     open: Boolean(detail),
@@ -21,7 +18,7 @@ export function TranslationPopover({ detail, onClose, onDownload, onExternal }: 
 
   if (!detail) return null;
   const translatedText = detail.translatedText?.trim() ?? "";
-  const canCopy = detail.status === "success" && Boolean(translatedText);
+  const canLookUp = detail.kind !== "lookup" && isLookupTerm(detail.sourceText);
   const targetLanguageName = getLanguageName(detail.targetLanguage);
   const translationDirection = detail.sourceLanguage
     ? `${getLanguageName(detail.sourceLanguage)} → ${targetLanguageName}`
@@ -46,19 +43,16 @@ export function TranslationPopover({ detail, onClose, onDownload, onExternal }: 
           <span>{detail.kind === "lookup" ? "Dictionary" : `Translate to ${targetLanguageName}`}</span>
         </div>
         <div className="reader-text-popover-actions">
-          <button
-            aria-label="Copy translation"
-            disabled={!canCopy}
-            type="button"
-            onClick={() => {
-              if (!translatedText) return;
-              void navigator.clipboard.writeText(translatedText)
-                .then(() => setCopied(true))
-                .catch((error) => console.warn("Failed to copy translation.", error));
-            }}
-          >
-            {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
-          </button>
+          {canLookUp ? (
+            <button
+              aria-label="Look up word"
+              title="Look up word"
+              type="button"
+              onClick={() => onLookup(detail)}
+            >
+              <BookOpen size={15} aria-hidden="true" />
+            </button>
+          ) : null}
           <button
             aria-label="Open external link"
             title={externalUrl}
@@ -91,6 +85,12 @@ export function TranslationPopover({ detail, onClose, onDownload, onExternal }: 
       </div>
     </section>
   );
+}
+
+function isLookupTerm(text: string) {
+  const term = text.trim();
+  return term.length <= 100
+    && /^[\p{L}\p{M}\p{N}]+(?:['’.-][\p{L}\p{M}\p{N}]+)*$/u.test(term);
 }
 
 function getLanguageName(language: string) {

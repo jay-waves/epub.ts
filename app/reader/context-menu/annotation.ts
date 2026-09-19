@@ -80,9 +80,6 @@ export function createAnnotations(options: AnnotationOptions) {
   const textContext = createTextContext<AnnotationContext>({
     closeAnnotation: options.closeAnnotation,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
-    getLlmApiKey: options.getLlmApiKey,
-    getLlmBaseUrl: options.getLlmBaseUrl,
-    getLlmModel: options.getLlmModel,
     getLlmTranslationPrompt: options.getLlmTranslationPrompt,
     getLlmLookupPrompt: options.getLlmLookupPrompt,
     requestAi: options.requestAi,
@@ -513,6 +510,7 @@ export function createAnnotations(options: AnnotationOptions) {
       if (annotation) run(track(deleteHighlight(annotation)), "Failed to delete annotation.");
     },
     downloadTranslation: textContext.downloadTranslation,
+    lookupTranslation: textContext.lookup,
     openContextMenu,
     openFromAnnotation,
     reset,

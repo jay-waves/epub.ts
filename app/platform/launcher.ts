@@ -7,7 +7,7 @@ import type {
   ViewerPlatform,
 } from "./types";
 import { startupTrace } from "../startup-trace";
-import type { AiRequest } from "./types";
+import type { AiConfig, AiConfigUpdate, AiRequest } from "./types";
 
 type WriteResponse = {
   version: string;
@@ -190,5 +190,14 @@ export const platform: ViewerPlatform = {
     if (!response.ok) throw new Error(result.message ?? `AI request failed (${response.status}).`);
     if (typeof result.text !== "string") throw new Error("The launcher returned an invalid AI response.");
     return result.text;
+  },
+  getAiConfig: async () => {
+    const response = await fetch(new URL("/api/control/ai-config", window.location.origin));
+    if (!response.ok) throw new Error(`Could not read AI settings (${response.status}).`);
+    return await response.json() as AiConfig;
+  },
+  setAiConfig: async (config: AiConfigUpdate) => {
+    const response = await fetch(new URL("/api/control/ai-config", window.location.origin), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+    if (!response.ok) throw new Error(`Could not save AI settings (${response.status}).`);
   },
 };

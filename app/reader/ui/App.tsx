@@ -4,7 +4,6 @@ import { ReaderDock } from "./components/reader-dock";
 import { BookInfoPage } from "./components/book-info-page";
 import { ContentContextMenu } from "./components/context-menu";
 import { ReadingProgress } from "./components/reading-progress";
-import { SearchBar } from "./components/search-bar";
 import { TranslationPopover } from "./components/translation-popover";
 import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
@@ -17,7 +16,6 @@ const StableAnnotationPopover = memo(AnnotationPopover);
 const StableBookInfoPage = memo(BookInfoPage);
 const StableContentContextMenu = memo(ContentContextMenu);
 const StableReaderDock = memo(ReaderDock);
-const StableSearchBar = memo(SearchBar);
 const StableThemeDialog = memo(ThemeDialog);
 const StableTocPage = memo(TocPage);
 const StableTranslationPopover = memo(TranslationPopover);
@@ -29,6 +27,8 @@ export function App({
   settings,
   settingsActions,
   requestAi,
+  getAiConfig,
+  setAiConfig,
 }: {
   actions: ReaderUiActions;
   readerRootRef?: Ref<HTMLDivElement>;
@@ -36,6 +36,9 @@ export function App({
   settings: AdvancedReaderSettings;
   settingsActions: Parameters<typeof SettingsDialog>[0]["actions"];
   requestAi?: Parameters<typeof SettingsDialog>[0]["requestAi"];
+  getAiConfig?: Parameters<typeof SettingsDialog>[0]["getAiConfig"];
+  setAiConfig?: Parameters<typeof SettingsDialog>[0]["setAiConfig"];
+  
 }) {
   return (
     <>
@@ -45,6 +48,11 @@ export function App({
           onOpenChange={actions.setDockOpen}
           open={state.dockOpen}
           state={state.dock}
+          search={state.search}
+          onCloseSearch={actions.closeSearch}
+          onNextSearch={actions.nextSearchResult}
+          onPreviousSearch={actions.previousSearchResult}
+          onSearch={actions.collectSearch}
         />
 
         <main className="reader-stage">
@@ -53,17 +61,10 @@ export function App({
 
         <ReadingProgress onSeek={actions.seek} returnRequest={state.progressReturnRequest} update={state.progress} />
 
-        <StableSearchBar
-          onClose={actions.closeSearch}
-          onNext={actions.nextSearchResult}
-          onPrevious={actions.previousSearchResult}
-          onSearch={actions.collectSearch}
-          state={state.search}
-        />
         <StableBookInfoPage bookInfo={state.bookInfo} onClose={actions.closeBookInfo} open={state.bookInfoOpen} />
         <StableTocPage onClose={actions.closeToc} onNavigate={actions.navigateToc} open={state.tocOpen} state={state.toc} />
         <StableThemeDialog onClose={actions.closeTheme} onSelect={actions.selectTheme} selected={state.theme} />
-        <SettingsDialog open={state.settingsOpen} settings={settings} actions={settingsActions} requestAi={requestAi} onClose={actions.closeSettings} />
+        <SettingsDialog open={state.settingsOpen} settings={settings} actions={settingsActions} requestAi={requestAi} getAiConfig={getAiConfig} setAiConfig={setAiConfig} onClose={actions.closeSettings} />
         <StableContentContextMenu onClose={actions.closeContextMenu} state={state.contextMenu} />
         <StableAnnotationPopover
           detail={state.annotation}
@@ -76,6 +77,7 @@ export function App({
           onClose={actions.closeTranslation}
           onDownload={actions.downloadTranslation}
           onExternal={actions.openTranslationExternal}
+          onLookup={actions.lookupTranslation}
         />
       </div>
       {state.welcome ? (

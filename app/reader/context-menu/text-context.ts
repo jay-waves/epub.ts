@@ -20,9 +20,6 @@ export type TextContextActionDetail<Context> = {
 type TextContextOptions<Context> = {
   closeAnnotation: () => void;
   getTranslationTargetLanguage: () => string;
-  getLlmApiKey: () => string;
-  getLlmBaseUrl: () => string;
-  getLlmModel: () => string;
   getLlmTranslationPrompt: () => string;
   getLlmLookupPrompt: () => string;
   requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
@@ -44,14 +41,10 @@ function getLookupTerm(text: string) {
 export function createTextContext<Context>(options: TextContextOptions<Context>) {
   const translation = options.requestAi
     ? createLlmTranslation({
-      getTargetLanguage: options.getTranslationTargetLanguage,
-      onUpdate: (detail) => options.updateUi({ translation: detail }),
-      getApiKey: options.getLlmApiKey,
-      getBaseUrl: options.getLlmBaseUrl,
-      getModel: options.getLlmModel,
-      requestAi: options.requestAi,
       getTranslationPrompt: options.getLlmTranslationPrompt,
       getLookupPrompt: options.getLlmLookupPrompt,
+      onUpdate: (detail) => options.updateUi({ translation: detail }),
+      requestAi: options.requestAi,
     })
     : createTranslation({
       getSourceLanguage: () => undefined,
@@ -79,17 +72,6 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
       case "copy":
         run(navigator.clipboard.writeText(request.text), "Failed to copy reader text.");
         break;
-      case "lookup": {
-        const term = getLookupTerm(request.text);
-        if (term) {
-          if (options.requestAi) {
-            void (translation as ReturnType<typeof createLlmTranslation>).request({ text: term, ...request.point, lookup: true });
-          } else {
-            void (translation as ReturnType<typeof createTranslation>).translate({ sourceText: term, ...request.point });
-          }
-        }
-        break;
-      }
       case "translate":
         if (options.requestAi) {
           void (translation as ReturnType<typeof createLlmTranslation>).request({ text: request.text, ...request.point, lookup: false });
@@ -99,6 +81,15 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
         break;
     }
     options.onAction({ action, context: request.context, point: request.point, text: request.text });
+  };
+  const lookup = ({ sourceText, x, y }: Pick<import("../ui/model").TranslationDetail, "sourceText" | "x" | "y">) => {
+    const term = getLookupTerm(sourceText);
+    if (!term) return;
+    if (options.requestAi) {
+      void (translation as ReturnType<typeof createLlmTranslation>).request({ text: term, x, y, lookup: true });
+    } else {
+      void (translation as ReturnType<typeof createTranslation>).translate({ sourceText: term, x, y });
+    }
   };
 
   return {
@@ -115,14 +106,12 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     },
     open(request: TextContextRequest<Context>) {
       current = request;
-      const canLookUp = request.canHighlight && Boolean(getLookupTerm(request.text));
       options.updateUi({ contextMenu: {
         menu: {
           canAnnotate: true,
           canCopy: true,
           canDelete: request.canDelete,
           canHighlight: request.canHighlight,
-          canLookUp,
           canTranslate: true,
           ...request.point,
         },
@@ -135,6 +124,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
       options.updateUi({ translation: null });
     },
     downloadTranslation: "download" in translation ? translation.download : () => {},
+    lookup,
     setTranslationSourceLanguage: "setSourceLanguage" in translation ? translation.setSourceLanguage : (_language: string | undefined | Promise<string | undefined>) => {},
   };
 }

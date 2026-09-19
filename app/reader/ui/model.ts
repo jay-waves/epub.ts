@@ -15,7 +15,6 @@ export type ContentContextAction =
   | "copy"
   | "delete"
   | "highlight"
-  | "lookup"
   | "translate";
 
 export type ContentContextMenu = {
@@ -23,7 +22,6 @@ export type ContentContextMenu = {
   canCopy: boolean;
   canDelete: boolean;
   canHighlight: boolean;
-  canLookUp: boolean;
   canTranslate: boolean;
   x: number;
   y: number;
@@ -36,6 +34,7 @@ export type ContentContextMenuDetail = {
 };
 
 export type DockAction =
+  | "open-settings"
   | "toggle-layout"
   | "open-theme"
   | "decrease-font"
@@ -132,6 +131,7 @@ export type ReaderUiActions = {
   collectSearch: (query: string, highlightedOnly: boolean) => void;
   deleteAnnotation: (value: string) => void;
   downloadTranslation: () => void;
+  lookupTranslation: (detail: TranslationDetail) => void;
   navigateToc: (item: TocItem) => void;
   nextSearchResult: () => void;
   openLocalFile: (file: File) => void;

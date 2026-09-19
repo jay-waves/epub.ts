@@ -57,6 +57,7 @@ type ViewerInputOptions = {
   dispatchCommand: (command: ReaderCommand) => void;
   dispatchProgressReturn: () => void;
   dispatchProgressSeek: (progress: number) => void;
+  dispatchSettings: () => void;
 };
 
 /** Normalizes keyboard, wheel, and pointer input from both the shell and reader iframes. */
@@ -187,6 +188,12 @@ export function createViewerInput(options: ViewerInputOptions) {
 
   const handleKeyDown = (event: KeyboardEvent) => {
     inertia.stop();
+    if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === ",") {
+      progressPrefix = "";
+      consumeReaderEvent(event);
+      if (!event.repeat) options.dispatchSettings();
+      return;
+    }
     if (overlayInput.locked) {
       progressPrefix = "";
       return;
