@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme {
+  --text-ui: 0.8125rem;
+  --text-caption: 0.6875rem;
+}
+
 @layer base {
   ::selection {
     background-color: color-mix(in srgb, var(--reader-accent-primary, #2563eb) 38%, transparent);
@@ -45,6 +50,8 @@
   }
 
   html {
+    /* Scale UI dimensions together; book typography lives in its own iframe. */
+    font-size: 90%;
     background: var(--reader-chrome-bg, #fbfaf7);
     color-scheme: var(--reader-color-scheme, light);
     scrollbar-color: var(--reader-scrollbar-thumb, rgba(82, 94, 110, 0.35))
@@ -83,7 +90,7 @@
     max-width: 14rem;
     padding: 0.375rem 0.625rem;
     border: 1px solid rgb(255 255 255 / 12%);
-    border-radius: 0.55rem;
+    border-radius: 0.375rem;
     background: rgb(31 41 51 / 88%);
     box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
     backdrop-filter: var(--reader-control-filter);
@@ -129,7 +136,14 @@
   }
 
   .reader-modal {
-    @apply fixed inset-0 z-40 m-auto max-h-none max-w-none border-0 bg-transparent p-0 text-inherit outline-none;
+    --reader-dialog-width: 36rem;
+    --reader-dialog-height: min(42rem, calc(100dvh - 2rem));
+    --reader-dialog-padding: 1.25rem;
+    @apply fixed inset-0 z-40 m-auto min-w-0 rounded-xl border p-0 outline-none;
+    width: min(var(--reader-dialog-width), calc(100vw - 2rem));
+    max-width: calc(100vw - 2rem);
+    max-height: var(--reader-dialog-height);
+    color: var(--reader-control-strong-fg);
   }
 
   .reader-modal:not([open]) {
@@ -184,11 +198,9 @@
 
   .reader-dock,
   .search-nav,
-  .toc-modal-box,
+  .reader-modal,
   .reader-context-menu,
-  .reader-text-popover,
-  .theme-modal-box,
-  .settings-modal-box {
+  .reader-text-popover {
     border-color: var(--reader-glass-border);
     background-color: var(--reader-glass-bg);
     box-shadow: var(--reader-glass-shadow);
@@ -266,7 +278,7 @@
   }
 
   .reader-dock button {
-    @apply relative inline-flex h-8 w-auto min-w-8 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium leading-5 transition-[background-color,color,box-shadow] duration-200;
+    @apply relative inline-flex h-8 w-auto min-w-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium leading-5 transition-[background-color,color,box-shadow] duration-200;
     color: var(--reader-control-fg);
   }
 
@@ -529,7 +541,7 @@
   }
 
   .reader-context-menu-item {
-    @apply flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium outline-none transition-[background-color,color,transform] duration-150;
+    @apply flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium outline-none transition-[background-color,color,transform] duration-150;
     color: var(--reader-control-fg);
   }
 
@@ -566,7 +578,7 @@
   }
 
   .reader-text-popover-title {
-    @apply flex min-w-0 items-center gap-1.5 text-[11px] font-semibold;
+    @apply flex min-w-0 items-center gap-1.5 text-caption font-semibold;
     color: var(--reader-control-strong-fg);
   }
 
@@ -587,10 +599,14 @@
     color: var(--reader-control-fg);
   }
 
-  .reader-text-popover-actions button:hover,
-  .reader-text-popover-actions button:focus-visible {
+  .reader-text-popover-actions button:is(:hover, :focus-visible),
+  .reader-text-popover-download:is(:hover, :focus-visible) {
     background-color: var(--reader-control-hover-bg);
     color: var(--reader-control-hover-fg);
+  }
+
+  .reader-text-popover-actions button svg {
+    @apply size-3.5;
   }
 
   .reader-text-popover-actions button:disabled {
@@ -647,12 +663,6 @@
     color: var(--reader-control-strong-fg);
   }
 
-  .reader-text-popover-download:hover,
-  .reader-text-popover-download:focus-visible {
-    background-color: var(--reader-control-hover-bg);
-    color: var(--reader-control-hover-fg);
-  }
-
   .reader-text-popover-message {
     background-color: var(--reader-field-bg);
     color: var(--reader-control-fg);
@@ -681,7 +691,7 @@
   }
 
   .search-nav button {
-    @apply grid h-9 min-h-9 w-9 place-items-center rounded-lg;
+    @apply grid h-9 min-h-9 w-9 place-items-center rounded-md;
     color: var(--reader-control-fg);
     line-height: 1;
   }
@@ -698,7 +708,7 @@
   }
 
   .search-count {
-    @apply min-w-14 px-1 text-center text-[13px] font-medium tabular-nums;
+    @apply min-w-14 px-1 text-center text-ui font-medium tabular-nums;
     color: var(--reader-control-fg);
   }
 
@@ -707,7 +717,7 @@
   }
 
   .search-input {
-    @apply h-9 min-w-0 flex-1 rounded-lg border-0 px-3 py-1 text-[13px] outline-none transition-colors duration-150;
+    @apply h-9 min-w-0 flex-1 rounded-md border-0 px-3 py-1 text-ui outline-none transition-colors duration-150;
     background-color: var(--reader-field-bg);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--reader-chrome-fg, #1f2933) 8%, transparent);
     color: var(--reader-chrome-fg, #1f2933);
@@ -724,23 +734,15 @@
   }
 
   .toc-root {
-    --toc-indent: 1.25rem;
-    @apply max-w-full min-w-0 overflow-y-auto overflow-x-hidden;
-    max-height: min(39rem, calc(100vh - 5rem));
+    --toc-indent: 1.5rem;
+    @apply h-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden;
+    scrollbar-gutter: stable;
     scrollbar-width: none;
   }
 
   .toc-menu {
     @apply w-full min-w-0 p-0;
     color: var(--reader-control-fg);
-  }
-
-  .book-info-stat {
-    background: var(--reader-field-bg);
-  }
-
-  .toc-root {
-    @apply p-1;
   }
 
   .toc-list-item,
@@ -753,11 +755,11 @@
   }
 
   .toc-child-list {
-    @apply mt-0.5 min-w-0 space-y-0.5 py-0.5 ps-0;
+    @apply min-w-0 py-0.5 ps-0;
   }
 
   .toc-summary {
-    @apply min-h-0 list-none;
+    @apply list-none;
   }
 
   .toc-details > summary::marker {
@@ -765,7 +767,7 @@
   }
 
   .toc-link {
-    @apply flex h-auto min-h-9 w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-1.5 text-left text-[13px] font-normal leading-5 no-underline outline-none transition-colors duration-150;
+    @apply flex h-auto min-h-8 w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-1 text-left text-ui font-normal leading-5 no-underline outline-none transition-colors duration-150;
     color: var(--reader-control-fg);
   }
 
@@ -795,26 +797,23 @@
     @apply font-semibold;
   }
 
-  .toc-modal-box {
-    @apply w-[min(30rem,calc(100vw-2rem))] min-w-0 max-w-[calc(100vw-2rem)] rounded-xl border p-3;
-    height: fit-content;
-    max-height: calc(100vh - 2rem);
-    color: var(--reader-control-strong-fg);
-    transform: translateY(-4vh);
-  }
-
-  .toc-dialog-box {
-    width: min(36rem, calc(100vw - 2rem));
-    max-height: min(42rem, calc(100vh - 2rem));
+  .toc-dialog-box,
+  .settings-modal-box {
+    height: var(--reader-dialog-height);
+    padding: var(--reader-dialog-padding);
+    overflow: hidden;
   }
 
   .book-info-modal-box {
-    @apply w-[min(32rem,calc(100vw-2rem))];
+    --reader-dialog-width: 32rem;
+    height: fit-content;
+    padding: var(--reader-dialog-padding);
     overflow: hidden;
   }
 
   .book-info-root {
-    @apply grid max-h-[60vh] gap-3 overflow-y-auto p-1;
+    @apply grid gap-3 overflow-y-auto;
+    max-height: min(60dvh, calc(var(--reader-dialog-height) - 2 * var(--reader-dialog-padding)));
     scrollbar-width: none;
   }
 
@@ -835,7 +834,7 @@
   }
 
   .book-info-subtitle {
-    @apply m-0 text-[13px] leading-5;
+    @apply m-0 text-ui leading-5;
     color: var(--reader-control-fg);
     overflow-wrap: anywhere;
   }
@@ -846,17 +845,18 @@
   }
 
   .book-info-stat {
-    @apply grid min-w-0 gap-0.5 rounded-lg px-3 py-2;
+    @apply grid min-w-0 gap-0.5 rounded-md px-3 py-2;
+    background: var(--reader-field-bg);
   }
 
   .book-info-stat-value {
-    @apply text-[13px] font-semibold leading-5 tabular-nums;
+    @apply text-ui font-semibold leading-5 tabular-nums;
     color: var(--reader-control-strong-fg);
     overflow-wrap: anywhere;
   }
 
   .book-info-stat-label {
-    @apply text-[11px] font-medium leading-4;
+    @apply text-caption font-medium leading-4;
     color: var(--reader-control-fg);
   }
 
@@ -865,43 +865,35 @@
   }
 
   .theme-modal-box {
-    @apply h-fit w-[min(24rem,calc(100vw-2rem))] rounded-xl border;
+    --reader-dialog-width: 24rem;
+    height: fit-content;
+    padding: var(--reader-dialog-padding);
+    overflow-y: auto;
   }
 
   .theme-dialog-header {
-    @apply px-5 pt-5 pb-2;
-    border-color: var(--reader-border-subtle);
-  }
-
-  .theme-dialog-header h2 {
-    @apply m-0 text-base font-semibold;
-  }
-
-  .settings-modal-box {
-    width: min(36rem, calc(100vw - 2rem));
-    height: min(42rem, calc(100dvh - 2rem));
-    max-height: min(42rem, calc(100vh - 2rem));
-    border: 1px solid var(--reader-glass-border);
-    border-radius: 0.75rem;
-    color: var(--reader-control-strong-fg);
+    @apply pb-2;
   }
 
   .settings-root {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: 1.5rem;
-    padding: 1.5rem;
-    max-height: min(42rem, calc(100vh - 2rem));
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 1.25rem;
     height: 100%;
     overflow: hidden;
   }
 
+  .settings-root:has(.settings-actions) {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .theme-dialog-header h2,
   .settings-header h2 {
     @apply m-0 text-base font-semibold;
     color: var(--reader-control-strong-fg);
     letter-spacing: -0.012em;
   }
-  .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: .125rem; }
+  .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .settings-tabs { display: flex; flex: none; gap: .25rem; }
   .settings-tabs button { @apply rounded-md border-0 bg-transparent px-3 py-1.5 text-xs font-semibold outline-none transition-[background-color,color,box-shadow]; color: var(--reader-control-fg); }
   .settings-tabs button:hover { color: var(--reader-control-strong-fg); }
@@ -950,7 +942,7 @@
   .settings-field input,
   .settings-field select,
   .settings-field textarea {
-    @apply w-full rounded-md border px-3 py-2 text-[13px] font-normal outline-none transition-[background-color,border-color];
+    @apply w-full rounded-md border px-3 py-2 text-ui font-normal outline-none transition-[background-color,border-color];
     background: var(--reader-field-bg);
     color: var(--reader-control-strong-fg);
     border-color: var(--reader-border-subtle);
@@ -966,7 +958,7 @@
   }
 
   .settings-reset {
-    @apply justify-self-start rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none transition-colors;
+    @apply justify-self-start rounded-md px-2.5 py-1.5 text-xs font-semibold outline-none transition-colors;
     color: var(--reader-control-fg);
   }
 
@@ -980,14 +972,13 @@
   .settings-test-status { color: var(--reader-control-fg); font-size: .75rem; }
 
   @media (max-width: 540px) {
-    .settings-root { padding: 1rem; gap: 1.25rem; }
+    .reader-modal { --reader-dialog-padding: 1rem; }
     .settings-header { align-items: flex-start; }
-    .settings-form { padding: .75rem; }
     .settings-language-row { grid-template-columns: minmax(0, 1fr); }
   }
 
   .theme-dialog-form {
-    @apply grid gap-4 p-5;
+    @apply grid gap-4 pt-3;
   }
 
   .theme-group {
@@ -1049,7 +1040,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 1.5rem;
   background:
     radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--reader-accent-primary, #2563eb) 13%, transparent), transparent 34%),
     radial-gradient(circle at 82% 78%, color-mix(in srgb, var(--reader-accent-secondary, #f4c430) 11%, transparent), transparent 36%),
@@ -1061,11 +1052,11 @@
 .welcome-frame {
   box-sizing: border-box;
   display: grid;
-  width: min(520px, 100%);
-  padding: 42px;
+  width: min(32.5rem, 100%);
+  padding: 2.625rem;
   justify-items: center;
   border: 1px solid var(--reader-glass-border);
-  border-radius: 24px;
+  border-radius: 0.75rem;
   background: var(--reader-glass-bg);
   box-shadow: var(--reader-glass-shadow);
   backdrop-filter: var(--reader-glass-filter);
@@ -1096,25 +1087,25 @@
 
 .welcome-logo {
   display: block;
-  width: 54px;
-  height: 54px;
+  width: 3.375rem;
+  height: 3.375rem;
   margin: 0;
-  border-radius: 13px;
-  filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--reader-accent-primary, #2563eb) 22%, transparent));
+  border-radius: 0.5rem;
+  filter: drop-shadow(0 10px 1.125rem color-mix(in srgb, var(--reader-accent-primary, #2563eb) 22%, transparent));
 }
 
 .welcome h1 {
-  margin: 18px 0 0;
-  font-size: 25px;
+  margin: 1.125rem 0 0;
+  font-size: 1.5625rem;
   font-weight: 680;
   letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
 .welcome-prompt {
-  margin: 12px 0 0;
+  margin: 0.75rem 0 0;
   color: var(--reader-control-fg, #475569);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 650;
 }
 
@@ -1127,9 +1118,9 @@
 }
 
 .welcome-error {
-  margin: 12px 0 0;
+  margin: 0.75rem 0 0;
   color: #dc2626;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 @supports not (backdrop-filter: blur(1px)) {
@@ -1167,6 +1158,6 @@
 
 @media (max-width: 540px) {
   .welcome-frame {
-    padding: 30px 20px;
+    padding: 1.875rem 1.25rem;
   }
 }

@@ -19,7 +19,7 @@ export function BookInfoPage({ bookInfo, onClose, open }: {
     <Dialog
       id="book-info-modal"
       aria-label="Book information"
-      className="toc-modal-box book-info-modal-box"
+      className="book-info-modal-box"
       onClose={onClose}
       ref={dialogRef}
     >
