@@ -31,6 +31,7 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
   const [values, setValues] = useState(() => fields(settings));
   const [testStatus, setTestStatus] = useState("");
   const [backendConfig, setBackendConfig] = useState<import("../../../platform/types").AiConfig | null>(null);
+  const [totalTokens, setTotalTokens] = useState(0);
   const [section, setSection] = useState<"general" | "llm">("general");
   const editRevision = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -54,6 +55,7 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
       if (cancelled) return;
       if (revision === editRevision.current) {
         setBackendConfig(config);
+        setTotalTokens(config.totalTokens);
         setValues((current) => ({ ...current, baseUrl: config.baseUrl, model: config.model }));
       }
     }).catch((error: unknown) => {
@@ -76,16 +78,19 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
       void commit(key, value, actions);
     }
     if (key === "apiKey" || key === "baseUrl" || key === "model") {
+      if (key === "apiKey" && !value.trim()) return;
       const revision = ++editRevision.current;
-      void queueBackendUpdate({ [key]: value }).then(() => {
-        if (revision === editRevision.current && key === "apiKey") {
-          setBackendConfig((current) => ({
-            apiKeyConfigured: Boolean(value),
-            baseUrl: current?.baseUrl ?? values.baseUrl,
-            model: current?.model ?? values.model,
-          }));
+      void queueBackendUpdate({ [key]: value }).then(async () => {
+        if (revision !== editRevision.current) return;
+        if (getAiConfig) {
+          const config = await getAiConfig();
+          setTotalTokens(config.totalTokens);
+          if (key === "apiKey" && revision === editRevision.current) {
+            setBackendConfig(config);
+            setValues((current) => ({ ...current, apiKey: "" }));
+          }
         }
-      }, (error: unknown) => {
+      }).catch((error: unknown) => {
         if (revision === editRevision.current) {
           setTestStatus(error instanceof Error ? error.message : "Could not save LLM settings.");
         }
@@ -95,11 +100,12 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
 
   const reset = async () => {
     try {
-      await queueBackendUpdate({ apiKey: "", baseUrl: "", model: "" });
+      await queueBackendUpdate({ reset: true });
+      setTotalTokens(0);
       const defaults = await actions.reset();
       editRevision.current++;
       setValues(fields(defaults));
-      setBackendConfig({ apiKeyConfigured: false, baseUrl: "", model: "" });
+      setBackendConfig({ apiKeyConfigured: false, baseUrl: "", model: "", totalTokens: 0 });
       setTestStatus("");
     } catch (error) {
       setTestStatus(error instanceof Error ? error.message : "Could not reset settings.");
@@ -112,6 +118,7 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
     try {
       await saveQueue.current;
       await requestAi({ prompt: buildLlmPrompt(values.translationPrompt, "hello") });
+      if (getAiConfig) setTotalTokens((await getAiConfig()).totalTokens);
       setTestStatus("LLM connection successful.");
     } catch (error) {
       setTestStatus(error instanceof Error ? error.message : "LLM connection failed.");
@@ -133,15 +140,16 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
         </div>
         <label className="settings-field"><span>Translator</span><select value={values.translator} onChange={(event) => update("translator", event.target.value)}><option value="builtin">Browser built-in</option><option value="llm" disabled={!requestAi}>LLM API</option></select></label>
         </> : <>
-        <Setting label="LLM API key" value={values.apiKey} placeholder={backendConfig?.apiKeyConfigured ? "********" : "Required for desktop AI"} type="password" onChange={(v) => update("apiKey", v)} />
+        <Setting label="LLM API key" value={values.apiKey} placeholder={backendConfig?.apiKeyConfigured ? "*****" : "API key"} type="password" onChange={(v) => update("apiKey", v)} />
         <Setting label="LLM base URL (include https://)" value={values.baseUrl} placeholder="https://api.deepseek.com" onChange={(v) => update("baseUrl", v)} />
         <Setting label="LLM model" value={values.model} placeholder="Model name" onChange={(v) => update("model", v)} />
         <PromptSetting label="Translation prompt" value={values.translationPrompt} placeholder="Translation instructions" onChange={(v) => update("translationPrompt", v)} />
         </>}
       </div>
       {section === "llm" ? <div className="settings-actions">
+        <button className="settings-test" type="button" disabled={!requestAi} onClick={() => void testConnection()}>Test</button>
         <button className="settings-reset" type="button" onClick={() => void reset()}>Reset</button>
-        <button className="settings-test" type="button" disabled={!requestAi} onClick={() => void testConnection()}>Test LLM</button>
+        <span className="settings-token-usage" aria-label={`Total usage: ${totalTokens.toLocaleString()} tokens`}><strong>{totalTokens.toLocaleString()}</strong><span>tokens</span></span>
         {testStatus ? <span className="settings-test-status" role="status">{testStatus}</span> : null}
       </div> : null}
     </div>

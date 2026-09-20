@@ -19,6 +19,8 @@ type aiResponse struct {
 }
 
 type aiConfig struct {
+	TotalTokens      int `json:"totalTokens"`
+	usageGeneration  uint64
 	APIKey           string `json:"-"`
 	APIKeyConfigured bool   `json:"apiKeyConfigured"`
 	BaseURL          string `json:"baseUrl"`
@@ -26,6 +28,7 @@ type aiConfig struct {
 }
 
 type aiConfigUpdate struct {
+	Reset   bool    `json:"reset"`
 	APIKey  *string `json:"apiKey"`
 	BaseURL *string `json:"baseUrl"`
 	Model   *string `json:"model"`
@@ -58,14 +61,21 @@ func (app *App) handleAIConfig(response http.ResponseWriter, request *http.Reque
 		}
 		desktopAIConfigMutex.Lock()
 		config := desktopAIConfig
-		if input.APIKey != nil {
+		if input.Reset {
+			config = aiConfig{usageGeneration: desktopAIConfig.usageGeneration}
+		}
+		if input.APIKey != nil && strings.TrimSpace(*input.APIKey) != "" {
 			config.APIKey = *input.APIKey
 		}
 		if input.BaseURL != nil {
 			config.BaseURL = *input.BaseURL
 		}
 		if input.Model != nil {
-			config.Model = *input.Model
+			config.Model = strings.TrimSpace(*input.Model)
+		}
+		if input.Reset || config.Model != desktopAIConfig.Model {
+			config.TotalTokens = 0
+			config.usageGeneration++
 		}
 		desktopAIConfig = config
 		desktopAIConfigMutex.Unlock()
@@ -109,6 +119,13 @@ func (app *App) handleAI(response http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		writeJSON(response, http.StatusBadGateway, aiResponse{Message: err.Error()})
 		return
+	}
+	if completion.Usage.TotalTokens > 0 {
+		desktopAIConfigMutex.Lock()
+		if desktopAIConfig.usageGeneration == aiConfig.usageGeneration {
+			desktopAIConfig.TotalTokens += completion.Usage.TotalTokens
+		}
+		desktopAIConfigMutex.Unlock()
 	}
 	if len(completion.Choices) == 0 || strings.TrimSpace(completion.Choices[0].Message.Content) == "" {
 		writeJSON(response, http.StatusBadGateway, aiResponse{Message: "The AI service returned an empty response."})
