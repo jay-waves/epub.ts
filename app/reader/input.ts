@@ -235,25 +235,6 @@ export function createViewerInput(options: ViewerInputOptions) {
     }
     if (event.repeat) return consumeReaderEvent(event);
 
-    if (event.ctrlKey || event.metaKey) {
-      progressPrefix = "";
-      let command: ReaderCommand | undefined;
-      switch (event.key) {
-        case "+":
-        case "=":
-          command = "zoom-in";
-          break;
-        case "-":
-        case "_":
-          command = "zoom-out";
-          break;
-      }
-      if (!command) return;
-      consumeReaderEvent(event);
-      options.dispatchCommand(command);
-      return;
-    }
-
     // Keep the prefix while Shift is pressed to produce the confirming uppercase G.
     if (event.key === "Shift") return;
 
