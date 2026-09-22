@@ -97,6 +97,23 @@ const runtime: ViewerRuntime = {
 
 const advancedSettings = createAdvancedSettingsController(applyAdvancedSettings);
 
+async function fallBackFromUnavailableLlm() {
+  if (advancedSettings.value.translator !== "llm") return;
+  if (!platform.requestAi || !platform.getAiConfig) {
+    await advancedSettings.setTranslator("builtin");
+    return;
+  }
+  try {
+    const config = await platform.getAiConfig();
+    if (config.apiKeyConfigured && config.baseUrl && config.model) return;
+  } catch {
+    // An unavailable launcher cannot provide LLM translation.
+  }
+  await advancedSettings.setTranslator("builtin");
+}
+
+void fallBackFromUnavailableLlm();
+
 console.log(`[epub.ts] v${__EPUB_TS_VERSION__} · built ${__EPUB_TS_BUILD_TIME__}`);
 advancedSettings.logStatus();
 

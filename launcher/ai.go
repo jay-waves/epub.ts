@@ -77,6 +77,13 @@ func (app *App) handleAIConfig(response http.ResponseWriter, request *http.Reque
 			config.TotalTokens = 0
 			config.usageGeneration++
 		}
+		if app.registry != nil {
+			if err := app.registry.saveAIConfig(config); err != nil {
+				desktopAIConfigMutex.Unlock()
+				writeJSONError(response, http.StatusInternalServerError, "save_ai_config_failed", "Could not save AI config.")
+				return
+			}
+		}
 		desktopAIConfig = config
 		desktopAIConfigMutex.Unlock()
 		response.WriteHeader(http.StatusNoContent)
