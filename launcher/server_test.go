@@ -37,6 +37,19 @@ func TestStatusReportsDaemonBuild(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersIncludeContentSecurityPolicy(t *testing.T) {
+	response := httptest.NewRecorder()
+	handler := (&App{}).securityHeaders(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	}))
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if got := response.Header().Get("Content-Security-Policy"); got != contentSecurityPolicy {
+		t.Fatalf("Content-Security-Policy=%q, want %q", got, contentSecurityPolicy)
+	}
+}
+
 func assertDocumentStatus(t *testing.T, app *App, method, target string, expected int) {
 	t.Helper()
 	response := httptest.NewRecorder()

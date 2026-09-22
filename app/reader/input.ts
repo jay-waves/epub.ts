@@ -689,7 +689,13 @@ export function createViewerInput(options: ViewerInputOptions) {
     return {
       // Feed at window capture before overlay exclusion. Even blocked wheel
       // events must reach the recognizer so its stream and momentum can end.
-      feed: (event: Event) => wheel.feedWheel(event as WheelEvent),
+      feed: (event: Event) => {
+        const wheelEvent = event as WheelEvent;
+        // Trackpad pinch is exposed as a modifier-wheel gesture by desktop
+        // browsers. Never let it scale the reader chrome.
+        if (wheelEvent.ctrlKey || wheelEvent.metaKey) wheelEvent.preventDefault();
+        wheel.feedWheel(wheelEvent);
+      },
       destroy: () => {
         stopOverlaySubscription();
         session.cancel();
@@ -773,9 +779,17 @@ export function createViewerInput(options: ViewerInputOptions) {
         signal: events.signal,
       });
     }
+    const preventBrowserZoom = (event: Event) => event.preventDefault();
+    for (const type of ["gesturestart", "gesturechange"] as const) {
+      (targetDocument.defaultView ?? targetDocument).addEventListener(type, preventBrowserZoom, {
+        capture: true,
+        passive: false,
+        signal: events.signal,
+      });
+    }
     const touchStyle = targetDocument === document ? null : targetDocument.createElement("style");
     if (touchStyle) {
-      touchStyle.textContent = "html { touch-action: pinch-zoom !important; }";
+      touchStyle.textContent = "html { touch-action: none !important; }";
       targetDocument.head?.append(touchStyle);
     }
     targetDocument.addEventListener("keydown", handleKeyDown, { signal: events.signal });
@@ -799,7 +813,7 @@ export function createViewerInput(options: ViewerInputOptions) {
   const bindReaderView = (view: ReaderView) => {
     if (bindings.has(view)) return;
     const previousTouchAction = view.style.touchAction;
-    view.style.touchAction = "pinch-zoom";
+    view.style.touchAction = "none";
     const stopShellDrag = bindPointerInput(view, document);
     const stopDocuments = observeRenderedContent(view, ({ doc }, signal) => {
       bindInputTarget(doc);

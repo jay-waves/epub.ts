@@ -192,7 +192,7 @@
 
   .reader-dock-shell {
     @apply fixed inset-x-0 top-0 z-20 flex justify-center;
-    padding-top: var(--reader-edge-inset);
+    padding-top: 2.5vh;
     pointer-events: none;
   }
 
