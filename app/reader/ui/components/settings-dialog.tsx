@@ -32,7 +32,6 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
   const [testStatus, setTestStatus] = useState("");
   const [backendConfig, setBackendConfig] = useState<import("../../../platform/types").AiConfig | null>(null);
   const [totalTokens, setTotalTokens] = useState(0);
-  const [section, setSection] = useState<"general" | "llm">("general");
   const editRevision = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
@@ -125,34 +124,34 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
     }
   };
 
-  return <Dialog id="settings-modal" aria-labelledby="settings-dialog-title" className="settings-modal-box" onClose={onClose} ref={dialogRef}>
-    <div className="settings-root">
-      <header className="settings-header"><h2 id="settings-dialog-title">Settings</h2><nav aria-label="Settings sections" className="settings-tabs" role="tablist"><button type="button" role="tab" onClick={() => setSection("general")} aria-selected={section === "general"}>General</button><button type="button" role="tab" onClick={() => setSection("llm")} aria-selected={section === "llm"}>LLM</button></nav></header>
-      <div className={`settings-form${section === "llm" ? " settings-form-llm" : ""}`} role="tabpanel">
-        {section === "general" ? <>
-        <Setting label="Serif font" value={values.serif} placeholder={settings.fonts.serif} onChange={(v) => update("serif", v)} />
-        <Setting label="Sans font" value={values.sans} placeholder={settings.fonts.sans} onChange={(v) => update("sans", v)} />
-        <Setting label="Monospace font" value={values.mono} placeholder={settings.fonts.mono} onChange={(v) => update("mono", v)} />
-        <Setting label="Text alignment" value={values.alignment} placeholder="auto, start, or justify" onChange={(v) => update("alignment", v)} />
+  return <Dialog id="settings-modal" aria-label="Settings" className="settings-modal-box" onClose={onClose} ref={dialogRef}>
+      <div className="settings-form">
+        <section className="settings-group" aria-label="Typography settings">
+        <Setting label="Serif Font" value={values.serif} placeholder={settings.fonts.serif} onChange={(v) => update("serif", v)} />
+        <Setting label="Sans Font" value={values.sans} placeholder={settings.fonts.sans} onChange={(v) => update("sans", v)} />
+        <Setting label="Monospace Font" value={values.mono} placeholder={settings.fonts.mono} onChange={(v) => update("mono", v)} />
+        <Setting label="Text Alignment" value={values.alignment} placeholder="auto, start, or justify" onChange={(v) => update("alignment", v)} />
+        </section>
+        <section className="settings-group" aria-label="Translation settings">
         <div className="settings-language-row">
-          <Setting label="Source language" value={values.source} placeholder="Auto detect" onChange={(v) => update("source", v)} />
-          <Setting label="Target language" value={values.target} placeholder="zh-CN" onChange={(v) => update("target", v)} />
+          <Setting label="Translation Source Lang" value={values.source} placeholder="Auto detect" onChange={(v) => update("source", v)} />
+          <Setting label="Translation Target Lang" value={values.target} placeholder="zh-CN" onChange={(v) => update("target", v)} />
         </div>
         <label className="settings-field"><span>Translator</span><select value={values.translator} onChange={(event) => update("translator", event.target.value)}><option value="builtin">Browser built-in</option><option value="llm" disabled={!requestAi}>LLM API</option></select></label>
-        </> : <>
-        <Setting label="LLM API key" value={values.apiKey} placeholder={backendConfig?.apiKeyConfigured ? "*****" : "API key"} type="password" onChange={(v) => update("apiKey", v)} />
-        <Setting label="LLM base URL (include https://)" value={values.baseUrl} placeholder="https://api.deepseek.com" onChange={(v) => update("baseUrl", v)} />
-        <Setting label="LLM model" value={values.model} placeholder="Model name" onChange={(v) => update("model", v)} />
-        <PromptSetting label="Translation prompt" value={values.translationPrompt} placeholder="Translation instructions" onChange={(v) => update("translationPrompt", v)} />
-        </>}
-      </div>
-      {section === "llm" ? <div className="settings-actions">
+        </section>
+        <section className="settings-group" aria-label="LLM settings">
+        <Setting label="LLM API Key" value={values.apiKey} placeholder={backendConfig?.apiKeyConfigured ? "*****" : "API key"} type="password" onChange={(v) => update("apiKey", v)} />
+        <Setting label="LLM Base URL (https://)" value={values.baseUrl} placeholder="https://api.deepseek.com" onChange={(v) => update("baseUrl", v)} />
+        <Setting label="LLM Model" value={values.model} placeholder="Model name" onChange={(v) => update("model", v)} />
+        <PromptSetting label="LLM Translation Prompt" value={values.translationPrompt} placeholder="Translation instructions" onChange={(v) => update("translationPrompt", v)} />
+        <div className="settings-actions">
         <button className="settings-test" type="button" disabled={!requestAi} onClick={() => void testConnection()}>Test</button>
         <button className="settings-reset" type="button" onClick={() => void reset()}>Reset</button>
         <span className="settings-token-usage" aria-label={`Total usage: ${totalTokens.toLocaleString()} tokens`}><strong>{totalTokens.toLocaleString()}</strong><span>tokens</span></span>
         {testStatus ? <span className="settings-test-status" role="status">{testStatus}</span> : null}
-      </div> : null}
-    </div>
+        </div>
+        </section>
+      </div>
   </Dialog>;
 }
 
@@ -161,7 +160,7 @@ function Setting({ label, value, placeholder, type = "text", onChange }: { label
 }
 
 function PromptSetting({ label, value, placeholder, onChange }: { label: string; value: string; placeholder: string; onChange(value: string): void }) {
-  return <label className="settings-field settings-field-prompt"><span>{label}</span><textarea value={value} placeholder={placeholder} rows={3} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="settings-field"><span>{label}</span><textarea value={value} placeholder={placeholder} rows={3} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function fields(settings: AdvancedReaderSettings) {
