@@ -168,7 +168,7 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
         </section>
         <section className="settings-group" aria-label="LLM settings">
         <Setting label="LLM API Key" value={values.apiKey} placeholder={backendConfig?.apiKeyConfigured ? "*****" : "API key"} type="password" onChange={(v) => update("apiKey", v)} onBlur={() => { void commitApiKey().catch(() => {}); }} commitOnEnter />
-        <Setting label="LLM Base URL (https://)" value={values.baseUrl} placeholder="https://api.deepseek.com" onChange={(v) => update("baseUrl", v)} />
+        <Setting label="LLM Base URL (OpenAI-compatible)" value={values.baseUrl} placeholder="https://api.deepseek.com" onChange={(v) => update("baseUrl", v)} />
         <Setting label="LLM Model" value={values.model} placeholder="Model name" onChange={(v) => update("model", v)} />
         <PromptSetting label="LLM Translation Prompt" value={values.translationPrompt} placeholder="Translation instructions" onChange={(v) => update("translationPrompt", v)} />
         <div className="settings-actions">
