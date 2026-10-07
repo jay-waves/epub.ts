@@ -17,9 +17,10 @@ already has push credentials. The script pushes the branch and version tag;
 it does not build or deploy locally.
 
 Actions builds the web reader once and shares it with Debian, Fedora, Windows
-x64 and Apple Silicon macOS packaging jobs. Native jobs need only Node built-ins,
-Go and platform packaging tools. Windows verifies installation, daemon startup,
-upgrade and uninstall on the disposable runner. After all four installers pass,
+x64 and Apple Silicon macOS packaging jobs. Linux builds the Windows installer
+with Go, `rsrc`, and NSIS. Native jobs need only Node built-ins, Go and platform
+packaging tools. Windows verifies installation, daemon startup, upgrade and
+uninstall on the disposable runner. After all four installers pass,
 the workflow uploads them to a rolling Release (`v0.8-latest` for 0.8.x;
 `v1-latest` for 1.x). Permanent version tags remain unchanged. New assets are
 uploaded before old assets are removed; failed uploads can be retried. Older
@@ -30,7 +31,8 @@ Do not enable immutable releases or protect rolling tags against workflow update
 
 A manual workflow run builds packages without publishing or deploying Pages.
 Only the frontend job installs pnpm dependencies. Local packaging remains
-available and reuses `release/web` after `pnpm compile`.
+available and reuses `release/web` after `pnpm compile`. The Linux packaging job
+also installs `rsrc` and NSIS to cross-build the Windows installer.
 
 Native installer filenames use `epub-ts-<version>-<triplet>.<extension>`:
 
@@ -75,16 +77,13 @@ the package.
 
 ## Windows
 
-[NSIS](https://nsis.sourceforge.io/) and `rsrc` are required.
-Install the resource compiler with `go install github.com/akavel/rsrc@v0.10.2`.
-Packaging works on Windows or Linux. Run `pnpm package:windows` after
-`pnpm compile`.
-
-Install NSIS on Debian/Ubuntu with `sudo apt install nsis`, or on Fedora with
-`sudo dnf install mingw32-nsis`. NSIS uses a traditional x86 installer
-bootstrap to install the 64-bit launcher into `%ProgramFiles%`. Set
-`EPUB_TS_RSRC` and `EPUB_TS_MAKENSIS` when the tools are
-installed outside `PATH`.
+Windows packages can be cross-built on Linux with Go, `rsrc`, and NSIS.
+Install the resource compiler with `go install github.com/akavel/rsrc@v0.10.2`
+and NSIS with `sudo apt install nsis`. Run `pnpm package:windows` after
+`pnpm compile`. CI verifies installation, upgrade, and uninstall on a Windows
+runner. NSIS uses a traditional x86 installer bootstrap to install the 64-bit
+launcher into `%ProgramFiles%`. Set `EPUB_TS_RSRC` and `EPUB_TS_MAKENSIS` when
+the tools are installed outside `PATH`.
 
 The all-users installer requests administrator permission, writes to
 `%ProgramFiles%\epub.ts`, registers the EPUB file association, and appears in
