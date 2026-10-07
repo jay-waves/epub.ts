@@ -12,9 +12,6 @@ if (!targets.has(target)) throw new Error(`Expected one of: ${[...targets].join(
 if (target === 'darwin-arm64' && (process.platform !== 'darwin' || process.arch !== 'arm64')) {
   throw new Error('Building the macOS launcher and DMG requires Apple Silicon macOS.');
 }
-if (!existsSync(resolve(source, 'index.html'))) throw new Error('Run pnpm compile first.');
-const buildMetadata = JSON.parse(readFileSync(resolve(source, 'build-metadata.json'), 'utf8'));
-if (!buildMetadata.builtAt) throw new Error('The web build is missing its build timestamp.');
 
 function copy(sourceDir, targetDir) {
   mkdirSync(targetDir, { recursive: true });
@@ -47,34 +44,33 @@ const outputName = windows
     : 'epub.ts';
 const output = resolve(root, 'release', outputName);
 mkdirSync(resolve(root, 'release'), { recursive: true });
-const linkerFlags = `${windows ? '-s -w -H=windowsgui' : '-s -w'} -X=main.buildID=${buildMetadata.builtAt}`;
+const linkerFlags = windows ? '-s -w -H=windowsgui' : '-s -w';
 let windowsResource = null;
+// A failed build must never leave an older executable available for packaging.
+rmSync(output, { force: true });
 cleanEmbeddedViewer();
 try {
+  if (!existsSync(resolve(source, 'index.html'))) throw new Error('Run pnpm compile first.');
+  const buildMetadata = JSON.parse(readFileSync(resolve(source, 'build-metadata.json'), 'utf8'));
+  if (!buildMetadata.builtAt) throw new Error('The web build is missing its build timestamp.');
   copy(source, embedded);
   if (windows) {
-    const candidates = [process.env.EPUB_TS_WINDRES, 'llvm-windres', 'x86_64-w64-mingw32-windres', 'windres'].filter(Boolean);
-    const windres = candidates.find((candidate) => {
-      const check = spawnSync(candidate, ['--version'], { stdio: 'ignore' });
-      return !check.error && check.status === 0;
-    });
-    if (!windres) throw new Error('package:windows requires llvm-windres or windres');
     windowsResource = resolve(root, 'launcher', 'icon_windows_amd64.syso');
-    const compiled = spawnSync(windres, [
-      '--input', resolve(root, 'launcher', 'icon.rc'),
-      '--output', windowsResource,
-      '--output-format', 'coff',
-      '--target', 'pe-x86-64',
-    ], { cwd: root, stdio: 'inherit' });
-    requireSuccess(compiled, windres);
+    const rsrc = process.env.EPUB_TS_RSRC ?? 'rsrc';
+    requireSuccess(spawnSync(rsrc, [
+      '-arch', goarch, '-ico', resolve(root, 'assets', 'icon.ico'), '-o', windowsResource,
+    ], { cwd: root, stdio: 'inherit' }), rsrc);
   }
-  const result = spawnSync(process.env.EPUB_TS_GO ?? 'go', ['build', '-trimpath', `-ldflags=${linkerFlags}`, '-o', output, './launcher'], {
+  const result = spawnSync(process.env.EPUB_TS_GO ?? 'go', ['build', '-trimpath', `-ldflags=${linkerFlags} -X=main.buildID=${buildMetadata.builtAt}`, '-o', output, './launcher'], {
     cwd: root,
     env: { ...process.env, GOOS: goos, GOARCH: goarch },
     stdio: 'inherit',
   });
   requireSuccess(result, 'go build');
   console.log(`Packaged ${output}`);
+} catch (error) {
+  rmSync(output, { force: true });
+  throw error;
 } finally {
   if (windowsResource) rmSync(windowsResource, { force: true });
   cleanEmbeddedViewer();

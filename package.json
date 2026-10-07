@@ -2,7 +2,7 @@
 	"name": "epub.ts",
 	"license": "MIT",
 	"private": true,
-	"version": "0.8.1",
+	"version": "0.8.2",
 	"type": "module",
 	"packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
 	"engines": {
@@ -20,7 +20,7 @@
 	"scripts": {
 		"dev": "vite",
 		"compile": "pnpm typecheck && vite build",
-		"test": "node --test tests/*.test.ts",
+		"test": "node --test tests/*.test.ts tests/*.test.mjs",
 		"package:chrome": "node scripts/package-chrome.mjs",
 		"package:linux:binary": "node scripts/package-launcher.mjs linux-amd64",
 		"package:windows:binary": "node scripts/package-launcher.mjs windows-amd64",
@@ -28,11 +28,10 @@
 		"package:deb": "pnpm package:linux:binary && sh scripts/package-linux.sh deb",
 		"package:rpm": "pnpm package:linux:binary && sh scripts/package-linux.sh rpm",
 		"package:linux": "pnpm package:linux:binary && sh scripts/package-linux.sh deb && sh scripts/package-linux.sh rpm",
-		"package:windows": "pnpm package:windows:binary && sh scripts/package-windows.sh",
+		"package:windows": "pnpm package:windows:binary && node scripts/package-windows.mjs",
 		"package:macos": "pnpm package:macos:binary && sh scripts/package-macos.sh",
 		"package:all": "pnpm package:chrome && pnpm package:linux && pnpm package:windows",
 		"build:all": "pnpm compile && pnpm package:all",
-		"deploy:web": "bash scripts/deploy-web.sh",
 		"typecheck": "tsc --noEmit",
 		"check": "pnpm typecheck && pnpm test"
 	},

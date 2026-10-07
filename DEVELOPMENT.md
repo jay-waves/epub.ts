@@ -2,29 +2,30 @@
 
 ### 构建依赖 / Build prerequisites
 
-All builds require Node.js 24 LTS and pnpm 11. Native packaging additionally
+All builds require Node.js 24 LTS and the pnpm version pinned in `package.json`. Native packaging additionally
 requires:
 
 - Go 1.27+ to build the launcher
 - [nFPM](https://nfpm.goreleaser.com/docs/install/) to create `deb`/`rpm` packages
-- NSIS and a PE resource compiler to create the Windows installer on Linux
+- NSIS and `rsrc` to create the Windows installer on Windows or Linux
 - macOS system tools `hdiutil`, `sips`, `iconutil`, and `ditto` to create
   unsigned app bundles and disk images
 
 ```bash
-corepack install --global pnpm@11.24.0
+corepack enable
 pnpm install
 ```
 
 ```bash
 # Debian / Ubuntu
-sudo apt install golang-go binutils-mingw-w64-x86-64 nsis
+sudo apt install golang-go nsis
 
 # Fedora
-sudo dnf install golang mingw64-binutils mingw32-nsis
+sudo dnf install golang mingw32-nsis
 
 # Install nFPM; ensure $(go env GOPATH)/bin is in PATH
-go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+go install github.com/akavel/rsrc@v0.10.2
 ```
 
 The arm64 macOS launcher, app bundle, and DMG must be built on Apple Silicon
@@ -40,7 +41,7 @@ app trusted by Gatekeeper.
 The Fedora `mingw32-nsis` package is intentional: NSIS uses its traditional
 x86 bootstrap to install the 64-bit `epub.ts.exe` into `%ProgramFiles%`.
 Custom tool locations can be supplied through `EPUB_TS_GO`,
-`EPUB_TS_WINDRES`, `EPUB_TS_MAKENSIS`, `EPUB_TS_NFPM`, and
+`EPUB_TS_RSRC`, `EPUB_TS_MAKENSIS`, `EPUB_TS_NFPM`, and
 `EPUB_TS_HDIUTIL`.
 
 ### 构建命令 / Build commands

@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: read
+
+# Serialize publishing and Pages deployments; never interrupt an active release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Validate version tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [[ "$GITHUB_REF_NAME" == "v$version" ||
+             ( "$GITHUB_REF_NAME" == "v$version-"* && "$GITHUB_REF_NAME" =~ -[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ) ]]
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      # Tests and type checking are performed locally before pushing the tag.
+      - run: pnpm exec vite build
+      - uses: actions/upload-artifact@v6
+        with:
+          name: web
+          path: release/web
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: release/web
+          retention-days: 1
+
+  packages:
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: windows-2022
+            platform: windows-x64
+          - os: macos-15
+            platform: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      # Native packaging uses Node built-ins and the shared web artifact only.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: release/web
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+      - name: Package Debian and Fedora
+        if: runner.os == 'Linux'
+        run: |
+          node scripts/package-launcher.mjs linux-amd64
+          sh scripts/package-linux.sh deb
+          sh scripts/package-linux.sh rpm
+      - name: Set up Windows packaging tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:GOBIN = Join-Path $env:RUNNER_TEMP 'epub-ts-tools'
+          go install github.com/akavel/rsrc@v0.10.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rsrc = Join-Path $env:GOBIN 'rsrc.exe'
+          if (-not (Test-Path $rsrc)) { throw 'rsrc installation produced no executable' }
+          "EPUB_TS_RSRC=$rsrc" >> $env:GITHUB_ENV
+          $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $makensis)) { throw 'NSIS not found' }
+          "EPUB_TS_MAKENSIS=$makensis" >> $env:GITHUB_ENV
+      - name: Build Windows x64 launcher
+        if: runner.os == 'Windows'
+        run: node scripts/package-launcher.mjs windows-amd64
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        run: node scripts/package-windows.mjs
+      - name: Verify Windows install, upgrade and uninstall
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/verify-windows-package.ps1
+      - name: Package macOS ARM64
+        if: runner.os == 'macOS'
+        run: |
+          node scripts/package-launcher.mjs darwin-arm64
+          sh scripts/package-macos.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: packages-${{ matrix.platform }}
+          path: |
+            release/*.deb
+            release/*.rpm
+            release/epub-ts-*-x86_64-pc-windows.exe
+            release/*.dmg
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push'
+    needs: [web, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      deploy_pages: ${{ steps.publish.outputs.deploy_pages }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: release/installers
+          merge-multiple: true
+      - name: Update the version series release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/publish-release.sh
+
+  pages:
+    needs: publish
+    if: needs.publish.outputs.published == 'true' && needs.publish.outputs.deploy_pages == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy web viewer
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -6,6 +6,43 @@ The launcher itself does not install or uninstall platform integration; each
 platform package owns that lifecycle. Portable launchers provide only `purge`
 for explicitly deleting the current user's reader data.
 
+## Automated releases
+
+Set GitHub Settings → Pages → Build and deployment → Source to **GitHub Actions**
+(the old `gh-pages` branch is no longer used). Commit all changes, run local
+`pnpm check`, then run `./scripts/release.sh v0.8.1` for the version in
+`package.json`. Matching tags with suffixes such as `v0.8.1-test` are also
+accepted and run the same publishing flow. `GITHUB_TOKEN` is optional when Git
+already has push credentials. The script pushes the branch and version tag;
+it does not build or deploy locally.
+
+Actions builds the web reader once and shares it with Debian, Fedora, Windows
+x64 and Apple Silicon macOS packaging jobs. Native jobs need only Node built-ins,
+Go and platform packaging tools. Windows verifies installation, daemon startup,
+upgrade and uninstall on the disposable runner. After all four installers pass,
+the workflow uploads them to a rolling Release (`v0.8-latest` for 0.8.x;
+`v1-latest` for 1.x). Permanent version tags remain unchanged. New assets are
+uploaded before old assets are removed; failed uploads can be retried. Older
+versions and ancestor tags cannot overwrite a newer published version, and
+divergent histories are rejected. The highest series is marked Latest and
+also deploys GitHub Pages; maintenance updates to older series do neither.
+Do not enable immutable releases or protect rolling tags against workflow updates.
+
+A manual workflow run builds packages without publishing or deploying Pages.
+Only the frontend job installs pnpm dependencies. Local packaging remains
+available and reuses `release/web` after `pnpm compile`.
+
+Native installer filenames use `epub-ts-<version>-<triplet>.<extension>`:
+
+- `epub-ts-<version>-x86_64-unknown-linux-gnu.deb`
+- `epub-ts-<version>-x86_64-unknown-linux-gnu.rpm`
+- `epub-ts-<version>-x86_64-pc-windows.exe`
+- `epub-ts-<version>-aarch64-apple-darwin.dmg`
+
+Versions come from `package.json`. The Go-built Windows launcher uses no
+compiler ABI suffix. The shared web build preserves its timestamp and embeds
+it as the launcher's build ID.
+
 ## Chrome
 
 `packaging/chrome/` contains the extension-only manifest and service worker.
@@ -38,14 +75,15 @@ the package.
 
 ## Windows
 
-[NSIS](https://nsis.sourceforge.io/) and a Windows launcher cross-build
-toolchain are required. Both run on Linux. Run `pnpm package:windows` after
+[NSIS](https://nsis.sourceforge.io/) and `rsrc` are required.
+Install the resource compiler with `go install github.com/akavel/rsrc@v0.10.2`.
+Packaging works on Windows or Linux. Run `pnpm package:windows` after
 `pnpm compile`.
 
 Install NSIS on Debian/Ubuntu with `sudo apt install nsis`, or on Fedora with
 `sudo dnf install mingw32-nsis`. NSIS uses a traditional x86 installer
 bootstrap to install the 64-bit launcher into `%ProgramFiles%`. Set
-`EPUB_TS_MAKENSIS` when `makensis` is
+`EPUB_TS_RSRC` and `EPUB_TS_MAKENSIS` when the tools are
 installed outside `PATH`.
 
 The all-users installer requests administrator permission, writes to

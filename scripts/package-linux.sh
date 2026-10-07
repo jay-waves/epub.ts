@@ -6,8 +6,8 @@ cd "$(dirname "$0")/.."
 format=$1
 version=$(node -p "require('./package.json').version")
 case "$format" in
-  deb) output="release/epub-ts-${version}-amd64.deb" ;;
-  rpm) output="release/epub-ts-${version}-1.x86-64.rpm" ;;
+  deb) output="release/epub-ts-${version}-x86_64-unknown-linux-gnu.deb" ;;
+  rpm) output="release/epub-ts-${version}-x86_64-unknown-linux-gnu.rpm" ;;
 esac
 
 EPUB_TS_VERSION=$version "${EPUB_TS_NFPM:-nfpm}" package \

@@ -48,7 +48,7 @@ mkdir "$image_root"
 ditto "$bundle" "$image_root/epub.ts.app"
 ln -s /Applications "$image_root/Applications"
 
-output="$repo_root/release/epub-ts-v${version}-macos-${arch}.dmg"
+output="$repo_root/release/epub-ts-${version}-aarch64-apple-darwin.dmg"
 rm -f "$output"
 "${EPUB_TS_HDIUTIL:-hdiutil}" create \
   -volname epub.ts \
