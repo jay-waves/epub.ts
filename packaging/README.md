@@ -11,7 +11,8 @@ for explicitly deleting the current user's reader data.
 Set GitHub Settings → Pages → Build and deployment → Source to **GitHub Actions**
 (the old `gh-pages` branch is no longer used). Commit all changes, run local
 `pnpm check`, then run `./scripts/release.sh v0.8.1` for the version in
-`package.json`. Matching tags with suffixes such as `v0.8.1-test` are also
+`package.json`. Matching tags with hyphen or dot suffixes such as `v0.8.1-test` and
+`v0.8.1.betaxxx` are also
 accepted and run the same publishing flow. `GITHUB_TOKEN` is optional when Git
 already has push credentials. The script pushes the branch and version tag;
 it does not build or deploy locally.

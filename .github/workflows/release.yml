@@ -28,7 +28,7 @@ jobs:
         run: |
           version=$(node -p "require('./package.json').version")
           [[ "$GITHUB_REF_NAME" == "v$version" ||
-             ( "$GITHUB_REF_NAME" == "v$version-"* && "$GITHUB_REF_NAME" =~ -[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ) ]]
+             ( ( "$GITHUB_REF_NAME" == "v$version-"* || "$GITHUB_REF_NAME" == "v$version."* ) && "$GITHUB_REF_NAME" =~ [-.][0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ) ]]
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       # Tests and type checking are performed locally before pushing the tag.

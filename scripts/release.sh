@@ -13,7 +13,7 @@ release_tag="$1"
 
 version=$(node -p "require('$repo_root/package.json').version")
 [[ "$release_tag" == "v$version" ||
-   ( "$release_tag" == "v$version-"* && "$release_tag" =~ -[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ) ]] || {
+   ( ( "$release_tag" == "v$version-"* || "$release_tag" == "v$version."* ) && "$release_tag" =~ [-.][0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ) ]] || {
   echo "Release tag must match package.json: v$version or v$version-<suffix>" >&2
   exit 2
 }

@@ -80,6 +80,12 @@ test('matching version suffix tags publish successfully', (t) => {
   assert.match(readFileSync(f.calls, 'utf8'), /release edit v1-latest --draft=false --latest=true/);
 });
 
+test('dotted version suffix tags publish successfully', (t) => {
+  const f = fixture(t);
+  assert.equal(f.run({ GITHUB_REF_NAME: 'v1.0.0.betaxxx' }).status, 0);
+  assert.match(readFileSync(f.calls, 'utf8'), /release edit v1-latest --draft=false --latest=true/);
+});
+
 test('mismatched version tags are rejected before publishing', (t) => {
   const f = fixture(t);
   assert.notEqual(f.run({ GITHUB_REF_NAME: 'v1.0.1-test' }).status, 0);
