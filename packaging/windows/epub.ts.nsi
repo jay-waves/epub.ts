@@ -2,6 +2,11 @@ Unicode True
 
 !include "MUI2.nsh"
 !include "x64.nsh"
+!include "Sections.nsh"
+!include "FileFunc.nsh"
+!include "nsDialogs.nsh"
+
+Var StartupCheckbox
 
 !ifndef APP_VERSION
   !error "APP_VERSION must be provided with -DAPP_VERSION=<version>"
@@ -42,19 +47,12 @@ UninstallIcon "${REPO_ROOT}/assets/icon.ico"
 !define MUI_UNICON "${REPO_ROOT}/assets/icon.ico"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
+Page custom StartupPage StartupPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
-
-Function .onInit
-  ${IfNot} ${RunningX64}
-    MessageBox MB_ICONSTOP "epub.ts requires 64-bit Windows."
-    Abort
-  ${EndIf}
-  SetRegView 64
-FunctionEnd
 
 Function un.onInit
   SetRegView 64
@@ -70,7 +68,7 @@ Section "epub.ts" SEC_MAIN
 install_files:
   SetOutPath "$INSTDIR"
   File "/oname=${APP_EXE}" "${REPO_ROOT}/release/${APP_EXE}"
-  File "${REPO_ROOT}/packaging/windows/epub.ts-startup.cmd"
+  Delete "$INSTDIR\epub.ts-startup.cmd"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document" "" "epub.ts Document"
@@ -97,12 +95,85 @@ install_files:
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 SectionEnd
 
+Section /o "-Startup" SEC_STARTUP
+  SetShellVarContext all
+  SetOutPath "$INSTDIR"
+  ClearErrors
+  CreateShortCut "$SMSTARTUP\epub.ts.lnk" "$INSTDIR\${APP_EXE}" "daemon"
+  IfErrors 0 +2
+    Abort "Could not create the startup shortcut."
+SectionEnd
+
+Section "-Startup cleanup"
+  ${IfNot} ${SectionIsSelected} ${SEC_STARTUP}
+    SetShellVarContext all
+    Delete "$SMSTARTUP\epub.ts.lnk"
+  ${EndIf}
+SectionEnd
+
+Function StartupPage
+  !insertmacro MUI_HEADER_TEXT "Installation options" "Choose how ${APP_NAME} starts."
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  ${NSD_CreateCheckbox} 0 8u 100% 14u "Start background service at login"
+  Pop $StartupCheckbox
+  ${If} ${SectionIsSelected} ${SEC_STARTUP}
+    ${NSD_Check} $StartupCheckbox
+  ${EndIf}
+  ${NSD_CreateLabel} 12u 30u 94% 36u "Applies to all users on this computer. Starts the background service without opening a browser window."
+  Pop $0
+  ${NSD_OnClick} $StartupCheckbox StartupChanged
+  nsDialogs::Show
+FunctionEnd
+
+Function StartupChanged
+  Pop $0
+  Call StartupPageLeave
+FunctionEnd
+
+Function StartupPageLeave
+  ${NSD_GetState} $StartupCheckbox $0
+  ${If} $0 == ${BST_CHECKED}
+    !insertmacro SelectSection ${SEC_STARTUP}
+  ${Else}
+    !insertmacro UnselectSection ${SEC_STARTUP}
+  ${EndIf}
+FunctionEnd
+
+Function .onInit
+  ${IfNot} ${RunningX64}
+    MessageBox MB_ICONSTOP "epub.ts requires 64-bit Windows."
+    Abort
+  ${EndIf}
+  SetRegView 64
+  SetShellVarContext all
+  IfFileExists "$SMSTARTUP\epub.ts.lnk" 0 startup_arguments
+    !insertmacro SelectSection ${SEC_STARTUP}
+startup_arguments:
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/AUTOSTART=" $1
+  ${IfNot} ${Errors}
+    ${If} $1 == "1"
+      !insertmacro SelectSection ${SEC_STARTUP}
+    ${ElseIf} $1 == "0"
+      !insertmacro UnselectSection ${SEC_STARTUP}
+    ${Else}
+      Abort "Use /AUTOSTART=1 or /AUTOSTART=0."
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
 Section "Uninstall"
   SetShellVarContext all
   IfFileExists "$INSTDIR\${APP_EXE}" 0 remove_files
   nsExec::ExecToLog '"$INSTDIR\${APP_EXE}" stop'
 
 remove_files:
+  Delete "$SMSTARTUP\epub.ts.lnk"
   DeleteRegKey HKLM "Software\Classes\${APP_ID}.Document"
   DeleteRegValue HKLM "Software\Classes\.epub\OpenWithProgids" "${APP_ID}.Document"
   DeleteRegKey /ifempty HKLM "Software\Classes\.epub\OpenWithProgids"

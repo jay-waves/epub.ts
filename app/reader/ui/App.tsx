@@ -56,7 +56,7 @@ export function App({
         />
 
         <main className="reader-stage">
-          <div id="reader-root" className="reader-frame" ref={readerRootRef} />
+          <div id="reader-root" className="reader-frame" role="region" tabIndex={-1} aria-label="Book content" ref={readerRootRef} />
         </main>
 
         <ReadingProgress onSeek={actions.seek} returnRequest={state.progressReturnRequest} update={state.progress} />

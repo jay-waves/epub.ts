@@ -1,9 +1,10 @@
 # Packaging
 
-Native packages are intentionally unsigned. They install the launcher and file
+Native packages have no publisher certificate signatures (macOS uses ad-hoc
+signing). They install the launcher and file
 association, while reader data remains in the per-user application data directory.
-The launcher itself does not install or uninstall platform integration; each
-platform package owns that lifecycle. Portable launchers provide only `purge`
+Platform packages own installation and file associations. The macOS app also
+provides commands to manage its bundled login agent. Portable launchers provide only `purge`
 for explicitly deleting the current user's reader data.
 
 ## Automated releases
@@ -91,24 +92,47 @@ The all-users installer requests administrator permission, writes to
 Windows Installed Apps. Upgrade and uninstall stop the current user's daemon
 first. Uninstall leaves every user's reader data intact.
 
-Automatic daemon startup is opt-in. Copy
-`%ProgramFiles%\epub.ts\epub.ts-startup.cmd` into the folder opened by
-`shell:startup` for the current user. Remove that copied script to disable it.
+Automatic daemon startup is opt-in. Select **Start background service at login**
+on the installer's Installation options page to create a shortcut in the all-users
+Startup folder. It runs the GUI executable directly with `daemon`,
+without a CMD script or a browser window. Upgrades preserve the existing choice;
+unchecking the option removes the shortcut, and uninstall removes it too.
+Silent installs accept `/AUTOSTART=1` or `/AUTOSTART=0` before the final `/D=...`
+argument. Remove any startup CMD scripts previously copied into `shell:startup`
+manually; those user-owned copies are not managed by the installer.
 
 ## macOS
 
 Run `pnpm package:macos` on Apple Silicon macOS after `pnpm compile` to build the
 arm64 application and disk image. Intel macOS is intentionally unsupported.
 
-The app bundle and DMG packaging step runs only on macOS and uses the system
-`sips`, `iconutil`, `ditto`, and `hdiutil` commands; there is no third-party
+The app requires macOS 13 or later. The app bundle and DMG packaging step runs
+only on macOS and uses Xcode Command Line Tools (`xcrun swiftc`), plus the system
+`codesign`, `plutil`, `sips`, `iconutil`, `ditto`, and `hdiutil` commands; there is no third-party
 packaging dependency. Linux DMG writers are intentionally unsupported because
 they do not provide the same compatibility guarantees. Override the `hdiutil`
 path with `EPUB_TS_HDIUTIL` when necessary.
 
 The resulting `epub.ts.app` and DMG have no Developer ID signature and are not
-notarized. The packaging script does not invoke `codesign`; the Go linker may
-add the minimal ad-hoc signature structure required for an Apple Silicon
-executable. The app bundle declares EPUB metadata in `Info.plist`; macOS owns
+notarized. Packaging ad-hoc signs the launcher and app bundle for ServiceManagement.
+The app bundle declares EPUB metadata in `Info.plist`; macOS owns
 application discovery and file-association registration when the app is copied
 to or launched from `/Applications`.
+
+After copying the app to `/Applications`, opt into login startup with:
+
+```sh
+/Applications/epub.ts.app/Contents/MacOS/epub.ts autostart enable
+/Applications/epub.ts.app/Contents/MacOS/epub.ts autostart status
+/Applications/epub.ts.app/Contents/MacOS/epub.ts autostart disable
+```
+
+The native app entry point uses Apple's `SMAppService` to register the LaunchAgent
+inside `Contents/Library/LaunchAgents`; it does not copy a plist into the user's
+Library or use `launchctl`. If macOS requires approval, `enable` opens Login Items
+in System Settings and reports `requires-approval`. Status reports `enabled`,
+`disabled`, `requires-approval`, or `not-found`. The agent runs only `daemon`,
+without opening the viewer. Disable it before removing or moving the app.
+Disabling unregisters the agent; use `epub.ts stop` to stop an independently
+started, on-demand daemon if needed. Login registration is per user and is not
+enabled by packaging or by opening an EPUB.

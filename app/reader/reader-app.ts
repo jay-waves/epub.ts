@@ -946,7 +946,7 @@ function ReaderApplication() {
     } : undefined,
     previousSearchResult: () => { void runtime.search?.previous(); },
     runDockAction: (action) => {
-      void handleDockAction(action).catch((error) => {
+      return handleDockAction(action).catch((error) => {
         console.warn("Failed to apply reader action.", error);
       });
     },

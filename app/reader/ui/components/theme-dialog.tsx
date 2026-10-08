@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { KeyboardEvent } from "react";
+import * as RadioGroup from "@radix-ui/react-radio-group";
 import type { TypographyTheme, TypographyThemeId } from "../../../typography/model";
 import { getReaderThemeOptions } from "../../settings";
 import { Dialog } from "./ui";
@@ -11,14 +11,10 @@ const THEME_GROUPS = [
 const THEME_OPTIONS = getReaderThemeOptions();
 
 function ThemeCard({
-  active,
   label,
-  onSelect,
   theme,
 }: {
-  active: boolean;
   label: string;
-  onSelect(): void;
   theme: TypographyTheme;
 }) {
   const preview = [
@@ -27,20 +23,12 @@ function ThemeCard({
     theme.primary,
   ];
   return (
-    <button
-      aria-checked={active}
-      className="theme-option"
-      data-state={active ? "checked" : "unchecked"}
-      onClick={onSelect}
-      role="radio"
-      tabIndex={active ? 0 : -1}
-      type="button"
-    >
+    <RadioGroup.Item className="theme-option" value={theme.id}>
       <span className="theme-preview" aria-hidden="true">
         {preview.map((color) => <span key={color} style={{ backgroundColor: color }} />)}
       </span>
       <span className="theme-option-label">{label}</span>
-    </button>
+    </RadioGroup.Item>
   );
 }
 
@@ -57,24 +45,6 @@ export function ThemeDialog({ onClose, onSelect, selected }: {
     else if (!selected && dialog?.open) dialog.close();
   }, [selected]);
 
-  const handleThemeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home"].includes(event.key)) return;
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
-    const current = (event.target as HTMLElement).closest<HTMLButtonElement>('[role="radio"]');
-    const currentIndex = current ? options.indexOf(current) : -1;
-    if (currentIndex < 0 || !options.length) return;
-
-    event.preventDefault();
-    const nextIndex = event.key === "Home"
-      ? 0
-      : event.key === "End"
-        ? options.length - 1
-        : (currentIndex + (event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1) + options.length)
-          % options.length;
-    options[nextIndex]?.focus();
-    options[nextIndex]?.click();
-  };
-
   return (
     <Dialog
       id="theme-modal"
@@ -86,11 +56,14 @@ export function ThemeDialog({ onClose, onSelect, selected }: {
       <header className="theme-dialog-header">
         <h2 id="theme-dialog-title">Themes</h2>
       </header>
-      <div
+      <RadioGroup.Root
         aria-label="Themes"
         className="theme-dialog-form"
-        onKeyDown={handleThemeKeyDown}
-        role="radiogroup"
+        value={selected ?? ""}
+        onValueChange={(value) => {
+          const option = THEME_OPTIONS.find(({ theme }) => theme.id === value);
+          if (option) onSelect(option.theme.id);
+        }}
       >
         {THEME_GROUPS.map((group) => (
           <div aria-label={`${group.label} themes`} className="theme-group" key={group.mode} role="group">
@@ -99,17 +72,15 @@ export function ThemeDialog({ onClose, onSelect, selected }: {
                 .filter(({ theme }) => theme.mode === group.mode)
                 .map(({ label, theme }) => (
                   <ThemeCard
-                    active={selected === theme.id}
                     key={theme.id}
                     label={label}
                     theme={theme}
-                    onSelect={() => onSelect(theme.id)}
                   />
                 ))}
             </div>
           </div>
         ))}
-      </div>
+      </RadioGroup.Root>
     </Dialog>
   );
 }
