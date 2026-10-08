@@ -1,5 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
-import { cpSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -14,13 +14,13 @@ const fontFiles = [
   "Monaspace Argon Var.woff2",
 ];
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: "./",
   define: {
     __EPUB_TS_BUILD_TIME__: JSON.stringify(builtAt),
     __EPUB_TS_VERSION__: JSON.stringify(packageJson.version),
   },
-  publicDir: false,
+  publicDir: command === "serve" ? "public" : false,
   resolve: {
     alias: {
       "@mathjax/src/mjs": resolve(import.meta.dirname, "node_modules/@mathjax/src/mjs"),
@@ -32,6 +32,13 @@ export default defineConfig({
     tailwindcss(),
     {
       name: "viewer-assets",
+      configureServer(server) {
+        server.middlewares.use("/logo.png", (request, response, next) => {
+          if (request.method !== "GET" && request.method !== "HEAD") return next();
+          response.setHeader("Content-Type", "image/png");
+          response.end(request.method === "HEAD" ? undefined : readFileSync(resolve(import.meta.dirname, "assets/logo.png")));
+        });
+      },
       writeBundle() {
         const resolvedOutputDir = resolve(import.meta.dirname, outputDir);
         writeFileSync(
@@ -64,4 +71,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

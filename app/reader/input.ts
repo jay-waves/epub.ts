@@ -14,6 +14,7 @@ import {
   consumeReaderPointerClaim,
   resolveReaderPointerIntent,
 } from "./interaction-arbiter";
+import { installMousePageGesture } from "./mouse-page-gesture";
 import { getReaderTapRegion } from "./tap-region";
 
 const SCROLL_KEY_DISTANCE_RATIO = 0.48;
@@ -748,6 +749,22 @@ export function createViewerInput(options: ViewerInputOptions) {
   const bindInputTarget = (targetDocument: Document) => {
     if (inputTargets.has(targetDocument)) return;
     const events = new AbortController();
+    // Install before overlay capture so claimed drags do not become menu locks.
+    const pageGesture = installMousePageGesture(
+      (target) => !overlayInput.hasOverlay && options.canTurnPage()
+        && eventBelongsToReader({ target }) && resolveReaderPointerIntent(target) === "content",
+      (delta, axis) => {
+        const direction = axis === "horizontal" && options.getView()?.book?.dir === "rtl"
+          ? (delta === 1 ? -1 : 1) : delta;
+        options.dispatchCommand(direction < 0 ? "paginate-previous" : "paginate-next");
+      },
+      {
+        targetWindow: targetDocument.defaultView ?? window,
+        cursorTarget: targetDocument.documentElement,
+        onStart: () => overlayInput.beginPageGesture(),
+      },
+    );
+    const stopPageGestureSubscription = overlayInput.subscribe(pageGesture.cancel);
     (targetDocument.defaultView ?? targetDocument).addEventListener("wheel", wheelGesture.feed, {
       capture: true,
       passive: false,
@@ -768,6 +785,10 @@ export function createViewerInput(options: ViewerInputOptions) {
         signal: events.signal,
       });
     }
+    const cursorStyle = targetDocument.createElement("style");
+    cursorStyle.textContent = `html[data-reader-page-grabbing='true'],
+      html[data-reader-page-grabbing='true'] * { cursor: grabbing !important; }`;
+    targetDocument.head?.append(cursorStyle);
     const touchStyle = targetDocument === document ? null : targetDocument.createElement("style");
     if (touchStyle) {
       touchStyle.textContent = "html { touch-action: none !important; }";
@@ -779,6 +800,9 @@ export function createViewerInput(options: ViewerInputOptions) {
       : bindPointerInput(targetDocument, targetDocument);
     const stopSideButtons = bindSideButtonNavigation(targetDocument);
     inputTargets.set(targetDocument, () => {
+      stopPageGestureSubscription();
+      pageGesture.dispose();
+      cursorStyle.remove();
       stopPointer();
       stopSideButtons();
       events.abort();

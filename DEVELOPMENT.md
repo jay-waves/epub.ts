@@ -1,3 +1,11 @@
+## 前端验证 / Frontend validation
+
+Run `pnpm dev:wsl` in WSL and open `http://localhost:5174` in your Windows
+browser (or forward port 5174 to your browser machine). Choose or drop an EPUB
+on the welcome screen. Vite serves the reader fonts and logo and reloads source
+changes without compilation, packaging, or a Go daemon. This uses the existing
+browser adapter rather than desktop launcher APIs.
+
 ## 构建 / Build
 
 ### 构建依赖 / Build prerequisites
@@ -118,3 +126,12 @@ controls > links > highlights & annotations > images > text selection > page tur
 在 Edge 使用英文界面时，Language Detector API 可能会将现代中文错误识别为文言文（`lzh`），导致 Translator API 无法使用。
 
 When Edge uses an English interface, the Language Detector API may incorrectly identify modern Chinese as Literary Chinese (`lzh`), preventing the Translator API from working.
+
+Right mouse drags in the reader shell and chapter iframes use a grabbed-paper
+page gesture: left/up advances and right/down goes back (horizontal directions
+reverse for RTL books). Release after at least 40 CSS pixels with one axis at
+least 1.2 times the other to turn once. The grabbing cursor appears after 150ms
+of holding or 8px of movement; quick right clicks preserve context menus.
+Escape, blur, lost pointer capture, extra buttons, overlays and chapter unload
+cancel the gesture and clear the cursor. Controls, links, highlights and zoomable
+images retain their existing interaction ownership.

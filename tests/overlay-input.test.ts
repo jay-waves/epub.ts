@@ -134,3 +134,20 @@ test("Control-click cancels input before its contextmenu event", () => {
   assert.equal(input.locked, true);
   assert.equal(cancellations, 1);
 });
+
+
+test("claimed page gestures cancel pending input without retaining a context lock", () => {
+  const input = new OverlayInput();
+  let cancellations = 0;
+  input.subscribe(() => cancellations++);
+  input.capture(new Event("contextmenu"));
+  assert.equal(input.locked, true);
+  input.beginPageGesture();
+  assert.equal(input.locked, false);
+  assert.equal(cancellations, 2);
+  assert.equal(input.hasOverlay, false);
+  const close = input.register({ contains: () => true, dismiss() {} });
+  input.beginPageGesture();
+  assert.equal(input.locked, true, "an actual overlay must continue blocking page turns");
+  close();
+});

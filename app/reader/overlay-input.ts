@@ -10,6 +10,15 @@ export class OverlayInput {
   #dismissGesture = false;
   #contextGesture = false;
 
+  get hasOverlay() { return this.#overlays.size > 0; }
+
+  /** A claimed right drag cancels other input without becoming a context-menu lock. */
+  beginPageGesture() {
+    this.#dismissGesture = false;
+    this.#contextGesture = false;
+    this.#listeners.forEach((listener) => listener());
+  }
+
   get locked() {
     return this.#overlays.size > 0 || this.#dismissGesture || this.#contextGesture;
   }
