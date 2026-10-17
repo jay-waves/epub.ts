@@ -6,7 +6,7 @@ import type { DockAction, DockState, SearchState } from "../model";
 import { Tooltip } from "./ui";
 import { SearchBar } from "./search-bar";
 
-import { Settings, Search, Save, Info, TableOfContents, Palette, Minus, Plus, Minimize2, Maximize2 } from "lucide-react";
+import { Settings, Search, Save, Info, TableOfContents, Palette, Minus, Plus, Minimize2, Maximize2, LayoutTemplate } from "lucide-react";
 
 export function ReaderDock({
   onAction,
@@ -88,6 +88,7 @@ export function ReaderDock({
         {!state.searchActive ? (
           <Toolbar.Root className="reader-dock reader-dock-primary" aria-label="Reader toolbar">
             <DockButton label="Settings" icon={Settings} onClick={() => run("open-settings")} />
+            <DockButton label={state.layoutLabel} icon={LayoutTemplate} onClick={(pointer) => run("toggle-layout", pointer)} />
             <DockButton label="Themes" icon={Palette} onClick={() => run("open-theme")} />
             <DockButton label="Decrease font size" icon={Minus} onClick={(pointer) => activate("decrease-font", pointer)} />
             <DockButton label="Increase font size" icon={Plus} onClick={(pointer) => activate("increase-font", pointer)} />
