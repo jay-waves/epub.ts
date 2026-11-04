@@ -156,14 +156,15 @@ class EpubLauncherSession implements EpubFileHandle {
 }
 
 function createEpubLauncherSession() {
-  const documentId = new URLSearchParams(window.location.search).get("launcherDocument");
+  const documentId = new URLSearchParams(window.location.search).get("launcherDocument")
+  || (window.location.pathname.startsWith("/read/") ? decodeURIComponent(window.location.pathname.slice(6)) : null);
   return documentId ? new EpubLauncherSession(documentId) : null;
 }
 
 const launcher = createEpubLauncherSession();
 
 function getViewerAssetUrl(filename: string) {
-  const url = new URL(filename, document.baseURI);
+  const url = new URL(filename, window.location.pathname.startsWith("/read/") ? `${window.location.origin}/` : document.baseURI);
   url.searchParams.set("v", `${__EPUB_TS_VERSION__}-${__EPUB_TS_BUILD_TIME__}`);
   return url.href;
 }
