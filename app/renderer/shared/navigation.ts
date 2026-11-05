@@ -115,8 +115,10 @@ export function resolveReadingPosition(
   preferred?: Partial<ReadingPosition> & Pick<ReadingPosition, "index">,
 ) {
   const index = preferred?.index ?? measured.index;
-  const range = preferred?.range ?? (measured.index === index ? measured.range : undefined);
-  return createReadingPosition(index, preferred?.fraction ?? measured.fraction, range);
+  const sameSection = measured.index === index;
+  const range = preferred?.range ?? (sameSection ? measured.range : undefined);
+  const fraction = preferred?.fraction ?? (sameSection ? measured.fraction : 0);
+  return createReadingPosition(index, fraction, range);
 }
 
 /** Converts a section-relative fraction to a stable track coordinate. */

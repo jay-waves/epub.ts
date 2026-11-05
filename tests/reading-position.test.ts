@@ -135,3 +135,18 @@ test("measuring a collapsed text anchor expands a copy without changing the save
     else delete (globalThis as { Node?: unknown }).Node;
   }
 });
+
+test("a preferred section never inherits another section's fraction or range", () => {
+  const measuredRange = {} as Range;
+  const targetRange = {} as Range;
+  const measured = createReadingPosition(2, 0.9, measuredRange);
+  assert.deepEqual(resolveReadingPosition(measured, { index: 3 }), {
+    index: 3, fraction: 0,
+  });
+  assert.deepEqual(resolveReadingPosition(measured, { index: 3, range: targetRange }), {
+    index: 3, fraction: 0, range: targetRange,
+  });
+  assert.deepEqual(resolveReadingPosition(measured, { index: 3, fraction: 0.4 }), {
+    index: 3, fraction: 0.4,
+  });
+});

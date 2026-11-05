@@ -65,6 +65,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     #position?: ReadingPosition
     #targetAnchor: RenderedAnchor = fractionAnchor(0)
     #motion?: AbortController
+    #layoutRevision = 0
     #renderFrame?: number
     #scrolledViewport!: ScrollCoordinator
     #containerWidth = 0
@@ -131,6 +132,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             host: this,
             layout: () => this.#layoutEntries(),
             layoutFor: direction => this.#beforeRender(direction),
+            layoutRevision: () => this.#layoutRevision,
             canJoinWindow: (current, candidate) =>
                 sameSectionDirection(current.direction, candidate.direction),
             navigation: this.#navigation,
@@ -239,6 +241,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         // the same way as section content expansion.
         this.#scrolledViewport.flush()
         if (!this.#navigation.beginReflow()) return
+        this.#layoutRevision += 1
         const entry = this.#spine.entryForView()
         const anchor = entry
             ? anchorForPosition(this.#position, entry.index, entry.view.document)
@@ -293,12 +296,6 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     get end() {
         return this.start + this.size
     }
-    get page() {
-        return Math.floor(((this.start + this.end) / 2) / this.size)
-    }
-    get pages() {
-        return Math.round(this.viewSize / this.size)
-    }
     panBy(dx: number, dy: number) {
         const delta = this.#vertical ? dx : dy
         const element = this.#container
@@ -332,7 +329,7 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
                 findAt: value => this.#spine.findAt(value),
                 margin: this.#margin,
                 range: entry => this.#scrolledViewport.readingRange(
-                    entry.view.document, this.#margin),
+                    entry.view.document, this.#margin, entry.view.direction.writingMode),
                 start: this.start,
                 viewportSize: this.size,
             })
@@ -421,8 +418,6 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
             atBookStart: this.#adjacentIndex(-1) == null,
             end: this.end,
             extent: this.viewSize,
-            page: this.page,
-            pages: this.pages,
             size: this.size,
             start: this.start,
         }

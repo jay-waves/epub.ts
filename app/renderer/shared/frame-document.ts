@@ -26,7 +26,12 @@ export async function loadFrameDocument<Result>(
       result.reject(new DOMException("Iframe document is unavailable", "InvalidStateError"));
       return;
     }
-    Promise.resolve(load(document, signal)).then(result.resolve, result.reject);
+    // Invoke inside the promise chain so synchronous setup failures reject the
+    // load operation just like asynchronous failures.
+    Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return load(document, signal);
+    }).then(result.resolve, result.reject);
   }, { once: true, signal });
 
   try {

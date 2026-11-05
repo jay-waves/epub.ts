@@ -165,7 +165,8 @@ export class ReflowableSpine {
   }
 
   scheduleCache() {
-    if (!this.#options.continuous() || this.#cacheFrame !== undefined) return;
+    if (this.#events.signal.aborted || !this.#options.continuous()
+      || this.#cacheFrame !== undefined) return;
     this.#cacheFrame = requestAnimationFrame(() => {
       this.#cacheFrame = requestAnimationFrame(() => {
         this.#cacheFrame = undefined;
@@ -179,7 +180,7 @@ export class ReflowableSpine {
   }
 
   async #cacheAdjacent() {
-    if (!this.#options.continuous()) return;
+    if (this.#events.signal.aborted || !this.#options.continuous()) return;
     if (this.#loading) {
       this.scheduleCache();
       return;
@@ -193,6 +194,7 @@ export class ReflowableSpine {
         ...viewport,
         adjacent: (index, direction) => this.adjacent(index, direction),
       });
+      if (this.#events.signal.aborted) return;
       const current = this.#currentView;
       const canJoin = this.#options.canJoinWindow;
       if (current && canJoin) {
@@ -223,6 +225,13 @@ export class ReflowableSpine {
       }
       const committed = await this.#options.navigation.run(() => {
         if (revision && layoutRevision !== revision()) return false;
+        // Loading can outlive a user scroll or an in-window navigation.
+        // Membership revisions alone cannot detect that the eviction plan is stale.
+        const latest = this.#options.viewport();
+        if (latest.activeIndex !== viewport.activeIndex
+          || latest.viewportStart !== viewport.viewportStart
+          || latest.viewportEnd !== viewport.viewportEnd
+          || latest.viewportSize !== viewport.viewportSize) return false;
         this.commit(change);
         return true;
       });
@@ -263,8 +272,8 @@ export class ReflowableSpine {
   }
 
   destroy() {
-    this.clear();
     this.#events.abort();
+    this.clear();
     this.#book = undefined;
     this.#openingEnd = 0;
   }

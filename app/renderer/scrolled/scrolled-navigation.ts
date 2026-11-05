@@ -5,15 +5,13 @@ export type ScrolledNavigationState = {
   atBookStart: boolean;
   end: number;
   extent: number;
-  page: number;
-  pages: number;
   size: number;
   start: number;
 };
 
 export function isAtScrolledBookEdge(state: ScrolledNavigationState, direction: -1 | 1) {
-  if (direction < 0) return state.atBookStart && state.page <= 1;
-  return state.atBookEnd && state.page >= state.pages - 2;
+  if (direction < 0) return state.atBookStart && state.start <= EDGE_EPSILON;
+  return state.atBookEnd && state.extent - state.end <= EDGE_EPSILON;
 }
 
 export function planScrolledNavigation(

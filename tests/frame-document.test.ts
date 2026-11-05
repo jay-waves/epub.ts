@@ -47,3 +47,28 @@ test("aborting frame loading rejects immediately and removes load work", async (
   frame.dispatchEvent(new Event("load"));
   assert.equal(called, false);
 });
+
+test("synchronous document setup failures reject the load operation", async () => {
+  const frame = new FrameStub();
+  const reason = new Error("Document setup failed");
+  const loading = loadFrameDocument(
+    frame as unknown as HTMLIFrameElement, "book.xhtml",
+    new AbortController().signal, () => { throw reason; },
+  );
+  frame.dispatchEvent(new Event("load"));
+  await assert.rejects(loading, error => error === reason);
+});
+
+test("abort between the load event and setup prevents document work", async () => {
+  const frame = new FrameStub();
+  const controller = new AbortController();
+  let called = false;
+  const loading = loadFrameDocument(
+    frame as unknown as HTMLIFrameElement, "book.xhtml",
+    controller.signal, () => { called = true; },
+  );
+  frame.dispatchEvent(new Event("load"));
+  controller.abort();
+  await assert.rejects(loading, (error: DOMException) => error.name === "AbortError");
+  assert.equal(called, false);
+});

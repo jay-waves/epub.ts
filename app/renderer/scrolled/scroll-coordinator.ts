@@ -1,3 +1,5 @@
+import type { SectionDirection } from "../shared/section-frame";
+
 type ProjectedRect = {
   bottom: number;
   left: number;
@@ -64,6 +66,7 @@ function getReadingRange(
   container: HTMLElement,
   doc: Document,
   inset: number,
+  writingMode: SectionDirection["writingMode"],
 ) {
   const frame = getFrame(doc);
   if (!frame) return undefined;
@@ -73,15 +76,20 @@ function getReadingRange(
   const scaleY = frameRect.height / Math.max(1, frame.offsetHeight);
   const visibleLeft = Math.max(frameRect.left, viewport.left);
   const visibleRight = Math.min(frameRect.right, viewport.right);
-  const hostY = Math.max(
-    frameRect.top,
-    Math.min(frameRect.bottom - 1, viewport.top + inset),
-  );
-  const center = (visibleLeft + visibleRight) / 2;
-  const hostXs = [center, visibleLeft + (visibleRight - visibleLeft) * 0.3,
-    visibleLeft + (visibleRight - visibleLeft) * 0.7];
+  const visibleTop = Math.max(frameRect.top, viewport.top);
+  const visibleBottom = Math.min(frameRect.bottom, viewport.bottom);
+  if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) return undefined;
+  const vertical = writingMode !== "horizontal-tb";
+  const clamp = (value: number, start: number, end: number) =>
+    Math.max(start, Math.min(end - Math.min(1, (end - start) / 2), value));
+  const edge = vertical
+    ? clamp(writingMode === "vertical-rl" ? viewport.right - inset : viewport.left + inset,
+        visibleLeft, visibleRight)
+    : clamp(viewport.top + inset, visibleTop, visibleBottom);
 
-  for (const hostX of hostXs) {
+  for (const fraction of [0.5, 0.3, 0.7]) {
+    const hostX = vertical ? edge : visibleLeft + (visibleRight - visibleLeft) * fraction;
+    const hostY = vertical ? visibleTop + (visibleBottom - visibleTop) * fraction : edge;
     const range = collapsedRangeAt(
       doc,
       (hostX - frameRect.left) / Math.max(scaleX, Number.EPSILON),
@@ -120,8 +128,9 @@ export class ScrollCoordinator {
     return getAnchorTarget(this.#container, doc, rect, inset);
   }
 
-  readingRange(doc: Document, inset: number) {
-    return getReadingRange(this.#container, doc, inset);
+  readingRange(doc: Document, inset: number,
+    writingMode: SectionDirection["writingMode"] = "horizontal-tb") {
+    return getReadingRange(this.#container, doc, inset, writingMode);
   }
 
   readonly #schedule = () => {
