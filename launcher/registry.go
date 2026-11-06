@@ -30,7 +30,6 @@ type persistentState struct {
 	Version       int                 `json:"version"`
 	ListenAddress string              `json:"listenAddress,omitempty"`
 	Documents     map[string]Document `json:"documents"`
-	AI            *storedAIConfig     `json:"ai,omitempty"`
 }
 
 type Registry struct {
@@ -81,6 +80,10 @@ func OpenRegistry() (*Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openRegistry(directory)
+}
+
+func openRegistry(directory string) (*Registry, error) {
 	registry := &Registry{
 		path: filepath.Join(directory, stateFilename),
 		state: persistentState{
@@ -101,7 +104,12 @@ func OpenRegistry() (*Registry, error) {
 		if registry.state.Documents == nil {
 			registry.state.Documents = make(map[string]Document)
 		}
-		migrated := false
+		// Retire server-side credentials without exporting or decrypting them.
+		var legacy struct {
+			AI json.RawMessage `json:"ai"`
+		}
+		_ = json.Unmarshal(content, &legacy)
+		migrated := len(legacy.AI) > 0
 		expiresAt := time.Now().Add(documentCapabilityLifetime)
 		for id, document := range registry.state.Documents {
 			if document.ExpiresAt.IsZero() {
@@ -112,13 +120,16 @@ func OpenRegistry() (*Registry, error) {
 		}
 		if migrated {
 			if err := registry.writeLocked(); err != nil {
-				return nil, fmt.Errorf("migrate document expiration: %w", err)
+				return nil, fmt.Errorf("migrate document registry: %w", err)
 			}
 		}
 	case errors.Is(err, os.ErrNotExist):
 		// The initial state is persisted when the daemon publishes its endpoint.
 	default:
 		return nil, fmt.Errorf("read document registry: %w", err)
+	}
+	if err := os.Remove(filepath.Join(directory, "master.key")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("remove retired AI master key: %w", err)
 	}
 	return registry, nil
 }

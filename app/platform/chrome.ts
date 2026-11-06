@@ -1,3 +1,4 @@
+import { browserAiCapabilities } from "./browser-ai";
 import { get as readViewerMetadata, set as writeViewerMetadata } from "idb-keyval";
 import { BrowserEpubFileHandle, browserLocalDocumentCapabilities } from "./browser-files";
 import { openExternal, createBundledReaderProfile } from "./shared";
@@ -45,6 +46,7 @@ function getChromeAssetUrl(filename: string) {
 }
 
 export const platform: ViewerPlatform = {
+  ...browserAiCapabilities,
   // This module is imported alongside the web and launcher platforms. Keep
   // module initialization safe even when Chrome extension APIs are absent.
   readerProfile: createBundledReaderProfile(getChromeAssetUrl),

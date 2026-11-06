@@ -1,3 +1,4 @@
+import { PopoverResizeHandle } from "./popover-resize-handle";
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, SquarePen, Trash2 } from "lucide-react";
 import { usePointPopover } from "./use-point-popover";
@@ -36,7 +37,7 @@ export function AnnotationPopover({ detail, onChange, onClose, onDelete }: {
     <section
       aria-label="Annotation"
       aria-live="polite"
-      className="reader-text-popover"
+      className="reader-text-popover reader-editor-popover"
       popover="manual"
       ref={popover.setPopover}
       role="dialog"
@@ -85,6 +86,7 @@ export function AnnotationPopover({ detail, onChange, onClose, onDelete }: {
           value={detail.note}
         />
       </div>
+      <PopoverResizeHandle />
     </section>
   );
 }

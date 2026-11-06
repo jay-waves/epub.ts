@@ -58,13 +58,6 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	config, err := registry.loadAIConfig(aiConfig{})
-	if err != nil {
-		return nil, err
-	}
-	desktopAIConfigMutex.Lock()
-	desktopAIConfig = config
-	desktopAIConfigMutex.Unlock()
 	return &App{
 		registry:  registry,
 		resources: make(map[string]*Resource),
@@ -205,8 +198,6 @@ func (app *App) routes() http.Handler {
 	mux.HandleFunc("/api/control/status", app.handleStatus)
 	mux.HandleFunc("/api/control/stop", app.handleStop)
 	mux.HandleFunc("/api/control/documents", app.handleRegisterDocument)
-	mux.HandleFunc("/api/control/ai", app.handleAI)
-	mux.HandleFunc("/api/control/ai-config", app.handleAIConfig)
 	mux.HandleFunc("/api/documents/", app.handleDocument)
 
 	sub, err := fs.Sub(viewerFiles, "viewer")

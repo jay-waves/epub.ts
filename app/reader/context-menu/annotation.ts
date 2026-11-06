@@ -15,12 +15,9 @@ type AnnotationOptions = {
   getProgress: () => number;
   getView: () => ReaderView | null;
   getTranslationTargetLanguage: () => string;
-  getTranslator: () => "builtin" | "llm";
-  getLlmApiKey: () => string;
-  getLlmBaseUrl: () => string;
-  getLlmModel: () => string;
-  getLlmTranslationPrompt: () => string;
-  requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
+  getTranslationEnabled: () => boolean;
+  getLlmEnabled: () => boolean;
+  requestAi?: import("../../platform/types").ViewerPlatform["requestAi"];
   openExternal: (url: string) => void;
   onUnsaved: () => void;
   updateUi: (state: Partial<ReaderUiState>) => void;
@@ -80,8 +77,8 @@ export function createAnnotations(options: AnnotationOptions) {
   const textContext = createTextContext<AnnotationContext>({
     closeAnnotation: options.closeAnnotation,
     getTranslationTargetLanguage: options.getTranslationTargetLanguage,
-    getTranslator: options.getTranslator,
-    getLlmTranslationPrompt: options.getLlmTranslationPrompt,
+    getTranslationEnabled: options.getTranslationEnabled,
+    getLlmEnabled: options.getLlmEnabled,
     requestAi: options.requestAi,
     openExternal: options.openExternal,
     onAction: handleTextContextAction,
@@ -196,7 +193,7 @@ export function createAnnotations(options: AnnotationOptions) {
 
   const openAnnotationPopover = (highlight: ReaderAnnotation, point?: { x: number; y: number }) => {
     textContext.closeTranslation();
-    options.updateUi({ annotation: {
+    options.updateUi({ llm: null, annotation: {
       note: highlight.note ?? "",
       sourceText: getAnnotationText(highlight),
       value: highlight.value,
@@ -491,7 +488,7 @@ export function createAnnotations(options: AnnotationOptions) {
   const reset = () => {
     annotationRepository.clearMemory();
     textContext.setTranslationSourceLanguage(undefined);
-    textContext.close();
+    textContext.dismiss();
   };
 
   return {

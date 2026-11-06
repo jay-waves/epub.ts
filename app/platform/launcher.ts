@@ -1,3 +1,4 @@
+import { browserAiCapabilities } from "./browser-ai";
 import { browserLocalDocumentCapabilities } from "./browser-files";
 import { openExternal, createBundledReaderProfile } from "./shared";
 import type { ReaderAnnotation } from "../epub/annotation";
@@ -7,7 +8,6 @@ import type {
   ViewerPlatform,
 } from "./types";
 import { startupTrace } from "../startup-trace";
-import type { AiConfig, AiConfigUpdate, AiRequest } from "./types";
 
 type WriteResponse = {
   version: string;
@@ -170,6 +170,7 @@ function getViewerAssetUrl(filename: string) {
 }
 
 export const platform: ViewerPlatform = {
+  ...browserAiCapabilities,
   readerProfile: createBundledReaderProfile(getViewerAssetUrl),
   loadInitialDocument: () => launcher?.openDocument(),
   ...browserLocalDocumentCapabilities,
@@ -180,25 +181,4 @@ export const platform: ViewerPlatform = {
   writeViewerMetadata: (key, value) => launcher
     ? launcher.writeMetadata(key, value)
     : Promise.reject(new Error("The launcher document is unavailable.")),
-  requestAi: async (request: AiRequest) => {
-    if (!launcher) throw new Error("The desktop launcher is unavailable.");
-    const response = await fetch(new URL("/api/control/ai", window.location.origin), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-    });
-    const result = await response.json().catch(() => ({})) as { text?: string; message?: string };
-    if (!response.ok) throw new Error(result.message ?? `AI request failed (${response.status}).`);
-    if (typeof result.text !== "string") throw new Error("The launcher returned an invalid AI response.");
-    return result.text;
-  },
-  getAiConfig: async () => {
-    const response = await fetch(new URL("/api/control/ai-config", window.location.origin));
-    if (!response.ok) throw new Error(`Could not read AI settings (${response.status}).`);
-    return await response.json() as AiConfig;
-  },
-  setAiConfig: async (config: AiConfigUpdate) => {
-    const response = await fetch(new URL("/api/control/ai-config", window.location.origin), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
-    if (!response.ok) throw new Error(`Could not save AI settings (${response.status}).`);
-  },
 };

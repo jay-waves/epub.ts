@@ -1,3 +1,4 @@
+import { LlmPopover } from "./components/llm-popover";
 import { memo, useRef, useState } from "react";
 import type { Ref } from "react";
 import { ReaderDock } from "./components/reader-dock";
@@ -72,6 +73,7 @@ export function App({
           onClose={actions.closeAnnotation}
           onDelete={actions.deleteAnnotation}
         />
+        {state.llm && requestAi ? <LlmPopover key={`${state.llm.x}:${state.llm.y}:${state.llm.text}`} detail={state.llm} requestAi={requestAi} onClose={actions.closeLlm} /> : null}
         <StableTranslationPopover
           detail={state.translation}
           onClose={actions.closeTranslation}

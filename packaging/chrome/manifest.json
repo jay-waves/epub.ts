@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EPUB Viewer",
-  "version": "0.2.9",
+  "version": "0.9.0",
   "description": "Open local EPUB files in a focused Chrome extension reader.",
   "minimum_chrome_version": "152",
   "permissions": [
@@ -30,6 +30,6 @@
     "default_title": "Open EPUB Viewer"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; frame-src 'self' blob: data:; connect-src 'self' blob: data: file:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; frame-src 'self' blob: data:; connect-src 'self' blob: data: file: https: http://localhost:* http://127.0.0.1:* http://[::1]:*;"
   }
 }

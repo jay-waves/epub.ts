@@ -1,4 +1,3 @@
-import { createLlmTranslation } from "./llm-translation";
 import { createTranslation } from "./translation";
 import type { ContentContextAction, ReaderUiState } from "../ui/model";
 
@@ -20,9 +19,9 @@ export type TextContextActionDetail<Context> = {
 type TextContextOptions<Context> = {
   closeAnnotation: () => void;
   getTranslationTargetLanguage: () => string;
-  getTranslator: () => "builtin" | "llm";
-  getLlmTranslationPrompt: () => string;
-  requestAi?: (request: import("../../platform/types").AiRequest) => Promise<string>;
+  getTranslationEnabled: () => boolean;
+  getLlmEnabled: () => boolean;
+  requestAi?: import("../../platform/types").ViewerPlatform["requestAi"];
   openExternal: (url: string) => void;
   onAction: (detail: TextContextActionDetail<Context>) => void;
   onClose: () => void;
@@ -39,20 +38,12 @@ function getLookupTerm(text: string) {
 
 /** Generic text actions over plain text and viewport coordinates. */
 export function createTextContext<Context>(options: TextContextOptions<Context>) {
-  const llmTranslation = options.requestAi
-    ? createLlmTranslation({
-      getTranslationPrompt: options.getLlmTranslationPrompt,
-      onUpdate: (detail) => options.updateUi({ translation: detail }),
-      requestAi: options.requestAi,
-    })
-    : null;
   const browserTranslation = createTranslation({
-      getSourceLanguage: () => undefined,
-      getTargetLanguage: options.getTranslationTargetLanguage,
-      onUpdate: (detail) => options.updateUi({ translation: detail }),
-    });
-  const useLlm = () => options.getTranslator() === "llm" && llmTranslation !== null;
-  const cancelTranslation = () => { llmTranslation?.cancel(); browserTranslation.cancel(); };
+    getSourceLanguage: () => undefined,
+    getTargetLanguage: options.getTranslationTargetLanguage,
+    onUpdate: (detail) => options.updateUi({ translation: detail }),
+  });
+  const cancelTranslation = () => browserTranslation.cancel();
   let current: TextContextRequest<Context> | null = null;
 
   const clear = () => {
@@ -71,16 +62,21 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     const request = current;
     if (!request) return;
     switch (action) {
+      case "llm":
+        if (!options.getLlmEnabled() || !options.requestAi) break;
+        cancelTranslation();
+        options.closeAnnotation();
+        options.updateUi({ translation: null, llm: { text: request.text, ...request.point } });
+        break;
       case "copy":
         run(navigator.clipboard.writeText(request.text), "Failed to copy reader text.");
         break;
       case "translate":
+        if (!options.getTranslationEnabled()) break;
+        options.closeAnnotation();
+        options.updateUi({ llm: null });
         cancelTranslation();
-        if (useLlm()) {
-          void llmTranslation!.request({ text: request.text, ...request.point, lookup: false });
-        } else {
-          void browserTranslation.translate({ sourceText: request.text, ...request.point });
-        }
+        void browserTranslation.translate({ sourceText: request.text, ...request.point });
         break;
     }
     options.onAction({ action, context: request.context, point: request.point, text: request.text });
@@ -89,11 +85,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     const term = getLookupTerm(sourceText);
     if (!term) return;
     cancelTranslation();
-    if (useLlm()) {
-      void llmTranslation!.request({ text: term, x, y, lookup: true });
-    } else {
-      void browserTranslation.translate({ sourceText: term, x, y });
-    }
+    void browserTranslation.translate({ sourceText: term, x, y });
   };
 
   return {
@@ -107,7 +99,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
       close();
       cancelTranslation();
       options.closeAnnotation();
-      options.updateUi({ translation: null });
+      options.updateUi({ translation: null, llm: null });
     },
     open(request: TextContextRequest<Context>) {
       current = request;
@@ -117,7 +109,8 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
           canCopy: true,
           canDelete: request.canDelete,
           canHighlight: request.canHighlight,
-          canTranslate: true,
+          canTranslate: options.getTranslationEnabled(),
+          canAskLlm: options.getLlmEnabled() && Boolean(options.requestAi),
           ...request.point,
         },
         onAction: handleAction,
@@ -126,7 +119,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     },
     closeTranslation() {
       cancelTranslation();
-      options.updateUi({ translation: null });
+      options.updateUi({ translation: null, llm: null });
     },
     downloadTranslation: browserTranslation.download,
     lookup,

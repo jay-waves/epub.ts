@@ -25,6 +25,7 @@ Available as:
 - Highlights and annotations
 - Table of contents and reading progress
 - Full-text search
+- Built-in browser translation and direct LLM requests with streaming replies and follow-up questions
 
 Table of contents:
 
@@ -49,7 +50,7 @@ Translation runs entirely on the device and requires a browser with the built-in
 
 ### Advanced settings
 
-Less frequently used options are available through `epub.settings` in the developer console and are stored in the browser's `localStorage`:
+Open **Settings** from the Dock or press **Ctrl+,** to configure typography, browser translation, and LLM independently. Reader preferences are stored in this browser. The controller also exposes these settings for development:
 
 ```js
 epub.settings.fonts
@@ -66,13 +67,23 @@ await epub.settings.reset()
 
 Font names refer only to locally available browser fonts; the app does not download or install fonts.
 The `auto` text-alignment setting chooses an alignment based on the document language.
-The translation target defaults to the browser's preferred language. If support for a language pair is not installed, its model is downloaded only after confirmation in the translation popover.
+The translation target defaults to Simplified Chinese (`zh-CN`). If support for a language pair is not installed, its model is downloaded only after confirmation in the translation popover.
 `reset()` removes all advanced overrides and restores the defaults.
 On each launch, the app logs the current settings and command hints to the console.
 
 Translation languages use [BCP 47](https://www.rfc-editor.org/info/bcp47) tags, including `zh-Hans` for Simplified Chinese and `zh-Hant` for Traditional Chinese.
 See the [official Edge language list](https://github.com/MicrosoftEdge/Demos/blob/main/built-in-ai/static/translator-api.js) or use the [Edge Built-in AI Playground](https://microsoftedge.github.io/Demos/built-in-ai/) to check model availability.
 The reader uses the EPUB `lang` value when available and invokes the Language Detector only when it is missing.
+
+### LLM
+
+Enable **LLM** in Settings, then enter an OpenAI-compatible model, Base URL, and API key. Select text and choose **Ask LLM** to open a separate, editable popover with the selection quoted and the caret below it. Press Send or **Ctrl+Enter / Command+Enter** to stream a response. Use the follow-up action to continue the conversation, copy its text, or drag the bottom-right handle to resize. Annotation popovers support the same resizing handle. Browser translation retains its own Translate action and language settings.
+
+All variants (web, desktop, and Chrome) call the provider directly from browser JavaScript, including during development. The provider must allow your reader's origin through CORS. Use HTTPS, or HTTP only for `localhost`, `127.0.0.1`, or `[::1]`. Changing the Base URL clears the existing key; enter a key again for the new endpoint. Requests block redirects and omit browser credentials and referrers.
+
+API keys stay in memory by default and disappear when the page reloads or closes. **Remember API key in this browser** is an explicit opt-in to unencrypted browser storage; the warning below the switch explains the risks. Neither mode protects against injected scripts (XSS). Use a separate, revocable key with a hard spending limit. **Clear key** removes the current key and revokes persistence. Model settings and the reusable prompt are saved separately from reader typography; LLM Reset restores provider defaults. Token usage is counted for the current page and resets on model changes.
+
+Upgrading from the Go LLM proxy removes its stored AI configuration and `master.key`, without exporting credentials to the browser. Re-enter your provider settings and key. Existing reading preferences, documents, and browser-side custom prompts are preserved.
 
 ### Application variants
 

@@ -92,6 +92,8 @@ The all-users installer requests administrator permission, writes to
 Windows Installed Apps. Upgrade and uninstall stop the current user's daemon
 first. Uninstall leaves every user's reader data intact.
 
+The completion page offers a checked **Launch epub.ts** option. Clicking Finish opens `epub.ts.exe`; uncheck it to finish without launching. Silent installs skip this completion-page action. EPUB file associations use the application's embedded icon.
+
 Automatic daemon startup is opt-in. Select **Start background service at login**
 on the installer's Installation options page to create a shortcut in the all-users
 Startup folder. It runs the GUI executable directly with `daemon`,

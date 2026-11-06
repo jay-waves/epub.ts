@@ -15,7 +15,8 @@ export type ContentContextAction =
   | "copy"
   | "delete"
   | "highlight"
-  | "translate";
+  | "translate"
+  | "llm";
 
 export type ContentContextMenu = {
   canAnnotate: boolean;
@@ -23,6 +24,7 @@ export type ContentContextMenu = {
   canDelete: boolean;
   canHighlight: boolean;
   canTranslate: boolean;
+  canAskLlm?: boolean;
   x: number;
   y: number;
 };
@@ -102,6 +104,7 @@ export type TranslationDetail = {
 
 export type ReaderUiState = {
   annotation: AnnotationDetail | null;
+  llm: { text: string; x: number; y: number } | null;
   bookInfo: BookInfo;
   bookInfoOpen: boolean;
   contextMenu: ContentContextMenuDetail | null;
@@ -120,6 +123,7 @@ export type ReaderUiState = {
 
 export type ReaderUiActions = {
   closeAnnotation: () => void;
+  closeLlm: () => void;
   closeBookInfo: () => void;
   closeContextMenu: () => void;
   closeSearch: () => void;

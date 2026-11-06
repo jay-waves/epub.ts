@@ -49,6 +49,8 @@ UninstallIcon "${REPO_ROOT}/assets/icon.ico"
 !insertmacro MUI_PAGE_DIRECTORY
 Page custom StartupPage StartupPageLeave
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -74,7 +76,7 @@ install_files:
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document" "" "epub.ts Document"
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\Application" "ApplicationName" "epub.ts"
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\Application" "ApplicationDescription" "Open EPUB documents with epub.ts"
-  WriteRegExpandStr HKLM "Software\Classes\${APP_ID}.Document\DefaultIcon" "" "%SystemRoot%\System32\SHELL32.dll,1"
+  WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\DefaultIcon" "" '"$INSTDIR\${APP_EXE}",0'
   WriteRegStr HKLM "Software\Classes\${APP_ID}.Document\shell\open\command" "" '"$INSTDIR\${APP_EXE}" open "%1"'
   WriteRegStr HKLM "Software\Classes\.epub\OpenWithProgids" "${APP_ID}.Document" ""
 

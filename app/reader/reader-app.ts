@@ -97,23 +97,6 @@ const runtime: ViewerRuntime = {
 
 const advancedSettings = createAdvancedSettingsController(applyAdvancedSettings);
 
-async function fallBackFromUnavailableLlm() {
-  if (advancedSettings.value.translator !== "llm") return;
-  if (!platform.requestAi || !platform.getAiConfig) {
-    await advancedSettings.setTranslator("builtin");
-    return;
-  }
-  try {
-    const config = await platform.getAiConfig();
-    if (config.apiKeyConfigured && config.baseUrl && config.model) return;
-  } catch {
-    // An unavailable launcher cannot provide LLM translation.
-  }
-  await advancedSettings.setTranslator("builtin");
-}
-
-void fallBackFromUnavailableLlm();
-
 console.log(`[epub.ts] v${__EPUB_TS_VERSION__} · built ${__EPUB_TS_BUILD_TIME__}`);
 advancedSettings.logStatus();
 
@@ -173,11 +156,8 @@ const annotationState = createAnnotations({
   getProgress: () => session.progress,
   getView,
   getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
-  getTranslator: () => advancedSettings.value.translator,
-  getLlmApiKey: () => advancedSettings.value.llmApiKey,
-  getLlmBaseUrl: () => advancedSettings.value.llmBaseUrl,
-  getLlmModel: () => advancedSettings.value.llmModel,
-  getLlmTranslationPrompt: () => advancedSettings.value.llmTranslationPrompt,
+  getTranslationEnabled: () => advancedSettings.value.translationEnabled,
+  getLlmEnabled: () => advancedSettings.value.llmEnabled,
   requestAi: platform.requestAi,
   openExternal: platform.openExternal,
   onUnsaved: () => setHasUnsavedChanges(true),
@@ -842,6 +822,7 @@ function initializeReaderRoot(node: HTMLDivElement | null) {
 function createInitialUiState(): ReaderUiState {
   return {
     annotation: null,
+    llm: null,
     bookInfo: createBookInfo(),
     bookInfoOpen: false,
     contextMenu: null,
@@ -907,6 +888,7 @@ function ReaderApplication() {
   const { openLocalDocument, pickLocalDocument } = platform;
   const actions = useMemo(() => ({
     closeAnnotation,
+    closeLlm: () => updateUi({ llm: null }),
     closeBookInfo: () => updateUi({ bookInfoOpen: false }),
     closeContextMenu: () => {
       stateRef.current.contextMenu?.onClose();

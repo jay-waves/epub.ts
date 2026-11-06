@@ -1,3 +1,4 @@
+import { browserAiCapabilities } from "./browser-ai";
 import { get as readViewerMetadata, set as writeViewerMetadata } from "idb-keyval";
 import { browserLocalDocumentCapabilities } from "./browser-files";
 import { openExternal, createBundledReaderProfile } from "./shared";
@@ -8,6 +9,7 @@ function getWebAssetUrl(filename: string) {
 }
 
 export const platform: ViewerPlatform = {
+  ...browserAiCapabilities,
   readerProfile: { ...createBundledReaderProfile(getWebAssetUrl), lineHeightOffset: 0.1 },
   loadInitialDocument: () => undefined,
   ...browserLocalDocumentCapabilities,

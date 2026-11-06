@@ -1,3 +1,4 @@
+import { migrateLegacyAiSettings } from "../platform/browser-ai";
 import { DEFAULT_TYPOGRAPHY_FONTS } from "../typography/model";
 import type { TypographyFonts, TypographyTextAlignment } from "../typography/model";
 
@@ -6,11 +7,8 @@ export type AdvancedReaderSettings = {
   textAlignment: TypographyTextAlignment;
   translationSourceLanguage: string | null;
   translationTargetLanguage: string;
-  translator: "builtin" | "llm";
-  llmApiKey: string;
-  llmBaseUrl: string;
-  llmModel: string;
-  llmTranslationPrompt: string;
+  translationEnabled: boolean;
+  llmEnabled: boolean;
 };
 
 type EpubSettingsApi = {
@@ -18,10 +16,8 @@ type EpubSettingsApi = {
   readonly sourceLanguage: string | null;
   readonly textAlignment: TypographyTextAlignment;
   readonly translationTargetLanguage: string;
-  readonly translator: "builtin" | "llm";
-  readonly llmApiKey: string;
-  readonly llmBaseUrl: string;
-  readonly llmModel: string;
+  readonly translationEnabled: boolean;
+  readonly llmEnabled: boolean;
   reset(): Promise<AdvancedReaderSettings>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
@@ -29,17 +25,12 @@ type EpubSettingsApi = {
   setSourceLanguage(language: string | null): Promise<void>;
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
   setTranslationTargetLanguage(language: string): Promise<void>;
-  setTranslator(mode: "builtin" | "llm"): Promise<void>;
-  setLlmApiKey(apiKey: string): Promise<void>;
-  setLlmBaseUrl(baseUrl: string): Promise<void>;
-  setLlmModel(model: string): Promise<void>;
-  setLlmTranslationPrompt(prompt: string): Promise<void>;
+  setTranslationEnabled(enabled: boolean): Promise<void>;
+  setLlmEnabled(enabled: boolean): Promise<void>;
 };
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
 const DEFAULT_TRANSLATION_TARGET_LANGUAGE = "zh-cn";
-const DEFAULT_LLM_TRANSLATION_PROMPT = "Translate the following text into Chinese. Preserve meaning, tone, names, formatting, and paragraph breaks. Output only the translation.\n\n{{selectedText}}";
-const LEGACY_DEFAULT_LLM_TRANSLATION_PROMPT = "Translate the following text into Chinese. Preserve meaning, tone, names, formatting, and paragraph breaks. Output only the translation.\n\n%s";
 
 export function createAdvancedSettingsController(
   onChange: (settings: AdvancedReaderSettings) => Promise<void> | void,
@@ -72,10 +63,8 @@ export function createAdvancedSettingsController(
     get translationTargetLanguage() {
       return value.translationTargetLanguage;
     },
-    get translator() { return value.translator; },
-    get llmApiKey() { return value.llmApiKey; },
-    get llmBaseUrl() { return value.llmBaseUrl; },
-    get llmModel() { return value.llmModel; },
+    get translationEnabled() { return value.translationEnabled; },
+    get llmEnabled() { return value.llmEnabled; },
     setSerifFont: (fontFamily) => setFont("serif", fontFamily),
     setSansFont: (fontFamily) => setFont("sans", fontFamily),
     setMonoFont: (fontFamily) => setFont("mono", fontFamily),
@@ -105,24 +94,12 @@ export function createAdvancedSettingsController(
         `[epub.ts] Translation target language changed to "${translationTargetLanguage}". Browser default: "${getBrowserLanguage()}".`,
       );
     },
-    async setTranslator(translator) {
-      if (translator !== "builtin" && translator !== "llm") throw new TypeError("Invalid translator.");
-      if (translator !== value.translator) await commit({ ...value, translator }, false);
+    async setTranslationEnabled(translationEnabled) {
+      await commit({ ...value, translationEnabled }, false);
     },
-    async setLlmApiKey(apiKey) {
-      await commit({ ...value, llmApiKey: apiKey.trim() }, false);
-      console.log("[epub.ts] LLM API key updated.");
+    async setLlmEnabled(llmEnabled) {
+      await commit({ ...value, llmEnabled }, false);
     },
-    async setLlmBaseUrl(baseUrl) {
-      const normalized = baseUrl.trim().replace(/\/$/, "");
-      await commit({ ...value, llmBaseUrl: normalized }, false);
-      console.log(`[epub.ts] LLM base URL changed to "${normalized}".`);
-    },
-    async setLlmModel(model) {
-      await commit({ ...value, llmModel: model.trim() }, false);
-      console.log(`[epub.ts] LLM model changed to "${model.trim()}".`);
-    },
-    async setLlmTranslationPrompt(prompt) { await commit({ ...value, llmTranslationPrompt: prompt }, false); },
     async reset() {
       value = getDefaults();
       try {
@@ -152,11 +129,8 @@ export function createAdvancedSettingsController(
     setSourceLanguage: api.setSourceLanguage,
     setTextAlignment: api.setTextAlignment,
     setTranslationTargetLanguage: api.setTranslationTargetLanguage,
-    setTranslator: api.setTranslator,
-    setLlmApiKey: api.setLlmApiKey,
-    setLlmBaseUrl: api.setLlmBaseUrl,
-    setLlmModel: api.setLlmModel,
-    setLlmTranslationPrompt: api.setLlmTranslationPrompt,
+    setTranslationEnabled: api.setTranslationEnabled,
+    setLlmEnabled: api.setLlmEnabled,
     reset: api.reset,
   };
 }
@@ -187,7 +161,7 @@ function getSettingsOverrides(settings: AdvancedReaderSettings) {
       default: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
     };
   }
-  if (settings.translator !== "builtin") overrides.translator = { current: settings.translator, default: "builtin" };
+  if (settings.llmEnabled) overrides.llmEnabled = { current: "true", default: "false" };
   return overrides;
 }
 
@@ -197,11 +171,8 @@ function getDefaults(): AdvancedReaderSettings {
     textAlignment: "auto",
     translationSourceLanguage: null,
     translationTargetLanguage: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
-    translator: "builtin",
-    llmApiKey: "",
-    llmBaseUrl: "",
-    llmModel: "",
-    llmTranslationPrompt: DEFAULT_LLM_TRANSLATION_PROMPT,
+    translationEnabled: true,
+    llmEnabled: false,
   };
 }
 
@@ -214,15 +185,19 @@ function loadSettings(): AdvancedReaderSettings {
       translationSourceLanguage?: unknown;
       translationTargetLanguage?: unknown;
       translator?: unknown;
+      translationEnabled?: unknown;
+      llmEnabled?: unknown;
       llmApiKey?: unknown;
       llmBaseUrl?: unknown;
       llmModel?: unknown;
       llmTranslationPrompt?: unknown;
     } | null;
     if (!saved) return defaults;
-    if ("llmApiKey" in saved || "llmLookupPrompt" in saved) {
-      delete saved.llmApiKey;
-      delete (saved as { llmLookupPrompt?: unknown }).llmLookupPrompt;
+    if (["llmApiKey", "llmLookupPrompt", "llmBaseUrl", "llmModel", "llmTranslationPrompt"].some((key) => key in saved)) {
+      migrateLegacyAiSettings(localStorage, saved);
+      for (const key of ["llmApiKey", "llmLookupPrompt", "llmBaseUrl", "llmModel", "llmTranslationPrompt"]) {
+        delete (saved as Record<string, unknown>)[key];
+      }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     }
     return {
@@ -237,13 +212,8 @@ function loadSettings(): AdvancedReaderSettings {
         saved.translationTargetLanguage,
         defaults.translationTargetLanguage,
       ),
-      translator: saved.translator === "llm" ? "llm" : "builtin",
-      llmApiKey: "",
-      llmBaseUrl: typeof saved.llmBaseUrl === "string" ? saved.llmBaseUrl : defaults.llmBaseUrl,
-      llmModel: typeof saved.llmModel === "string" ? saved.llmModel : defaults.llmModel,
-      llmTranslationPrompt: saved.llmTranslationPrompt === LEGACY_DEFAULT_LLM_TRANSLATION_PROMPT
-        ? defaults.llmTranslationPrompt
-        : typeof saved.llmTranslationPrompt === "string" ? saved.llmTranslationPrompt : defaults.llmTranslationPrompt,
+      translationEnabled: saved.translationEnabled !== false,
+      llmEnabled: typeof saved.llmEnabled === "boolean" ? saved.llmEnabled : saved.translator === "llm",
     };
   } catch (error) {
     console.warn("[epub.ts] Could not read advanced settings; defaults are active.", error);
@@ -253,8 +223,7 @@ function loadSettings(): AdvancedReaderSettings {
 
 function persistSettings(settings: AdvancedReaderSettings) {
   try {
-    const { llmApiKey: _llmApiKey, llmBaseUrl: _llmBaseUrl, llmModel: _llmModel, ...persisted } = settings;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (error) {
     console.warn("[epub.ts] Could not persist advanced settings.", error);
   }

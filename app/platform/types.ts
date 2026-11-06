@@ -46,14 +46,12 @@ export interface ViewerPlatform {
   openExternal(url: string): void;
   readViewerMetadata<Value>(key: string): Promise<Value | undefined>;
   writeViewerMetadata<Value>(key: string, value: Value): Promise<void>;
-  requestAi?(request: AiRequest): Promise<string>;
+  requestAi?(request: AiRequest, signal?: AbortSignal, onText?: (text: string) => void): Promise<string>;
   getAiConfig?(): Promise<AiConfig>;
   setAiConfig?(config: AiConfigUpdate): Promise<void>;
 }
 
-export type AiConfig = { apiKeyConfigured: boolean; baseUrl: string; model: string; totalTokens: number };
+export type AiConfig = { model: string; baseUrl: string; apiKeyConfigured: boolean; rememberApiKey: boolean; prompt: string; totalTokens: number };
 export type AiConfigUpdate = Partial<Omit<AiConfig, "apiKeyConfigured" | "totalTokens">> & { apiKey?: string; reset?: boolean };
-
-export type AiRequest = {
-  prompt: string;
-};
+export type AiMessage = { role: "user" | "assistant"; content: string };
+export type AiRequest = { text: string; history?: AiMessage[] };
