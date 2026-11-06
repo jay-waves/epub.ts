@@ -77,7 +77,6 @@ export function App({
         <StableTranslationPopover
           detail={state.translation}
           onClose={actions.closeTranslation}
-          onDownload={actions.downloadTranslation}
           onExternal={actions.openTranslationExternal}
           onLookup={actions.lookupTranslation}
         />

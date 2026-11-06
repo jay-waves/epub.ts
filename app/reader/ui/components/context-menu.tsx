@@ -39,6 +39,7 @@ export function ContentContextMenu({ onClose, state }: {
       {visibleItems.map((item) => (
         <ContextMenuItem
           {...item}
+          label={item.action === "translate" && menu.translationExternal ? "Translate (Google Translate)" : item.label}
           key={item.action}
           onSelect={(action) => {
             state.onAction(action);

@@ -54,4 +54,4 @@ export interface ViewerPlatform {
 export type AiConfig = { model: string; baseUrl: string; apiKeyConfigured: boolean; rememberApiKey: boolean; prompt: string; totalTokens: number };
 export type AiConfigUpdate = Partial<Omit<AiConfig, "apiKeyConfigured" | "totalTokens">> & { apiKey?: string; reset?: boolean };
 export type AiMessage = { role: "user" | "assistant"; content: string };
-export type AiRequest = { text: string; history?: AiMessage[] };
+export type AiRequest = { text: string; history?: AiMessage[]; task?: "translate" };

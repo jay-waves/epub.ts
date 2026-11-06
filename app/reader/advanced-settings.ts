@@ -5,32 +5,25 @@ import type { TypographyFonts, TypographyTextAlignment } from "../typography/mod
 export type AdvancedReaderSettings = {
   fonts: TypographyFonts;
   textAlignment: TypographyTextAlignment;
-  translationSourceLanguage: string | null;
-  translationTargetLanguage: string;
   translationEnabled: boolean;
   llmEnabled: boolean;
 };
 
 type EpubSettingsApi = {
   readonly fonts: TypographyFonts;
-  readonly sourceLanguage: string | null;
   readonly textAlignment: TypographyTextAlignment;
-  readonly translationTargetLanguage: string;
   readonly translationEnabled: boolean;
   readonly llmEnabled: boolean;
   reset(): Promise<AdvancedReaderSettings>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
   setSerifFont(fontFamily: string): Promise<void>;
-  setSourceLanguage(language: string | null): Promise<void>;
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
-  setTranslationTargetLanguage(language: string): Promise<void>;
   setTranslationEnabled(enabled: boolean): Promise<void>;
   setLlmEnabled(enabled: boolean): Promise<void>;
 };
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
-const DEFAULT_TRANSLATION_TARGET_LANGUAGE = "zh-cn";
 
 export function createAdvancedSettingsController(
   onChange: (settings: AdvancedReaderSettings) => Promise<void> | void,
@@ -54,30 +47,14 @@ export function createAdvancedSettingsController(
     get fonts() {
       return { ...value.fonts };
     },
-    get sourceLanguage() {
-      return value.translationSourceLanguage;
-    },
     get textAlignment() {
       return value.textAlignment;
-    },
-    get translationTargetLanguage() {
-      return value.translationTargetLanguage;
     },
     get translationEnabled() { return value.translationEnabled; },
     get llmEnabled() { return value.llmEnabled; },
     setSerifFont: (fontFamily) => setFont("serif", fontFamily),
     setSansFont: (fontFamily) => setFont("sans", fontFamily),
     setMonoFont: (fontFamily) => setFont("mono", fontFamily),
-    async setSourceLanguage(language) {
-      const translationSourceLanguage = language == null ? null : normalizeLanguageTag(language);
-      if (translationSourceLanguage === value.translationSourceLanguage) return;
-      await commit({ ...value, translationSourceLanguage }, false);
-      console.log(
-        translationSourceLanguage
-          ? `[epub.ts] Translation source language changed to "${translationSourceLanguage}".`
-          : "[epub.ts] Translation source language reset to automatic detection.",
-      );
-    },
     async setTextAlignment(textAlignment) {
       if (!isTextAlignment(textAlignment)) {
         throw new TypeError("textAlignment must be 'auto', 'start', or 'justify'.");
@@ -85,14 +62,6 @@ export function createAdvancedSettingsController(
       if (textAlignment === value.textAlignment) return;
       await commit({ ...value, textAlignment });
       console.log(`[epub.ts] Text alignment changed to "${textAlignment}". Default: "auto".`);
-    },
-    async setTranslationTargetLanguage(language) {
-      const translationTargetLanguage = normalizeLanguageTag(language);
-      if (translationTargetLanguage === value.translationTargetLanguage) return;
-      await commit({ ...value, translationTargetLanguage }, false);
-      console.log(
-        `[epub.ts] Translation target language changed to "${translationTargetLanguage}". Browser default: "${getBrowserLanguage()}".`,
-      );
     },
     async setTranslationEnabled(translationEnabled) {
       await commit({ ...value, translationEnabled }, false);
@@ -126,9 +95,7 @@ export function createAdvancedSettingsController(
     setSerifFont: api.setSerifFont,
     setSansFont: api.setSansFont,
     setMonoFont: api.setMonoFont,
-    setSourceLanguage: api.setSourceLanguage,
     setTextAlignment: api.setTextAlignment,
-    setTranslationTargetLanguage: api.setTranslationTargetLanguage,
     setTranslationEnabled: api.setTranslationEnabled,
     setLlmEnabled: api.setLlmEnabled,
     reset: api.reset,
@@ -149,18 +116,6 @@ function getSettingsOverrides(settings: AdvancedReaderSettings) {
   if (settings.textAlignment !== "auto") {
     overrides.textAlignment = { current: settings.textAlignment, default: "auto" };
   }
-  if (settings.translationSourceLanguage) {
-    overrides.translationSourceLanguage = {
-      current: settings.translationSourceLanguage,
-      default: "auto",
-    };
-  }
-  if (settings.translationTargetLanguage !== DEFAULT_TRANSLATION_TARGET_LANGUAGE) {
-    overrides.translationTargetLanguage = {
-      current: settings.translationTargetLanguage,
-      default: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
-    };
-  }
   if (settings.llmEnabled) overrides.llmEnabled = { current: "true", default: "false" };
   return overrides;
 }
@@ -169,8 +124,6 @@ function getDefaults(): AdvancedReaderSettings {
   return {
     fonts: { ...DEFAULT_TYPOGRAPHY_FONTS },
     textAlignment: "auto",
-    translationSourceLanguage: null,
-    translationTargetLanguage: DEFAULT_TRANSLATION_TARGET_LANGUAGE,
     translationEnabled: true,
     llmEnabled: false,
   };
@@ -200,6 +153,11 @@ function loadSettings(): AdvancedReaderSettings {
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     }
+    if ('translationSourceLanguage' in saved || 'translationTargetLanguage' in saved) {
+      delete saved.translationSourceLanguage;
+      delete saved.translationTargetLanguage;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    }
     return {
       fonts: {
         serif: normalizeFontFamily(saved.fonts?.serif, defaults.fonts.serif),
@@ -207,11 +165,6 @@ function loadSettings(): AdvancedReaderSettings {
         mono: normalizeFontFamily(saved.fonts?.mono, defaults.fonts.mono),
       },
       textAlignment: isTextAlignment(saved.textAlignment) ? saved.textAlignment : "auto",
-      translationSourceLanguage: normalizeSavedLanguageTag(saved.translationSourceLanguage),
-      translationTargetLanguage: normalizeLanguageTag(
-        saved.translationTargetLanguage,
-        defaults.translationTargetLanguage,
-      ),
       translationEnabled: saved.translationEnabled !== false,
       llmEnabled: typeof saved.llmEnabled === "boolean" ? saved.llmEnabled : saved.translator === "llm",
     };
@@ -231,30 +184,6 @@ function persistSettings(settings: AdvancedReaderSettings) {
 
 function isTextAlignment(value: unknown): value is TypographyTextAlignment {
   return value === "auto" || value === "start" || value === "justify";
-}
-
-function getBrowserLanguage() {
-  return normalizeLanguageTag(navigator.languages[0] ?? navigator.language, "en");
-}
-
-function normalizeLanguageTag(value: unknown, fallback?: string) {
-  const language = typeof value === "string" ? value.trim().replaceAll("_", "-") : "";
-  try {
-    if (language) return (Intl.getCanonicalLocales(language)[0] ?? fallback ?? "en").toLowerCase();
-  } catch {
-    // Report invalid console input below; ignore invalid persisted values.
-  }
-  if (fallback) return fallback.toLowerCase();
-  throw new TypeError("language must be a valid BCP 47 language tag, such as 'en' or 'zh-CN'.");
-}
-
-function normalizeSavedLanguageTag(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    return normalizeLanguageTag(value);
-  } catch {
-    return null;
-  }
 }
 
 function normalizeFontFamily(value: unknown, fallback: string) {

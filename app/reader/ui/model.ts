@@ -24,6 +24,7 @@ export type ContentContextMenu = {
   canDelete: boolean;
   canHighlight: boolean;
   canTranslate: boolean;
+  translationExternal?: boolean;
   canAskLlm?: boolean;
   x: number;
   y: number;
@@ -90,13 +91,9 @@ export type TocState = {
 };
 
 export type TranslationDetail = {
-  kind?: "translation" | "lookup";
   message?: string;
-  progress?: number;
-  sourceLanguage?: string;
   sourceText: string;
-  status: "downloadable" | "error" | "loading" | "success";
-  targetLanguage: string;
+  status: "error" | "loading" | "success";
   translatedText?: string;
   x: number;
   y: number;
@@ -134,7 +131,6 @@ export type ReaderUiActions = {
   openTranslationExternal: (detail: TranslationDetail) => void;
   collectSearch: (query: string, highlightedOnly: boolean) => void;
   deleteAnnotation: (value: string) => void;
-  downloadTranslation: () => void;
   lookupTranslation: (detail: TranslationDetail) => void;
   navigateToc: (item: TocItem) => void;
   nextSearchResult: () => void;

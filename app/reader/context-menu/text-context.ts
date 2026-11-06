@@ -1,3 +1,4 @@
+import { googleTranslationUrl } from "./translation-url";
 import { createTranslation } from "./translation";
 import type { ContentContextAction, ReaderUiState } from "../ui/model";
 
@@ -18,7 +19,6 @@ export type TextContextActionDetail<Context> = {
 
 type TextContextOptions<Context> = {
   closeAnnotation: () => void;
-  getTranslationTargetLanguage: () => string;
   getTranslationEnabled: () => boolean;
   getLlmEnabled: () => boolean;
   requestAi?: import("../../platform/types").ViewerPlatform["requestAi"];
@@ -28,22 +28,13 @@ type TextContextOptions<Context> = {
   updateUi: (state: Partial<ReaderUiState>) => void;
 };
 
-function getLookupTerm(text: string) {
-  const term = text.trim();
-  return term.length <= 100
-    && /^[\p{L}\p{M}\p{N}]+(?:['’.-][\p{L}\p{M}\p{N}]+)*$/u.test(term)
-    ? term
-    : null;
-}
-
 /** Generic text actions over plain text and viewport coordinates. */
 export function createTextContext<Context>(options: TextContextOptions<Context>) {
-  const browserTranslation = createTranslation({
-    getSourceLanguage: () => undefined,
-    getTargetLanguage: options.getTranslationTargetLanguage,
+  const remoteTranslation = createTranslation({
+    requestAi: options.requestAi,
     onUpdate: (detail) => options.updateUi({ translation: detail }),
   });
-  const cancelTranslation = () => browserTranslation.cancel();
+  const cancelTranslation = () => remoteTranslation.cancel();
   let current: TextContextRequest<Context> | null = null;
 
   const clear = () => {
@@ -76,16 +67,15 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
         options.closeAnnotation();
         options.updateUi({ llm: null });
         cancelTranslation();
-        void browserTranslation.translate({ sourceText: request.text, ...request.point });
+        if (options.getLlmEnabled()) {
+          void remoteTranslation.translate({ sourceText: request.text, ...request.point });
+        } else {
+          options.updateUi({ translation: null });
+          options.openExternal(googleTranslationUrl(request.text));
+        }
         break;
     }
     options.onAction({ action, context: request.context, point: request.point, text: request.text });
-  };
-  const lookup = ({ sourceText, x, y }: Pick<import("../ui/model").TranslationDetail, "sourceText" | "x" | "y">) => {
-    const term = getLookupTerm(sourceText);
-    if (!term) return;
-    cancelTranslation();
-    void browserTranslation.translate({ sourceText: term, x, y });
   };
 
   return {
@@ -93,7 +83,6 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
     destroy() {
       close();
       cancelTranslation();
-      browserTranslation.destroy();
     },
     dismiss() {
       close();
@@ -110,6 +99,7 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
           canDelete: request.canDelete,
           canHighlight: request.canHighlight,
           canTranslate: options.getTranslationEnabled(),
+          translationExternal: !options.getLlmEnabled(),
           canAskLlm: options.getLlmEnabled() && Boolean(options.requestAi),
           ...request.point,
         },
@@ -121,8 +111,5 @@ export function createTextContext<Context>(options: TextContextOptions<Context>)
       cancelTranslation();
       options.updateUi({ translation: null, llm: null });
     },
-    downloadTranslation: browserTranslation.download,
-    lookup,
-    setTranslationSourceLanguage: browserTranslation.setSourceLanguage,
   };
 }

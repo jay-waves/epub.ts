@@ -14,7 +14,6 @@ type AnnotationOptions = {
   getNavigation: () => Navigation | null;
   getProgress: () => number;
   getView: () => ReaderView | null;
-  getTranslationTargetLanguage: () => string;
   getTranslationEnabled: () => boolean;
   getLlmEnabled: () => boolean;
   requestAi?: import("../../platform/types").ViewerPlatform["requestAi"];
@@ -76,7 +75,6 @@ export function createAnnotations(options: AnnotationOptions) {
 
   const textContext = createTextContext<AnnotationContext>({
     closeAnnotation: options.closeAnnotation,
-    getTranslationTargetLanguage: options.getTranslationTargetLanguage,
     getTranslationEnabled: options.getTranslationEnabled,
     getLlmEnabled: options.getLlmEnabled,
     requestAi: options.requestAi,
@@ -487,7 +485,6 @@ export function createAnnotations(options: AnnotationOptions) {
 
   const reset = () => {
     annotationRepository.clearMemory();
-    textContext.setTranslationSourceLanguage(undefined);
     textContext.dismiss();
   };
 
@@ -506,8 +503,6 @@ export function createAnnotations(options: AnnotationOptions) {
       const annotation = annotationRepository.getByCfi(value);
       if (annotation) run(track(deleteHighlight(annotation)), "Failed to delete annotation.");
     },
-    downloadTranslation: textContext.downloadTranslation,
-    lookupTranslation: textContext.lookup,
     openContextMenu,
     openFromAnnotation,
     reset,
@@ -515,6 +510,5 @@ export function createAnnotations(options: AnnotationOptions) {
     saveAnnotation(value: string, note: string) {
       run(track(saveAnnotationNote(value, note)), "Failed to save annotation note.");
     },
-    setTranslationSourceLanguage: textContext.setTranslationSourceLanguage,
   };
 }

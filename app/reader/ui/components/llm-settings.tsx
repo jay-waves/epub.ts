@@ -74,7 +74,6 @@ export function LlmSettings({ enabled, onEnabledChange, requestAi, getAiConfig, 
       rememberApiKey: snapshot.config.rememberApiKey,
       model: snapshot.config.model.trim(),
       baseUrl: snapshot.config.baseUrl.trim().replace(/\/+$/, ''),
-      prompt: snapshot.config.prompt.trim() ? snapshot.config.prompt : DEFAULT_PROMPT,
       ...(snapshot.apiKey.trim() ? { apiKey: snapshot.apiKey.trim() } : {}),
     };
     if (mounted.current) { setError(''); setStatus('Saving…'); }
@@ -108,7 +107,7 @@ export function LlmSettings({ enabled, onEnabledChange, requestAi, getAiConfig, 
     clearTimeout(timer.current);
     timer.current = setTimeout(() => flush.current(), 500);
   };
-  const edit = (field: 'model' | 'baseUrl' | 'prompt', value: string) => {
+  const edit = (field: 'model' | 'baseUrl', value: string) => {
     // A pending key belongs to the old destination, including unsaved edits.
     const updated = { ...draft.current.config, [field]: value,
       ...(field === 'baseUrl' ? { apiKeyConfigured: false } : {}),
@@ -191,9 +190,6 @@ export function LlmSettings({ enabled, onEnabledChange, requestAi, getAiConfig, 
             : 'Default: the key stays only in memory and is cleared when this page reloads or closes. This does not protect against injected scripts (XSS). Use a separate key with a hard spending limit.'}
         </p>
       </div>
-      <label className="settings-field"><span>Prompt</span>
-        <textarea rows={9} value={config.prompt} onChange={(event) => edit('prompt', event.target.value)} />
-      </label>
       <div className="settings-actions">
         <button className="settings-test" type="button" disabled={!supportsLlm || !loaded} onClick={() => void runAction('test')}>Test</button>
         <button className="settings-test" type="button" disabled={!supportsLlm || !loaded} onClick={() => void runAction('reset')}>Reset</button>

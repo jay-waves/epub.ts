@@ -1,17 +1,15 @@
+import { TranslationSettings } from "./translation-settings";
 import { useEffect, useRef, useState } from "react";
 import type { AdvancedReaderSettings } from "../../advanced-settings";
 import type { ViewerPlatform } from "../../../platform/types";
 import { Dialog } from "./ui";
 import { LlmSettings } from "./llm-settings";
-import { SettingsToggle } from "./settings-toggle";
 
 type SettingsActions = {
   setSerifFont(value: string): Promise<void>;
   setSansFont(value: string): Promise<void>;
   setMonoFont(value: string): Promise<void>;
-  setSourceLanguage(value: string | null): Promise<void>;
   setTextAlignment(value: "auto" | "start" | "justify"): Promise<void>;
-  setTranslationTargetLanguage(value: string): Promise<void>;
   setTranslationEnabled(value: boolean): Promise<void>;
   setLlmEnabled(value: boolean): Promise<void>;
   reset(): Promise<AdvancedReaderSettings>;
@@ -67,16 +65,10 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
         <Setting label="Monospace Font" value={values.mono} placeholder={settings.fonts.mono} onChange={(v) => update("mono", v)} />
         <label className="settings-field"><span>Text Alignment</span><select value={values.alignment} onChange={(event) => update("alignment", event.target.value)}><option value="auto">Auto</option><option value="start">Start</option><option value="justify">Justify</option></select></label>
       </section>
-      <section className="settings-group" aria-label="Translation settings">
-        <div className="settings-section-heading"><div><h2>Translation</h2><p>Use the browser's built-in translator.</p></div><SettingsToggle label="Enable translation" checked={translationEnabled} onCheckedChange={(value) => { setTranslationEnabled(value); void actions.setTranslationEnabled(value); }} /></div>
-        <fieldset className="settings-fieldset" disabled={!translationEnabled}>
-          <div className="settings-language-row">
-            <Setting label="Translation Source Lang" value={values.source} placeholder="Auto detect" onChange={(v) => update("source", v)} />
-            <Setting label="Translation Target Lang" value={values.target} placeholder="zh-CN" onChange={(v) => update("target", v)} />
-          </div>
-        </fieldset>
-      </section>
-      {open ? <LlmSettings enabled={llmEnabled} onEnabledChange={(value) => { setLlmEnabled(value); void actions.setLlmEnabled(value); }} requestAi={requestAi} getAiConfig={getAiConfig} setAiConfig={setAiConfig} /> : null}
+      {open ? <>
+        <LlmSettings enabled={llmEnabled} onEnabledChange={(value) => { setLlmEnabled(value); void actions.setLlmEnabled(value); }} requestAi={requestAi} getAiConfig={getAiConfig} setAiConfig={setAiConfig} />
+        <TranslationSettings enabled={translationEnabled} llmEnabled={llmEnabled} onEnabledChange={(value) => { setTranslationEnabled(value); void actions.setTranslationEnabled(value); }} getAiConfig={getAiConfig} setAiConfig={setAiConfig} />
+      </> : null}
       {error ? <p role="alert" className="settings-error">{error}</p> : null}
     </div>
   </Dialog>;
@@ -87,7 +79,7 @@ function Setting({ label, value, placeholder, onChange }: { label: string; value
 }
 
 function fields(settings: AdvancedReaderSettings) {
-  return { serif: settings.fonts.serif, sans: settings.fonts.sans, mono: settings.fonts.mono, source: settings.translationSourceLanguage ?? "", target: settings.translationTargetLanguage, alignment: settings.textAlignment };
+  return { serif: settings.fonts.serif, sans: settings.fonts.sans, mono: settings.fonts.mono, alignment: settings.textAlignment };
 }
 
 async function commit(key: keyof ReturnType<typeof fields>, value: string, actions: SettingsActions) {
@@ -95,14 +87,6 @@ async function commit(key: keyof ReturnType<typeof fields>, value: string, actio
     if (key === "serif") return actions.setSerifFont(value);
     if (key === "sans") return actions.setSansFont(value);
     if (key === "mono") return actions.setMonoFont(value);
-    if (key === "source") return actions.setSourceLanguage(value.trim() ? validLanguage(value) : null);
-    if (key === "target") return actions.setTranslationTargetLanguage(validLanguage(value));
     if (key === "alignment" && (value === "auto" || value === "start" || value === "justify")) return actions.setTextAlignment(value);
   } catch { /* The field remains visibly empty until a valid value is entered. */ }
-}
-
-function validLanguage(value: string) {
-  const language = Intl.getCanonicalLocales(value.trim())[0];
-  if (!language) throw new Error("Invalid language");
-  return language.toLowerCase();
 }

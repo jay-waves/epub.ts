@@ -10,7 +10,7 @@ test("places selected text after the reusable instruction prefix", () => {
 });
 
 test("selection replacement preserves literal dollar sequences and template-like content", () => {
-  const text = "$& $` $' {{targetLanguage}}";
-  assert.equal(buildLlmPrompt("Into {{targetLanguage}}: {{selectedText}}", text), `Into Chinese: ${text}`);
-  assert.equal(buildLlmPrompt("Into {{targetLanguage}}: %s", text), `Into Chinese: ${text}`);
+  const text = "$& $` $' {{browserDefault}}";
+  assert.equal(buildLlmPrompt("Into French: {{selectedText}}", text), `Into French: ${text}`);
+  assert.equal(buildLlmPrompt("Into French: %s", text), `Into French: ${text}`);
 });

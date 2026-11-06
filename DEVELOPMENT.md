@@ -123,10 +123,6 @@ controls > links > highlights & annotations > images > text selection > page tur
 
 ## 故障排查 / Troubleshooting
 
-在 Edge 使用英文界面时，Language Detector API 可能会将现代中文错误识别为文言文（`lzh`），导致 Translator API 无法使用。
-
-When Edge uses an English interface, the Language Detector API may incorrectly identify modern Chinese as Literary Chinese (`lzh`), preventing the Translator API from working.
-
 Right mouse drags in the reader shell and chapter iframes use a grabbed-paper
 page gesture: left/up advances and right/down goes back (horizontal directions
 reverse for RTL books). Release after at least 40 CSS pixels with one axis at

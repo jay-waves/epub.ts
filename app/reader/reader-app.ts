@@ -1,3 +1,4 @@
+import { googleTranslationUrl } from "./context-menu/translation-url";
 import { createElement, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -24,7 +25,6 @@ import type { ReaderView, TocItem } from "../renderer";
 import { getBookKey } from "../epub/metadata";
 import { createAnnotations } from "./context-menu/annotation";
 import { annotationRepository } from "./context-menu/annotation-repository";
-import { detectDocumentLanguage } from "./context-menu/document-language";
 import {
   clearMathCache,
   prepareTypography,
@@ -155,7 +155,6 @@ const annotationState = createAnnotations({
   getNavigation,
   getProgress: () => session.progress,
   getView,
-  getTranslationTargetLanguage: () => advancedSettings.value.translationTargetLanguage,
   getTranslationEnabled: () => advancedSettings.value.translationEnabled,
   getLlmEnabled: () => advancedSettings.value.llmEnabled,
   requestAi: platform.requestAi,
@@ -508,9 +507,6 @@ async function replaceBook(platformDocument: PlatformDocument) {
     wireReaderEvents(reader);
     await reader.open(fontsReady);
     reader.signal.throwIfAborted();
-    annotationState.setTranslationSourceLanguage(
-      detectDocumentLanguage(reader.book, reader.signal),
-    );
     const { navigation } = reader;
     updateUi({ welcome: false });
     session.bookKey = await getBookKey(view.book, platformDocument.key);
@@ -900,9 +896,7 @@ function ReaderApplication() {
     closeToc: () => updateUi({ tocOpen: false }),
     closeTranslation: annotationState.closeTranslation,
     openTranslationExternal: (detail) => {
-      const url = detail.kind === "lookup"
-        ? `https://en.wiktionary.org/wiki/${encodeURIComponent(detail.sourceText.trim())}`
-        : `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(detail.targetLanguage)}&text=${encodeURIComponent(detail.sourceText)}&op=translate`;
+      const url = googleTranslationUrl(detail.sourceText);
       platform.openExternal(url);
     },
     collectSearch: (query, highlightedOnly) => {
@@ -912,8 +906,7 @@ function ReaderApplication() {
       annotationState.deleteAnnotation(value);
       updateUi({ annotation: null });
     },
-    downloadTranslation: annotationState.downloadTranslation,
-    lookupTranslation: annotationState.lookupTranslation,
+    lookupTranslation: (detail) => platform.openExternal(`https://en.wiktionary.org/wiki/${encodeURIComponent(detail.sourceText.trim())}`),
     navigateToc,
     nextSearchResult: () => { void runtime.search?.next(); },
     openLocalFile: (file) => {

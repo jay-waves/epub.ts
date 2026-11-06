@@ -24,7 +24,7 @@ test('reader migration keeps typography and custom prompt, removes old key, and 
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: disk });
   t.after(() => previous ? Object.defineProperty(globalThis, 'localStorage', previous) : delete globalThis.localStorage);
   const key = 'epub.ts:advanced-settings';
-  disk.setItem(key, JSON.stringify({ fonts: { serif: 'My Reading Font' }, textAlignment: 'justify', translator: 'llm', llmApiKey: 'legacy-secret', llmTranslationPrompt: 'Explain {{selectedText}}' }));
+  disk.setItem(key, JSON.stringify({ fonts: { serif: 'My Reading Font' }, textAlignment: 'justify', translator: 'llm', llmApiKey: 'legacy-secret', llmTranslationPrompt: 'Explain {{selectedText}}', translationSourceLanguage: 'en', translationTargetLanguage: 'ja' }));
   const applied = [];
   const settings = createAdvancedSettingsController((value) => { applied.push(value); });
   assert.equal(settings.value.fonts.serif, 'My Reading Font');
@@ -32,6 +32,8 @@ test('reader migration keeps typography and custom prompt, removes old key, and 
   assert.equal(settings.value.llmEnabled, true);
   assert.equal(settings.value.translationEnabled, true);
   assert.equal(disk.getItem(key).includes('legacy-secret'), false);
+  assert.equal('translationSourceLanguage' in JSON.parse(disk.getItem(key)), false);
+  assert.equal('translationTargetLanguage' in JSON.parse(disk.getItem(key)), false);
   const config = JSON.parse(disk.getItem(AI_STORAGE_KEY));
   assert.equal(config.prompt, 'Explain {{selectedText}}');
   assert.equal(config.rememberApiKey, false);
@@ -54,7 +56,6 @@ test('Ask has its own selection state, waits for Send, and dismissal clears it',
   let enabled = true;
   const context = createTextContext({
     closeAnnotation: () => closedAnnotations++,
-    getTranslationTargetLanguage: () => 'zh-cn',
     getTranslationEnabled: () => false,
     getLlmEnabled: () => enabled,
     requestAi: async () => { requests++; return 'reply'; },
@@ -83,4 +84,57 @@ test('Ask has its own selection state, waits for Send, and dismissal clears it',
   ui.contextMenu.onAction('llm');
   assert.equal(ui.llm, null);
   context.destroy();
+});
+
+test('Translate streams through LLM when enabled and opens Google synchronously when disabled', async () => {
+  let ui = {};
+  let enabled = true;
+  const requests = [];
+  const external = [];
+  const context = createTextContext({
+    closeAnnotation: () => {}, getTranslationEnabled: () => true, getLlmEnabled: () => enabled,
+    requestAi: async (request, signal, onText) => { requests.push({ request, signal }); onText('partial'); return 'translated'; },
+    openExternal: (url) => external.push(url), onAction: () => {}, onClose: () => {},
+    updateUi: (update) => { ui = { ...ui, ...update }; },
+  });
+  const selection = { text: 'a & b # 中文', point: { x: 40, y: 50 }, canDelete: false, canHighlight: true };
+  context.open(selection);
+  ui.contextMenu.onAction('translate');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests[0].request, { text: selection.text, task: 'translate' });
+  assert.equal(ui.translation.status, 'success');
+  assert.equal(ui.translation.translatedText, 'translated');
+  assert.equal(external.length, 0);
+  enabled = false;
+  context.open(selection);
+  assert.equal(ui.contextMenu.menu.translationExternal, true);
+  ui.contextMenu.onAction('translate');
+  assert.equal(external.length, 1, 'Google must open within the click, without awaiting an API');
+  assert.equal(new URL(external[0]).searchParams.get('text'), selection.text);
+  assert.equal(new URL(external[0]).hostname, 'translate.google.com');
+  assert.equal(requests.length, 1, 'disabling LLM must prevent further model requests');
+  assert.equal(ui.translation, null);
+  context.destroy();
+});
+
+test('replacing or dismissing a translation aborts it and ignores stale provider results', async () => {
+  const { createTranslation } = await import('../app/reader/context-menu/translation.ts');
+  const pending = [];
+  const updates = [];
+  const translation = createTranslation({
+    requestAi: (_request, signal, onText) => new Promise((resolve) => pending.push({ signal, onText, resolve })),
+    onUpdate: (value) => updates.push(value),
+  });
+  const first = translation.translate({ sourceText: 'first', x: 0, y: 0 });
+  const second = translation.translate({ sourceText: 'second', x: 1, y: 1 });
+  assert.equal(pending[0].signal.aborted, true);
+  pending[0].onText('stale'); pending[0].resolve('stale'); await first;
+  assert.equal(updates.some((value) => value.translatedText === 'stale'), false);
+  pending[1].onText('current');
+  assert.equal(updates.at(-1).translatedText, 'current');
+  translation.cancel();
+  assert.equal(pending[1].signal.aborted, true);
+  const count = updates.length;
+  pending[1].resolve('late'); await second;
+  assert.equal(updates.length, count);
 });
