@@ -20,15 +20,16 @@ export function resolveReaderPointerIntent(
 ): ReaderPointerIntent {
   const element = eventTargetElement(target);
   if (!element) return "content";
+  if ((element as HTMLElement).isContentEditable) return "control";
   if (element.closest(
     "button, input, select, textarea, label, summary, audio[controls], video[controls], object, embed, "
       + "[role='button'], [role='checkbox'], [role='menuitem'], [role='option'], [role='radio'], "
-      + "[role='slider'], [role='switch'], [role='tab'], [contenteditable='true'], [onclick], "
-      + "[tabindex]:not([tabindex='-1'])",
+      + "[role='slider'], [role='switch'], [role='tab'], [onclick]",
   )) return "control";
   if (element.closest("a[href]")) return "link";
   if (element.closest("[data-reader-interaction='highlight'], [data-reader-annotation-badge]")) return "highlight";
   if (element.closest("img.reader-zoomable-image")) return "image";
+  if (element.closest("[tabindex]:not([tabindex='-1'])")) return "control";
   return "content";
 }
 

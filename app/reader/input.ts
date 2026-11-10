@@ -752,6 +752,7 @@ export function createViewerInput(options: ViewerInputOptions) {
     // Install before overlay capture so claimed drags do not become menu locks.
     const pageGesture = installMousePageGesture(
       (target) => !overlayInput.hasOverlay && options.canTurnPage()
+        && (targetDocument.defaultView?.getSelection()?.isCollapsed ?? true)
         && eventBelongsToReader({ target }) && resolveReaderPointerIntent(target) === "content",
       (delta, axis) => {
         const direction = axis === "horizontal" && options.getView()?.book?.dir === "rtl"

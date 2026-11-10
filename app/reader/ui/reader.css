@@ -858,13 +858,10 @@
     min-height: 0;
     max-height: calc(var(--reader-dialog-height) - 2 * var(--reader-dialog-padding));
     padding: 0 .5rem .75rem .25rem;
-    scrollbar-width: thin;
-    scrollbar-gutter: stable;
+    scrollbar-width: none;
   }
 
-  .settings-form::-webkit-scrollbar { width: 3px; }
-  .settings-form::-webkit-scrollbar-track { background: transparent; }
-  .settings-form::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--reader-border-subtle); }
+  .settings-form::-webkit-scrollbar { display: none; }
 
   .settings-group {
     display: grid;

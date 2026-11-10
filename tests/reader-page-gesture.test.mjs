@@ -36,6 +36,7 @@ function fixture(t) {
   const createDocument = () => {
     const doc = new EventTarget();
     doc.defaultView = new EventTarget();
+    doc.defaultView.getSelection = () => ({ isCollapsed: true });
     doc.documentElement = new ReaderElement();
     doc.head = { append() {} };
     doc.createElement = () => ({ textContent: '', remove() {} });
@@ -122,4 +123,17 @@ test('quick right clicks preserve menu triggers; opening an overlay cancels held
   close();
   f.emit(f.chapter, 'pointerup', { clientX: 150, buttons: 0 });
   assert.deepEqual(f.commands, []);
+});
+
+test('selected text keeps right clicks and drags out of page navigation in shell and chapters', (t) => {
+  const f = fixture(t);
+  for (const doc of [f.shell, f.chapter]) {
+    doc.defaultView.getSelection = () => ({ isCollapsed: false });
+    assert.equal(f.emit(doc, 'pointerdown').defaultPrevented, false);
+    f.emit(doc, 'pointermove', { clientX: 100 });
+    f.emit(doc, 'pointerup', { clientX: 100, buttons: 0 });
+    assert.equal(doc.documentElement.attributes.size, 0);
+    assert.equal(f.emit(doc, 'contextmenu').defaultPrevented, false);
+    assert.deepEqual(f.commands, []);
+  }
 });

@@ -7,31 +7,8 @@ type TextSegment = {
 
 const SHOW_TEXT = NodeFilter.SHOW_TEXT;
 
-export function* findText(doc: Document, query: string, locale = "en"): Iterable<Range> {
-  const nodes = getTextNodes(doc);
-  if (!nodes.length || !query) return;
-
-  yield* findWithSegmenter(doc, nodes, query, locale);
-}
-
-function getTextNodes(doc: Document) {
-  const root = doc.body ?? doc.documentElement;
-  const walker = doc.createTreeWalker(root, SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement?.localName;
-      return parent === "script" || parent === "style" || node.parentElement?.closest("math")
-        ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  const nodes: Text[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node instanceof (doc.defaultView?.Text ?? Text)) nodes.push(node as Text);
-  }
-  return nodes;
-}
-
-function* findWithSegmenter(doc: Document, nodes: Text[], query: string, locale: string) {
+/** Compile locale and query once; document scans share no mutable matching state. */
+export function createTextSearch(query: string, locale = "en") {
   let segmenter: Intl.Segmenter;
   let collator: Intl.Collator;
   try {
@@ -41,33 +18,55 @@ function* findWithSegmenter(doc: Document, nodes: Text[], query: string, locale:
     segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
     collator = new Intl.Collator("en", { sensitivity: "base" });
   }
-
   const needle = normalizeSegments(segmenter.segment(query));
-  if (!needle.length) return;
   const needleText = needle.join("");
-
-  const haystack: TextSegment[] = [];
-  for (const node of nodes) {
-    for (const part of segmenter.segment(node.data)) {
-      const segment = normalizeSegment(part.segment);
-      if (!segment || segment === " " && haystack.at(-1)?.segment === " ") continue;
-      haystack.push({ index: part.index, length: part.segment.length, node, segment });
+  function* scan(doc: Document): Generator<Range | null> {
+    if (!needle.length) return;
+    const window: TextSegment[] = [];
+    let candidate = "";
+    for (const part of textSegments(doc, segmenter)) {
+      if (!part) { yield null; continue; }
+      window.push(part);
+      candidate += part.segment;
+      if (window.length > needle.length) candidate = candidate.slice(window.shift()!.segment.length);
+      if (window.length < needle.length || collator.compare(needleText, candidate) !== 0) continue;
+      const first = window[0]!;
+      const range = doc.createRange();
+      range.setStart(first.node, first.index);
+      range.setEnd(part.node, part.index + part.length);
+      yield range;
     }
   }
+  return {
+    scan,
+    *find(doc: Document): Generator<Range> {
+      for (const range of scan(doc)) if (range) yield range;
+    },
+  };
+}
 
-  for (let index = 0; index <= haystack.length - needle.length; index += 1) {
-    let candidate = "";
-    for (let offset = 0; offset < needle.length; offset += 1) {
-      candidate += haystack[index + offset]?.segment ?? "";
+function* textSegments(doc: Document, segmenter: Intl.Segmenter): Generator<TextSegment | null> {
+  const root = doc.body ?? doc.documentElement;
+  const walker = doc.createTreeWalker(root, SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement?.localName;
+      return parent === "script" || parent === "style" || node.parentElement?.closest("math")
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let previous = "";
+  let processed = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node as Text; // SHOW_TEXT only yields text nodes, including iframe realms.
+    for (const part of segmenter.segment(text.data)) {
+      // Checkpoints also cover long runs of ignored whitespace/format characters.
+      if (++processed % 2048 === 0) yield null;
+      const segment = normalizeSegment(part.segment);
+      if (!segment || segment === " " && previous === " ") continue;
+      previous = segment;
+      yield { index: part.index, length: part.segment.length, node: text, segment };
     }
-    if (collator.compare(needleText, candidate) !== 0) continue;
-    const first = haystack[index];
-    const last = haystack[index + needle.length - 1];
-    if (!first || !last) continue;
-    const range = doc.createRange();
-    range.setStart(first.node, first.index);
-    range.setEnd(last.node, last.index + last.length);
-    yield range;
   }
 }
 

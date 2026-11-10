@@ -1,0 +1,93 @@
+import { chromium } from '/home/jay-waves/.local/lib/node_modules/playwright/index.mjs';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({channel:'chrome'});
+try {
+ const page = await browser.newPage();
+ await page.goto(process.env.EPUB_TEST_URL ?? 'http://127.0.0.1:5173');
+ const result = await page.evaluate(async () => {
+  const { ReaderView } = await import('/app/renderer/reader-view.ts');
+  const { Navigation } = await import('/app/reader/navigation.ts');
+  const urls=[];
+  const sections=Array.from({length:3},(_,index)=>{
+   const html=`<!doctype html><html><body>${Array.from({length:120},(_,n)=>`<p id="p${n}">Chapter ${index} paragraph ${n}. ${'Reading pipeline text. '.repeat(18)}</p>`).join('')}</body></html>`;
+   const url=URL.createObjectURL(new Blob([html],{type:'text/html'})); urls.push(url);
+   return {id:`s${index}`,cfi:`epubcfi(/6/${(index+1)*2})`,size:html.length,load:async()=>url,unload(){},createDocument:async()=>new DOMParser().parseFromString(html,'text/html'),resolveHref:x=>x};
+  });
+  const book={sections,dir:'ltr',resolveHref:()=>null};
+  const nav=await Navigation.create(book);
+  const view=new ReaderView(); view.style.cssText='position:fixed;inset:0;display:block;background:white;';
+  document.body.replaceChildren(view);
+  await view.open(book,nav); nav.attach(view.renderer);
+  let last; const events=[]; view.addEventListener('relocate',e=>{last=e.detail; events.push({index:last.index,fraction:last.fraction,reason:last.reason});});
+  await nav.go({index:1,anchor:doc=>doc.getElementById('p50')});
+  const landed=last.index;
+  const initial=nav.location(last).cfi;
+  await nav.nextPage(); const moved=nav.location(last).cfi!==initial;
+  const beforeResize=nav.location(last).cfi;
+  view.style.width='750px';
+  await new Promise(resolve=>setTimeout(resolve,150));
+  const resizeStable=nav.location(last).cfi===beforeResize;
+  const before=nav.location(last).cfi;
+  await view.setRenderMode('scrolled'); const scrolled=nav.location(last).cfi;
+  await view.setRenderMode('paginated'); const restored=nav.location(last).cfi;
+  await nav.go({index:2}); const chapter=last.index;
+  const doc=view.renderer.getContents().find(item=>item.index===2).doc;
+  const win=doc.defaultView;
+  const pointer=(type,button=0)=>doc.dispatchEvent(new win.PointerEvent(type,{button,isPrimary:true,pointerId:1}));
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const selectFar=()=>{
+   const range=doc.createRange(); range.selectNodeContents(doc.getElementById('p90'));
+   doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range);
+   doc.dispatchEvent(new win.Event('selectionchange'));
+  };
+  // Let initial resize/cache notifications settle before counting page commits.
+  await wait(100);
+  const pageCount=()=>events.filter(event=>event.reason==='page').length;
+  const startPages=pageCount();
+  pointer('pointerdown',2); selectFar(); await wait(750); pointer('pointerup',2);
+  const rightSelectionStable=pageCount()===startPages;
+  pointer('pointerdown'); selectFar(); await wait(20); pointer('pointerup');
+  pointer('pointerdown'); await wait(750); pointer('pointerup');
+  const staleSelectionStable=pageCount()===startPages;
+  pointer('pointerdown'); selectFar(); await wait(800); pointer('pointerup');
+  const activeSelectionMoves=pageCount()>startPages;
+  await view.setRenderMode('scrolled');
+  view.renderer.setAttribute('animated','');
+  const animation=nav.nextPage();
+  await wait(70);
+  view.renderer.panBy(-80,-80);
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const manualCfi=nav.location(last).cfi;
+  await animation; await wait(100);
+  const manualScrollWins=nav.location(last).cfi===manualCfi;
+  view.destroy();
+  const cancelView=new ReaderView();
+  cancelView.style.cssText='position:fixed;inset:0;display:block';
+  document.body.replaceChildren(cancelView);
+  let releaseLoad;
+  const loadGate=new Promise(resolve=>releaseLoad=resolve);
+  const cancelBook={...book,sections:sections.slice(0,2).map((section,index)=>({
+   ...section,load:async()=>{if(index===1) await loadGate; return section.load();},
+  }))};
+  const cancelNav=await Navigation.create(cancelBook);
+  await cancelView.open(cancelBook,cancelNav); cancelNav.attach(cancelView.renderer);
+  const cancelEvents=[];
+  cancelView.addEventListener('relocate',event=>cancelEvents.push(event.detail));
+  await cancelNav.go({index:0,anchor:{kind:'fraction',fraction:1}});
+  const crossing=cancelNav.nextPage();
+  await wait(50);
+  cancelView.renderer.cancelNavigation();
+  const cancelCount=cancelEvents.filter(event=>event.reason==='page').length;
+  releaseLoad(); await crossing; await wait(150);
+  const cancelledCrossingStable=cancelEvents.filter(event=>event.reason==='page').length===cancelCount;
+  cancelView.destroy(); urls.forEach(URL.revokeObjectURL);
+  return {cancelledCrossingStable,manualScrollWins,resizeStable,landed,moved,before,scrolled,restored,chapter,rightSelectionStable,staleSelectionStable,activeSelectionMoves,events:events.length};
+ });
+ console.log(result);
+ assert.equal(result.cancelledCrossingStable,true);
+ assert.equal(result.manualScrollWins,true);
+ assert.equal(result.resizeStable,true);
+ assert.equal(result.landed,1); assert.equal(result.moved,true); assert.equal(result.chapter,2);
+ assert.equal(result.rightSelectionStable,true); assert.equal(result.staleSelectionStable,true); assert.equal(result.activeSelectionMoves,true);
+ assert.equal(result.scrolled,result.before); assert.equal(result.restored,result.before);
+} finally { await browser.close(); }

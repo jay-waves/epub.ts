@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import type { BookInfo } from "../../book-info";
 import { Dialog } from "./ui";
 
@@ -7,13 +6,7 @@ export function BookInfoPage({ bookInfo, onClose, open }: {
   onClose: () => void;
   open: boolean;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (open && dialog && !dialog.open) dialog.showModal();
-    else if (!open && dialog?.open) dialog.close();
-  }, [open]);
 
   return (
     <Dialog
@@ -21,7 +14,7 @@ export function BookInfoPage({ bookInfo, onClose, open }: {
       aria-label="Book information"
       className="book-info-modal-box"
       onClose={onClose}
-      ref={dialogRef}
+      open={open}
     >
       <div className="book-info-root">
         {bookInfo.statsRows.length || bookInfo.metadataRows.length ? (

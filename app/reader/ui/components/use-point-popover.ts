@@ -1,3 +1,4 @@
+import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { overlayInput } from "../../overlay-input";
@@ -40,26 +41,21 @@ export function usePointPopover({
     const popover = popoverRef.current;
     if (!open || !popover) return;
 
-    const position = () => {
-      const { height, width } = popover.getBoundingClientRect();
-      const maxLeft = Math.max(VIEWPORT_GUTTER, window.innerWidth - width - VIEWPORT_GUTTER);
-      const below = y + gap;
-      const top = below + height <= window.innerHeight - VIEWPORT_GUTTER
-        ? below
-        : Math.max(VIEWPORT_GUTTER, y - gap - height);
-      const leftValue = `${Math.min(Math.max(VIEWPORT_GUTTER, x), maxLeft)}px`;
-      const topValue = `${top}px`;
-      if (popover.style.left !== leftValue) popover.style.left = leftValue;
-      if (popover.style.top !== topValue) popover.style.top = topValue;
-    };
-
-    position();
-    const resizeObserver = new ResizeObserver(position);
-    resizeObserver.observe(popover);
-    window.addEventListener("resize", position);
+    const reference = { getBoundingClientRect: () => new DOMRect(x, y, 0, 0) };
+    let active = true;
+    const cleanup = autoUpdate(reference, popover, () => {
+      void computePosition(reference, popover, {
+        strategy: "fixed",
+        placement: "bottom-start",
+        middleware: [offset(gap), flip({ padding: VIEWPORT_GUTTER }),
+          shift({ padding: VIEWPORT_GUTTER, crossAxis: true })],
+      }).then(({ x, y }) => {
+        if (active) Object.assign(popover.style, { left: `${x}px`, top: `${y}px` });
+      });
+    });
     return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", position);
+      active = false;
+      cleanup();
     };
   }, [gap, open, x, y]);
 

@@ -1,5 +1,5 @@
 import * as SliderPrimitive from "@radix-ui/react-slider";
-import { forwardRef, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type {
   ButtonHTMLAttributes,
   DialogHTMLAttributes,
@@ -23,17 +23,21 @@ export function Button({
   );
 }
 
-export const Dialog = forwardRef<
-  HTMLDialogElement,
-  DialogHTMLAttributes<HTMLDialogElement>
->(function Dialog({
+export function Dialog({
+  open,
   children,
   className,
   onPointerCancel,
   onPointerDown,
   onPointerUp,
   ...props
-}, ref) {
+}: Omit<DialogHTMLAttributes<HTMLDialogElement>, "open"> & { open: boolean }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (open && dialog && !dialog.open) dialog.showModal();
+    else if (!open && dialog?.open) dialog.close();
+  }, [open]);
   const backdropPointer = useRef<number | null>(null);
   const isBackdropPoint = (dialog: HTMLDialogElement, x: number, y: number) => {
     const rect = dialog.getBoundingClientRect();
@@ -43,7 +47,7 @@ export const Dialog = forwardRef<
     <dialog
       {...props}
       className={cn("reader-modal", className)}
-      ref={ref}
+      ref={dialogRef}
       onPointerDown={(event) => {
         onPointerDown?.(event);
         backdropPointer.current = event.button === 0
@@ -68,7 +72,7 @@ export const Dialog = forwardRef<
       {children}
     </dialog>
   );
-});
+}
 
 export const Slider = SliderPrimitive.Root;
 export const SliderTrack = SliderPrimitive.Track;

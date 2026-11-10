@@ -50,18 +50,15 @@ type AnchorProjection = {
 const debounce = <Args extends unknown[]>(
     f: (...args: Args) => void,
     wait: number,
-    immediate = false,
 ) => {
     let timeout: number | undefined
     return (...args: Args) => {
         const later = () => {
             timeout = undefined
-            if (!immediate) f(...args)
+            f(...args)
         }
-        const callNow = immediate && !timeout
         if (timeout) clearTimeout(timeout)
         timeout = setTimeout(later, wait)
-        if (callNow) f(...args)
     }
 }
 
@@ -254,8 +251,8 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
                 this.#spine.showNavigationCue(cueTarget)
             }
         }) as EventListener)
-        const checkPointerSelection = debounce((range: Range, sel: Selection) => {
-            if (!sel.rangeCount) return
+        const checkPointerSelection = debounce((range: Range, sel: Selection, active: () => boolean) => {
+            if (this.#destroyed || !active() || !sel.rangeCount) return
             const selRange = sel.getRangeAt(0)
             // A delayed selectionchange can outlive the currently visible spine
             // item. DOM ranges from different documents cannot be compared.
@@ -268,9 +265,15 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
                 this.next()
         }, 700)
         this.addEventListener('load', (({ detail: { doc } }: CustomEvent<{ doc: Document }>) => {
-            let isPointerSelecting = false
-            doc.addEventListener('pointerdown', () => isPointerSelecting = true)
-            doc.addEventListener('pointerup', () => isPointerSelecting = false)
+            let pointerSelection: PointerEvent | null = null
+            doc.addEventListener('pointerdown', (event) => {
+                pointerSelection = event.isPrimary && event.button === 0 && !event.ctrlKey ? event : null
+            })
+            const stopPointerSelection = () => { pointerSelection = null }
+            doc.addEventListener('pointerup', stopPointerSelection)
+            doc.addEventListener('pointercancel', stopPointerSelection)
+            doc.addEventListener('contextmenu', stopPointerSelection)
+            doc.defaultView?.addEventListener('blur', stopPointerSelection)
             let isKeyboardSelecting = false
             doc.addEventListener('keydown', () => isKeyboardSelecting = true)
             doc.addEventListener('keyup', () => isKeyboardSelecting = false)
@@ -279,9 +282,11 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
                 if (!range) return
                 const sel = doc.getSelection()
                 if (!sel?.rangeCount) return
-                if (isPointerSelecting && sel.type === 'Range')
-                    checkPointerSelection(range, sel)
-                else if (isKeyboardSelecting) {
+                if (pointerSelection && sel.type === 'Range') {
+                    const gesture = pointerSelection
+                    checkPointerSelection(range, sel, () => pointerSelection === gesture
+                        && doc === this.#spine.currentView?.document)
+                } else if (isKeyboardSelecting) {
                     const selRange = sel.getRangeAt(0).cloneRange()
                     const backward = selectionIsBackward(sel)
                     if (!backward) selRange.collapse()
@@ -729,7 +734,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
     }
     async #turnPage(dir: -1 | 1, turns = 1) {
         if (!this.#spine.currentView) return
-        return this.#enqueueNavigation(async () => {
+        return this.#enqueueNavigation(async (revision) => {
             let remaining = Math.max(1, turns)
             while (remaining > 0) {
                 const action = planPaginatedNavigation(
@@ -747,6 +752,7 @@ export class PaginatedRenderer extends HTMLElement implements ReflowableRenderer
                 if (action.kind === 'turn-and-cross' && stillAtCacheEdge) {
                     const finalReason = action.turnsAfterCross ? null : 'page'
                     if (!await this.#crossCacheWindow(dir, finalReason)) {
+                        if (this.#destroyed || revision !== this.#navigation.revision) return
                         await this.#scrollTo(
                             this.#container[this.scrollProp], 'page')
                         return

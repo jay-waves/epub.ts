@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  resolveReaderPointerIntent,
   claimReaderPointer,
   consumeReaderPointerClaim,
 } from "../app/reader/interaction-arbiter.ts";
@@ -52,5 +53,23 @@ test("a control claim cannot be downgraded to content", () => {
     } else {
       delete (globalThis as { Node?: unknown }).Node;
     }
+  }
+});
+
+test("focusability does not override a link's navigation semantics", () => {
+  const previousNode = globalThis.Node;
+  Object.defineProperty(globalThis, "Node", { configurable: true, value: { ELEMENT_NODE: 1 } });
+  try {
+    const target = {
+      nodeType: 1,
+      closest(selector: string) {
+        return selector === "a[href]" || selector.includes("[tabindex]") ? this : null;
+      },
+    } as unknown as Element;
+    assert.equal(resolveReaderPointerIntent(target), "link");
+    assert.equal(resolveReaderPointerIntent({ ...target, isContentEditable: true } as unknown as Element), "control");
+  } finally {
+    if (previousNode) Object.defineProperty(globalThis, "Node", { configurable: true, value: previousNode });
+    else delete (globalThis as { Node?: unknown }).Node;
   }
 });

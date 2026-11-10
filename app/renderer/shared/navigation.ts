@@ -277,7 +277,9 @@ export class NavigationTransaction {
   enqueue<T>(task: NavigationTask<T>): Promise<T | undefined> {
     this.#pending += 1;
     const result = this.#queue.then(async () => {
-      if (this.#idle) await this.#idle;
+      // Finishing a transaction can synchronously start deferred layout work.
+      // Recheck ownership after every wait so queued navigation is never dropped.
+      while (this.#idle) await this.#idle;
       return this.run(task);
     });
     this.#queue = result.then(() => undefined, () => undefined);

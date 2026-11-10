@@ -11,25 +11,17 @@ export function TocPage({ onClose, onNavigate, open, state }: {
   state: TocState;
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (open && dialog && !dialog.open) {
-      dialog.showModal();
-      setSelectedKey(null);
-      scrollCurrentItemIntoView(rootRef.current);
-    } else if (!open && dialog?.open) dialog.close();
-  }, [open]);
+  useEffect(() => { if (open) setSelectedKey(null); }, [open]);
 
   useEffect(() => setSelectedKey(null), [state]);
 
   const currentKey = findCurrentKey(state.items, state.currentItem, state.currentHref);
 
   useEffect(() => {
-    if (dialogRef.current?.open) scrollCurrentItemIntoView(rootRef.current);
-  }, [selectedKey, state]);
+    if (open) scrollCurrentItemIntoView(rootRef.current);
+  }, [open, selectedKey, state]);
 
   const navigate = (item: TocItem) => {
     if (!item.href) return;
@@ -42,7 +34,7 @@ export function TocPage({ onClose, onNavigate, open, state }: {
       aria-label="Table of contents"
       className="toc-dialog-box"
       onClose={onClose}
-      ref={dialogRef}
+      open={open}
     >
       <div className="toc-root" ref={rootRef}>
         {state.items.length ? (

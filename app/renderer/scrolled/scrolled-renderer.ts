@@ -120,9 +120,11 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
         this.#container = root.getElementById('container')!
         this.#track = root.getElementById('track')!
         this.#scrolledViewport = new ScrollCoordinator(this.#container, () => {
-            if (!this.#destroyed)
+            if (!this.#destroyed) {
+                this.cancelNavigation()
                 void this.#scrollTo(this.start, 'scroll').catch(error =>
                     console.warn('Failed to commit reader scroll position.', error))
+            }
         })
         this.#spine = new ReflowableSpine({
             activeEntry: () => this.#entryAtReadingEdge(),
@@ -298,6 +300,9 @@ export class ScrolledRenderer extends HTMLElement implements ReflowableRenderer 
     }
     panBy(dx: number, dy: number) {
         const delta = this.#vertical ? dx : dy
+        if (!delta || this.#destroyed) return
+        // Direct manipulation supersedes animated and queued navigation.
+        this.cancelNavigation()
         const element = this.#container
         const { scrollProp } = this
         element[scrollProp] += delta

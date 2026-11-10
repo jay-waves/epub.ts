@@ -1,5 +1,5 @@
 import { TranslationSettings } from "./translation-settings";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { AdvancedReaderSettings } from "../../advanced-settings";
 import type { ViewerPlatform } from "../../../platform/types";
 import { Dialog } from "./ui";
@@ -24,7 +24,6 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
   getAiConfig?: ViewerPlatform["getAiConfig"];
   setAiConfig?: ViewerPlatform["setAiConfig"];
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const [values, setValues] = useState(() => fields(settings));
   const [translationEnabled, setTranslationEnabled] = useState(settings.translationEnabled);
   const [llmEnabled, setLlmEnabled] = useState(settings.llmEnabled);
@@ -35,11 +34,6 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
     setTranslationEnabled(settings.translationEnabled);
     setLlmEnabled(settings.llmEnabled);
     setError("");
-  }, [open]);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (open && dialog && !dialog.open) dialog.showModal();
-    else if (!open && dialog?.open) dialog.close();
   }, [open]);
 
   const update = (key: keyof ReturnType<typeof fields>, value: string) => {
@@ -56,7 +50,7 @@ export function SettingsDialog({ open, settings, actions, onClose, requestAi, ge
     } catch { setError("Could not reset reader settings."); }
   };
 
-  return <Dialog id="settings-modal" aria-label="Settings" className="settings-modal-box" onClose={onClose} ref={dialogRef}>
+  return <Dialog id="settings-modal" aria-label="Settings" className="settings-modal-box" onClose={onClose} open={open}>
     <div className="settings-form">
       <section className="settings-group" aria-label="Typography settings">
         <div className="settings-section-heading"><h2>Typography</h2><button className="settings-reset" type="button" onClick={() => void reset()}>Reset reader settings</button></div>

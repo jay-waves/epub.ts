@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import * as RadioGroup from "@radix-ui/react-radio-group";
 import type { TypographyTheme, TypographyThemeId } from "../../../typography/model";
 import { getReaderThemeOptions } from "../../settings";
@@ -37,13 +36,7 @@ export function ThemeDialog({ onClose, onSelect, selected }: {
   onSelect: (theme: TypographyThemeId) => void;
   selected: TypographyThemeId | null;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (selected && dialog && !dialog.open) dialog.showModal();
-    else if (!selected && dialog?.open) dialog.close();
-  }, [selected]);
 
   return (
     <Dialog
@@ -51,7 +44,7 @@ export function ThemeDialog({ onClose, onSelect, selected }: {
       aria-labelledby="theme-dialog-title"
       className="theme-modal-box"
       onClose={onClose}
-      ref={dialogRef}
+      open={Boolean(selected)}
     >
       <header className="theme-dialog-header">
         <h2 id="theme-dialog-title">Themes</h2>

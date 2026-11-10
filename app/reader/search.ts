@@ -87,7 +87,7 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
   };
 
   const show = async (index: number) => {
-    if (!hits.length || signal.aborted) return;
+    if (!hits.length || signal.aborted || disposed) return;
     const previous = hits[current];
     current = (index + hits.length) % hits.length;
     if (previous) paint(previous, false);
@@ -151,7 +151,7 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
     const id = reset(true);
     try {
       const highlights = await annotationRepository.load(bookKey);
-      if (id !== runId || signal.aborted) return;
+      if (id !== runId || signal.aborted || disposed) return;
 
       hits = highlights.flatMap((highlight, highlightIndex) => {
         const text = normalizeInlineText(highlight.text || highlight.value).toLocaleLowerCase();
@@ -169,7 +169,7 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
       if (hits.length) await showClosest();
       else publish(normalized ? `No highlights for: ${query}` : "No highlights saved");
     } catch (error) {
-      if (id !== runId || signal.aborted) return;
+      if (id !== runId || signal.aborted || disposed) return;
       console.error("Highlight search failed.", error);
       publish("Search failed");
     }
@@ -181,27 +181,51 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
     if (!normalized) return;
 
     try {
-      const { findText } = await import("./text-search");
+      const { createTextSearch } = await import("./text-search");
+      if (id !== runId || signal.aborted || disposed) return;
       const language = book.metadata?.language;
       const locale = typeof language === "string"
         ? language
         : Array.isArray(language) && typeof language[0] === "string" ? language[0] : "en";
+      const { find: findText, scan } = createTextSearch(normalized, locale);
+      let deadline = performance.now() + 8;
+      const yieldIfNeeded = async () => {
+        if (performance.now() < deadline) return;
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        deadline = performance.now() + 8;
+      };
+      // Rendered text may differ from the source after typography enhancement.
+      // Share one bounded scan across all anchors for this query/document.
+      const renderedMatches = new WeakMap<Document, Range[]>();
+      const matchAt = (doc: Document, occurrence: number) => {
+        let ranges = renderedMatches.get(doc);
+        if (!ranges) {
+          ranges = [];
+          for (const range of findText(doc)) {
+            ranges.push(range);
+            if (ranges.length === MAX_RESULTS) break;
+          }
+          renderedMatches.set(doc, ranges);
+        }
+        return ranges[occurrence]?.cloneRange() ?? null;
+      };
       searchBook: for (const [index, section] of book.sections.entries()) {
+        await yieldIfNeeded();
+        if (id !== runId || signal.aborted || disposed) return;
         const doc = await section.createDocument();
-        if (id !== runId || signal.aborted) return;
+        if (id !== runId || signal.aborted || disposed) return;
 
         let sectionHitIndex = 0;
-        for (const range of findText(doc, normalized, locale)) {
-          if (id !== runId || signal.aborted) return;
+        for (const range of scan(doc)) {
+          if (!range) {
+            await yieldIfNeeded();
+            if (id !== runId || signal.aborted || disposed) return;
+            continue;
+          }
+          if (id !== runId || signal.aborted || disposed) return;
           const cfi = navigation.cfi(index, range);
           const occurrence = sectionHitIndex++;
-          const anchor: DocumentAnchorResolver = (renderedDoc) => {
-            let currentOccurrence = 0;
-            for (const renderedRange of findText(renderedDoc, normalized, locale)) {
-              if (currentOccurrence++ === occurrence) return renderedRange;
-            }
-            return null;
-          };
+          const anchor: DocumentAnchorResolver = (renderedDoc) => matchAt(renderedDoc, occurrence);
           const hit = { anchor, cfi, index, key: `search:${hits.length}` };
           hits.push(hit);
           paint(hit, false);
@@ -212,7 +236,7 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
       if (hits.length) await showClosest();
       else publish(`No results for: ${normalized}`);
     } catch (error) {
-      if (id !== runId || signal.aborted) return;
+      if (id !== runId || signal.aborted || disposed) return;
       console.error("Search failed.", error);
       publish("Search failed");
     }
@@ -227,9 +251,9 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
 
   return {
     clear: () => reset(false),
-    collect: (query: string, highlightedOnly = false) => highlightedOnly
-      ? collectHighlights(query)
-      : collectText(query),
+    collect: (query: string, highlightedOnly = false) => disposed || signal.aborted
+      ? Promise.resolve()
+      : highlightedOnly ? collectHighlights(query) : collectText(query),
     next: () => show(current + 1),
     open: () => publish(),
     previous: () => show(current - 1),

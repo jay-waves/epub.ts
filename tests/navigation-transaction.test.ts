@@ -39,3 +39,29 @@ test("invalidating navigation drops queued work from the old revision", async ()
   assert.equal(await stale, undefined);
   assert.equal(await navigation.enqueueCurrent(() => "current"), "current");
 });
+
+test("queued navigation waits when deferred reflow acquires another transaction", async () => {
+  let releaseFirst!: () => void;
+  let releaseReflow!: () => void;
+  const firstGate = new Promise<void>(resolve => releaseFirst = resolve);
+  const reflowGate = new Promise<void>(resolve => releaseReflow = resolve);
+  const order: string[] = [];
+  const navigation = new NavigationTransaction(() => {
+    void navigation.run(async () => {
+      order.push("reflow:start");
+      await reflowGate;
+      order.push("reflow:end");
+    });
+  });
+  const first = navigation.run(() => firstGate);
+  navigation.deferReflow();
+  const queued = navigation.enqueue(() => order.push("navigate"));
+  await Promise.resolve();
+  releaseFirst();
+  await first;
+  await Promise.resolve();
+  assert.deepEqual(order, ["reflow:start"]);
+  releaseReflow();
+  await queued;
+  assert.deepEqual(order, ["reflow:start", "reflow:end", "navigate"]);
+});
