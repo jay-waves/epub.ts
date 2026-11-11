@@ -10,9 +10,9 @@ test('launcher passes the shared web timestamp to Go and cleans embedded files',
   if (process.platform === 'win32') return t.skip('fixture executable uses a POSIX shebang');
   const root = mkdtempSync(join(tmpdir(), 'epub ts build id '));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const dir of ['scripts', 'release/web', 'launcher/viewer']) mkdirSync(join(root, dir), { recursive: true });
+  for (const dir of ['scripts', 'release/web', 'desktop/viewer']) mkdirSync(join(root, dir), { recursive: true });
   copyFileSync(resolve('scripts/package-launcher.mjs'), join(root, 'scripts/package-launcher.mjs'));
-  writeFileSync(join(root, 'launcher/viewer/placeholder.txt'), '');
+  writeFileSync(join(root, 'desktop/viewer/placeholder.txt'), '');
   writeFileSync(join(root, 'release/web/index.html'), '<html>reader</html>');
   const builtAt = '2026-10-07T00:00:00.000Z';
   writeFileSync(join(root, 'release/web/build-metadata.json'), JSON.stringify({ builtAt }));
@@ -21,8 +21,8 @@ test('launcher passes the shared web timestamp to Go and cleans embedded files',
   writeFileSync(compiler, `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2);
-fs.writeFileSync(process.env.ARGUMENT_LOG, JSON.stringify({ args, goos: process.env.GOOS, goarch: process.env.GOARCH }));
-if (!fs.existsSync('launcher/viewer/build-metadata.json.gz')) process.exit(1);
+fs.writeFileSync(process.env.ARGUMENT_LOG, JSON.stringify({ workspace: process.cwd(), args, goos: process.env.GOOS, goarch: process.env.GOARCH }));
+if (!fs.existsSync('desktop/viewer/build-metadata.json.gz')) process.exit(1);
 fs.writeFileSync(args[args.indexOf('-o') + 1], 'launcher');
 `, { mode: 0o755 });
   const result = spawnSync(process.execPath, [join(root, 'scripts/package-launcher.mjs'), 'linux-amd64'], {
@@ -31,11 +31,13 @@ fs.writeFileSync(args[args.indexOf('-o') + 1], 'launcher');
   assert.equal(result.status, 0, result.stderr);
   const call = JSON.parse(readFileSync(log, 'utf8'));
   assert.ok(call.args.includes(`-ldflags=-s -w -X=main.buildID=${builtAt}`));
+  assert.notEqual(call.workspace, root);
+  assert.equal(existsSync(call.workspace), false);
   assert.equal(call.goos, 'linux');
   assert.equal(call.goarch, 'amd64');
   assert.equal(existsSync(join(root, 'release/epub.ts')), true);
-  assert.equal(existsSync(join(root, 'launcher/viewer/index.html.gz')), false);
-  assert.equal(existsSync(join(root, 'launcher/viewer/placeholder.txt')), true);
+  assert.equal(existsSync(join(root, 'desktop/viewer/index.html.gz')), false);
+  assert.equal(existsSync(join(root, 'desktop/viewer/placeholder.txt')), true);
 });
 
 // Exercise argument handling with real subprocesses and paths containing spaces.
@@ -90,9 +92,9 @@ for (const failure of ['resource compiler', 'missing web build']) {
     if (process.platform === 'win32') return t.skip('fixture executable uses a POSIX shebang');
     const root = mkdtempSync(join(tmpdir(), 'epub ts launcher '));
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    for (const dir of ['scripts', 'release/web', 'launcher/viewer']) mkdirSync(join(root, dir), { recursive: true });
+    for (const dir of ['scripts', 'release/web', 'desktop/viewer']) mkdirSync(join(root, dir), { recursive: true });
     copyFileSync(resolve('scripts/package-launcher.mjs'), join(root, 'scripts/package-launcher.mjs'));
-    writeFileSync(join(root, 'launcher/viewer/placeholder.txt'), '');
+    writeFileSync(join(root, 'desktop/viewer/placeholder.txt'), '');
     writeFileSync(join(root, 'release/epub.ts.exe'), 'old executable');
     if (failure !== 'missing web build') {
       writeFileSync(join(root, 'release/web/index.html'), '<html>viewer</html>');
@@ -110,8 +112,8 @@ process.exit(7);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, failure === 'resource compiler' ? /exited with status 7/ : /Run pnpm compile first/);
     assert.equal(existsSync(join(root, 'release/epub.ts.exe')), false);
-    assert.equal(existsSync(join(root, 'launcher/icon_windows_amd64.syso')), false);
-    assert.equal(existsSync(join(root, 'launcher/viewer/index.html.gz')), false);
-    assert.equal(existsSync(join(root, 'launcher/viewer/placeholder.txt')), true);
+    assert.equal(existsSync(join(root, 'desktop/icon_windows_amd64.syso')), false);
+    assert.equal(existsSync(join(root, 'desktop/viewer/index.html.gz')), false);
+    assert.equal(existsSync(join(root, 'desktop/viewer/placeholder.txt')), true);
   });
 }

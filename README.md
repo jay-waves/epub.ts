@@ -117,3 +117,13 @@ These paths preserve publication compatibility, not obsolete browser runtimes.
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js) for the original renderer and EPUB parser
 - Fonts: EB Garamond, Monaspace Argon, Noto Sans, and Noto Serif
+
+### Packaging workflow
+
+Run `pnpm compile`, then `pnpm package:linux`, `pnpm package:windows`, or
+`pnpm package:macos`. Local commands and CI share `packaging/build.mjs`;
+`linux deb` / `linux rpm` select one format and `<platform> binary` builds only
+the native service. Native sources live in `desktop/`, including the macOS
+Swift entry point. Embedded web assets and Windows resources are generated in
+an isolated temporary workspace and cleaned after success or failure.
+The EPUB web build timestamp remains part of the native build identity.
