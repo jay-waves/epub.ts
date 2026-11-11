@@ -4,7 +4,7 @@ const browser = await chromium.launch({ channel: 'chrome' });
 try {
   const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
   await page.goto(process.env.EPUB_TEST_URL ?? 'http://127.0.0.1:5173');
-  await page.evaluate(async () => { window.fixture = await import('/tests/fixtures/point-popover.tsx'); });
+  await page.evaluate(async () => { window.fixture = await import('/tests/support/point-popover.tsx'); });
   const show = async props => {
     await page.evaluate(props => window.fixture.show(props), props);
     await page.waitForFunction(point => document.querySelector('#test-popover')?.getAttribute('data-point') === point,

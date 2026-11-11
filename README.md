@@ -50,23 +50,9 @@ Translate uses a remote LLM; when LLM is off, it opens Google Translate in a new
 
 ### Advanced settings
 
-Open **Settings** from the Dock or press **Ctrl+,** to configure typography, LLM connection settings, and its dependent Translate feature. Reader preferences are stored in this browser. The controller also exposes these settings for development:
+Open **Settings** from the Dock or press **Ctrl+,** to configure typography, LLM connection settings, and its dependent Translate feature. Reader preferences are stored in this browser.
 
-```js
-epub.settings.fonts
-epub.settings.textAlignment
-
-await epub.settings.setSerifFont("Noto Serif, serif")
-await epub.settings.setSansFont("Noto Sans, system-ui, sans-serif")
-await epub.settings.setMonoFont("Fira Code, ui-monospace, monospace")
-await epub.settings.setTextAlignment("justify") // "auto" | "start" | "justify"
-await epub.settings.reset()
-```
-
-Font names refer only to locally available browser fonts; the app does not download or install fonts.
-The `auto` text-alignment setting chooses an alignment based on the document language.
-`reset()` removes all advanced overrides and restores the defaults.
-On each launch, the app logs the current settings and command hints to the console.
+Font overrides use locally available browser fonts. The `auto` alignment follows the document language.
 
 The **Translate** card owns the translation prompt. Its default uses `{{browserDefault}}`, replaced at request time with the browser's preferred language. You can replace this placeholder with a fixed language such as French or Japanese. `{{selectedText}}` inserts the selection. There are no source/target language fields, browser translation models, model downloads, or language detection.
 
@@ -118,12 +104,34 @@ These paths preserve publication compatibility, not obsolete browser runtimes.
 - [foliate-js](https://github.com/johnfactotum/foliate-js) for the original renderer and EPUB parser
 - Fonts: EB Garamond, Monaspace Argon, Noto Sans, and Noto Serif
 
-### Packaging workflow
+## Desktop installation
 
-Run `pnpm compile`, then `pnpm package:linux`, `pnpm package:windows`, or
-`pnpm package:macos`. Local commands and CI share `packaging/build.mjs`;
-`linux deb` / `linux rpm` select one format and `<platform> binary` builds only
-the native service. Native sources live in `desktop/`, including the macOS
-Swift entry point. Embedded web assets and Windows resources are generated in
-an isolated temporary workspace and cleaned after success or failure.
-The EPUB web build timestamp remains part of the native build identity.
+Download an installer from [Releases](https://github.com/jay-waves/epub.ts/releases).
+Packages register EPUB file associations and keep reader data per user. Uninstalling
+preserves that data; `epub.ts purge` explicitly stops the current user's daemon and
+removes their reader data. Packages have no publisher certificate; macOS uses
+ad-hoc signing without notarization.
+
+- **Linux:** DEB/RPM installs `/usr/bin/epub.ts`, a desktop entry, icon, and user
+  systemd service. Startup is on demand. Opt in with
+  `systemctl --user enable --now epub.ts.service`; disable with
+  `systemctl --user disable --now epub.ts.service` before uninstalling.
+- **Windows:** the all-users installer requires administrator permission and installs
+  into `%ProgramFiles%\epub.ts`. The completion page can launch the reader.
+  Background startup is opt-in and uses the all-users Startup folder; upgrades
+  preserve the choice and uninstall removes the shortcut. Silent installs accept
+  `/AUTOSTART=1` or `/AUTOSTART=0` before a final `/D=...` argument. Remove old
+  user-owned startup CMD scripts manually.
+- **macOS:** requires Apple Silicon and macOS 13+. Copy the app to `/Applications`.
+  Login startup is opt-in using the commands below; approve it in System Settings
+  if requested. The agent starts only the daemon. Disable it before moving or
+  removing the app. `epub.ts stop` stops a separately started on-demand daemon.
+
+```sh
+/Applications/epub.ts.app/Contents/MacOS/epub.ts autostart enable
+/Applications/epub.ts.app/Contents/MacOS/epub.ts autostart status
+/Applications/epub.ts.app/Contents/MacOS/epub.ts autostart disable
+```
+
+For development, tests, packaging, and releases, see [AGENTS.md](AGENTS.md).
+See [GLOSSARY.md](GLOSSARY.md) for terms and [RENDERING.md](RENDERING.md) for rendering design.
