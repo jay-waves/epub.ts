@@ -1,5 +1,5 @@
 import type { Book, Content, DocumentAnchorResolver, OverlayDraw, ReaderView } from "../renderer";
-import { annotationRepository } from "./context-menu/annotation-repository";
+import type { ReaderAnnotation } from "../epub/annotation";
 import type { Navigation } from "./navigation";
 import type { SearchState } from "./ui/model";
 
@@ -20,7 +20,7 @@ type Hit = {
 
 type SearchOptions = {
   book: Book;
-  bookKey: string;
+  getAnnotations: () => readonly ReaderAnnotation[];
   navigation: Navigation;
   onUpdate: (state: SearchState) => void;
   run: <Result>(action: () => Promise<Result> | Result) => Promise<Result>;
@@ -53,7 +53,7 @@ const drawCurrent: OverlayDraw = (rects) => {
   return group;
 };
 
-export function createSearch({ book, bookKey, navigation, onUpdate, run, signal, view }: SearchOptions) {
+export function createSearch({ book, getAnnotations, navigation, onUpdate, run, signal, view }: SearchOptions) {
   let runId = 0;
   let hits: Hit[] = [];
   let current = -1;
@@ -150,7 +150,7 @@ export function createSearch({ book, bookKey, navigation, onUpdate, run, signal,
     const normalized = normalizeInlineText(query).toLocaleLowerCase();
     const id = reset(true);
     try {
-      const highlights = await annotationRepository.load(bookKey);
+      const highlights = getAnnotations();
       if (id !== runId || signal.aborted || disposed) return;
 
       hits = highlights.flatMap((highlight, highlightIndex) => {

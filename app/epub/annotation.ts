@@ -1,7 +1,6 @@
 import {
   BlobReader,
   BlobWriter,
-  configure,
   TextReader,
   TextWriter,
   ZipReader,
@@ -35,8 +34,6 @@ type OverlayFile = {
   version: 1;
 };
 
-configure({ useWebWorkers: false });
-
 function createOverlayFile(highlights: ReaderAnnotation[]): OverlayFile {
   const now = new Date().toISOString();
   return {
@@ -69,14 +66,17 @@ export function normalizeAnnotation(value: unknown): ReaderAnnotation | null {
   const index = finiteNumber(annotation.index);
   const fraction = finiteNumber(annotation.fraction);
   return {
-    ...annotation,
+    value: annotation.value,
+    color: annotation.color,
+    ...(typeof annotation.text === "string" ? { text: annotation.text } : {}),
+    ...(typeof annotation.note === "string" ? { note: annotation.note } : {}),
     id: typeof annotation.id === "string" && annotation.id
       ? annotation.id : `legacy:${createdAt}:${annotation.value}`,
     createdAt,
-    ...(index === undefined ? { index: undefined } : { index }),
-    ...(fraction === undefined ? { fraction: undefined } : { fraction }),
+    ...(index === undefined ? {} : { index }),
+    ...(fraction === undefined ? {} : { fraction }),
     updatedAt: finiteNumber(annotation.updatedAt) ?? createdAt,
-  } as ReaderAnnotation;
+  };
 }
 
 function isFileEntry(entry: Entry): entry is FileEntry {
@@ -95,8 +95,8 @@ export async function readEmbeddedAnnotations(book: Book) {
 }
 
 export async function createAnnotatedEpub(sourceBlob: Blob, highlights: ReaderAnnotation[]) {
-  const reader = new ZipReader(new BlobReader(sourceBlob));
-  const writer = new ZipWriter(new BlobWriter(EPUB_MIME_TYPE));
+  const reader = new ZipReader(new BlobReader(sourceBlob), { useWebWorkers: false });
+  const writer = new ZipWriter(new BlobWriter(EPUB_MIME_TYPE), { useWebWorkers: false });
 
   try {
     const entries = await reader.getEntries();

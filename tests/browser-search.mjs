@@ -35,12 +35,13 @@ try {
     let lastState;
     const controller = new AbortController();
     const section = { createDocument: async () => source };
+    let annotations = [{ value: 'highlight-cfi', text: 'saved word' }];
     const search = createSearch({
-      book: { sections: [section], metadata: {} }, bookKey: 'test',
-      navigation: { cfi: () => 'test-cfi', go: async target => target.anchor(rendered) },
+      book: { sections: [section], metadata: {} }, getAnnotations: () => annotations,
+      navigation: { cfi: () => 'test-cfi', resolve: () => ({ index: 0 }), go: async target => typeof target === 'string' ? undefined : target.anchor(rendered) },
       view: {
         renderer: { getContents: () => [] },
-        addDecoration(index, decoration) { decorations.set(decoration.key, decoration); decoration.target(rendered); },
+        addDecoration(index, decoration) { decorations.set(decoration.key, decoration); if (typeof decoration.target === 'function') decoration.target(rendered); },
         removeDecoration(index, key) { decorations.delete(key); },
       },
       onUpdate: state => lastState = state, run: action => action(), signal: controller.signal,
@@ -81,10 +82,17 @@ try {
     };
     await search.collect('never-matches');
     const longScanCancelled = timerRan && longTailReads === 0 && !lastState.visible;
+    await search.collect('saved', true);
+    const highlightCount = lastState.hitCount;
+    annotations = [];
+    await search.collect('saved', true);
+    const freshHighlightCount = lastState.hitCount;
     search.dispose(); await search.collect('word');
-    return { longScanCancelled, firstMatch, tailReads, cappedCount, cancelledCleanly, counts, initialScans, hitCount, afterNavigationScans, cachedRangeIntact, afterRemountScans, cleared, disposedCount: decorations.size };
+    return { highlightCount, freshHighlightCount, longScanCancelled, firstMatch, tailReads, cappedCount, cancelledCleanly, counts, initialScans, hitCount, afterNavigationScans, cachedRangeIntact, afterRemountScans, cleared, disposedCount: decorations.size };
   });
   for (const item of result.counts) assert.equal(item.actual, item.expected);
+  assert.equal(result.highlightCount, 1);
+  assert.equal(result.freshHighlightCount, 0);
   assert.equal(result.longScanCancelled, true);
   assert.equal(result.firstMatch, 'word');
   assert.equal(result.tailReads, 0);

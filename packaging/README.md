@@ -14,8 +14,8 @@ Set GitHub Settings → Pages → Build and deployment → Source to **GitHub Ac
 `pnpm check`, then run `./scripts/release.sh v0.8.1` for the version in
 `package.json`. Matching tags with hyphen or dot suffixes such as `v0.8.1-test` and
 `v0.8.1.betaxxx` are also
-accepted and run the same publishing flow. `GITHUB_TOKEN` is optional when Git
-already has push credentials. The script pushes the branch and version tag;
+accepted and run the same publishing flow. SSH and HTTPS remotes use existing Git
+credentials; an optional `GITHUB_TOKEN` applies only to GitHub HTTPS push URLs. The script pushes the branch and version tag;
 it does not build or deploy locally.
 
 Actions builds the web reader once and shares it with Debian, Fedora, Windows

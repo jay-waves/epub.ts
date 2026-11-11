@@ -1,7 +1,6 @@
 import {
   BlobReader,
   BlobWriter,
-  configure,
   TextWriter,
   ZipReader,
 } from "@zip.js/zip.js";
@@ -39,8 +38,7 @@ async function isZip(file: File) {
 }
 
 async function createZipSource(file: File) {
-  configure({ useWebWorkers: false });
-  const reader = new ZipReader(new BlobReader(file));
+  const reader = new ZipReader(new BlobReader(file), { useWebWorkers: false });
   const entries = (await reader.getEntries()).filter((entry): entry is FileEntry => !entry.directory);
   const files = new Map(entries.map((entry) => [entry.filename, entry]));
   startupTrace.beginEpub();

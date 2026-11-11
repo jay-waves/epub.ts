@@ -1,3 +1,4 @@
+import { BookSaveState } from "./save-state";
 import { googleTranslationUrl } from "./context-menu/translation-url";
 import { createElement, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { createRoot } from "react-dom/client";
@@ -69,7 +70,6 @@ type ViewerRuntime = {
 type BookSession = {
   bookKey: string;
   document: PlatformDocument | null;
-  dirty: boolean;
   tocItem: TocItem | null;
   tocIntent: TocItem | null;
   progress: number;
@@ -122,7 +122,6 @@ const initialDocumentTitle = document.title;
 const session: BookSession = {
   bookKey: "",
   document: null,
-  dirty: false,
   tocItem: null,
   tocIntent: null,
   progress: 0,
@@ -137,14 +136,15 @@ function queryRequired<T extends Element>(selector: string) {
   return node;
 }
 
-function setHasUnsavedChanges(dirty: boolean) {
-  session.dirty = dirty;
+const bookSave = new BookSaveState();
+function markBookChanged() {
+  bookSave.changed();
   renderDocumentTitle();
   updateDock();
 }
 
 function renderDocumentTitle() {
-  document.title = `${session.dirty ? "*" : ""}${session.document?.name ?? initialDocumentTitle}`;
+  document.title = `${bookSave.dirty ? "*" : ""}${session.document?.name ?? initialDocumentTitle}`;
 }
 
 const SCROLL_EDGE_FEEDBACK_COOLDOWN_MS = 900;
@@ -159,7 +159,7 @@ const annotationState = createAnnotations({
   getLlmEnabled: () => advancedSettings.value.llmEnabled,
   requestAi: platform.requestAi,
   openExternal: platform.openExternal,
-  onUnsaved: () => setHasUnsavedChanges(true),
+  onUnsaved: markBookChanged,
   updateUi,
 });
 
@@ -283,34 +283,32 @@ function updateDock() {
   updateUi({ dock: {
     canSearch: Boolean(runtime.reader?.book),
     layoutLabel,
-    hasUnsavedChanges: session.dirty,
+    hasUnsavedChanges: bookSave.dirty,
     searchActive: runtime.isSearchOpen,
   } });
 }
 
 async function saveAnnotatedBook() {
   const { bookKey, document } = session;
-  if (!session.dirty || !bookKey || !document) return;
+  if (!bookSave.dirty || !bookKey || !document) return;
 
   try {
-    closeAnnotation();
-    await annotationState.flushPendingWrites();
-
-    // Browser file pickers need the live Ctrl+S/click activation, so acquire
-    // the platform writer before reading annotations or serializing an EPUB.
-    const target = await document.fileHandle.prepareWrite();
-    if (!target) return;
-
-    const highlights = annotationState.getAll();
-    if ("saveAnnotations" in target) {
-      if (await target.saveAnnotations(highlights)) setHasUnsavedChanges(false);
-      return;
-    }
-
-    const sourceBlob = await getEpubBlob(document.sourceUrl);
-    const blob = await createAnnotatedEpub(sourceBlob, highlights);
-    if (blob.size === 0) throw new Error("Generated EPUB is empty.");
-    if (await target.save(blob)) setHasUnsavedChanges(false);
+    await bookSave.save(async () => {
+      closeAnnotation();
+      // Request permission before awaiting storage to retain user activation.
+      const prepared = document.fileHandle.prepareWrite();
+      const [target] = await Promise.all([prepared, annotationState.flushPendingWrites()]);
+      return target;
+    }, async target => {
+      const highlights = annotationState.getAll();
+      if ("saveAnnotations" in target) return target.saveAnnotations(highlights);
+      const sourceBlob = await getEpubBlob(document.sourceUrl);
+      const blob = await createAnnotatedEpub(sourceBlob, highlights);
+      if (blob.size === 0) throw new Error("Generated EPUB is empty.");
+      return target.save(blob);
+    });
+    renderDocumentTitle();
+    updateDock();
   } catch (error) {
     if ((error as DOMException).name === "AbortError") return;
     console.warn("Failed to save annotated EPUB.", error);
@@ -355,6 +353,7 @@ async function resetBookState(source: Pick<BookSession, "bookKey" | "document">)
   closeAnnotation();
   await annotationState.flushPendingWrites();
 
+  bookSave.reset();
   const reader = runtime.reader;
   runtime.reader = null;
   runtime.isSearchOpen = false;
@@ -370,7 +369,6 @@ async function resetBookState(source: Pick<BookSession, "bookKey" | "document">)
   await clearMathCache();
   session.bookKey = source.bookKey;
   session.document = source.document;
-  session.dirty = false;
   session.tocItem = null;
   session.tocIntent = null;
   session.progress = 0;
@@ -514,7 +512,7 @@ async function replaceBook(platformDocument: PlatformDocument) {
     const bookKey = session.bookKey;
     runtime.search = createSearch({
       book: reader.book,
-      bookKey,
+      getAnnotations: annotationState.getAll,
       navigation,
       run: renderState.run,
       signal: reader.signal,
@@ -793,7 +791,7 @@ function handlePageHide(event: PageTransitionEvent) {
 }
 
 function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (!session.dirty) return;
+  if (!bookSave.dirty) return;
   event.preventDefault();
   // Required by browsers to trigger the built-in unsaved-changes prompt.
   event.returnValue = "";

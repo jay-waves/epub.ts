@@ -1,19 +1,9 @@
 import { TranslationSettings } from "./translation-settings";
 import { useEffect, useState } from "react";
-import type { AdvancedReaderSettings } from "../../advanced-settings";
+import type { AdvancedReaderSettings, SettingsActions } from "../../advanced-settings";
 import type { ViewerPlatform } from "../../../platform/types";
 import { Dialog } from "./ui";
 import { LlmSettings } from "./llm-settings";
-
-type SettingsActions = {
-  setSerifFont(value: string): Promise<void>;
-  setSansFont(value: string): Promise<void>;
-  setMonoFont(value: string): Promise<void>;
-  setTextAlignment(value: "auto" | "start" | "justify"): Promise<void>;
-  setTranslationEnabled(value: boolean): Promise<void>;
-  setLlmEnabled(value: boolean): Promise<void>;
-  reset(): Promise<AdvancedReaderSettings>;
-};
 
 export function SettingsDialog({ open, settings, actions, onClose, requestAi, getAiConfig, setAiConfig }: {
   open: boolean;

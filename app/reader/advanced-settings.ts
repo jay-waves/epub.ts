@@ -9,11 +9,7 @@ export type AdvancedReaderSettings = {
   llmEnabled: boolean;
 };
 
-type EpubSettingsApi = {
-  readonly fonts: TypographyFonts;
-  readonly textAlignment: TypographyTextAlignment;
-  readonly translationEnabled: boolean;
-  readonly llmEnabled: boolean;
+export interface SettingsActions {
   reset(): Promise<AdvancedReaderSettings>;
   setMonoFont(fontFamily: string): Promise<void>;
   setSansFont(fontFamily: string): Promise<void>;
@@ -21,7 +17,7 @@ type EpubSettingsApi = {
   setTextAlignment(alignment: TypographyTextAlignment): Promise<void>;
   setTranslationEnabled(enabled: boolean): Promise<void>;
   setLlmEnabled(enabled: boolean): Promise<void>;
-};
+}
 
 const STORAGE_KEY = "epub.ts:advanced-settings";
 
@@ -43,15 +39,7 @@ export function createAdvancedSettingsController(
       `[epub.ts] ${role} font changed to "${nextFont}". Default: "${DEFAULT_TYPOGRAPHY_FONTS[role]}".`,
     );
   };
-  const api: EpubSettingsApi = {
-    get fonts() {
-      return { ...value.fonts };
-    },
-    get textAlignment() {
-      return value.textAlignment;
-    },
-    get translationEnabled() { return value.translationEnabled; },
-    get llmEnabled() { return value.llmEnabled; },
+  const api = {
     setSerifFont: (fontFamily) => setFont("serif", fontFamily),
     setSansFont: (fontFamily) => setFont("sans", fontFamily),
     setMonoFont: (fontFamily) => setFont("mono", fontFamily),
@@ -80,7 +68,7 @@ export function createAdvancedSettingsController(
       console.log("[epub.ts] Advanced settings reset to defaults.");
       return value;
     },
-  };
+  } satisfies SettingsActions;
 
   return {
     get value() {

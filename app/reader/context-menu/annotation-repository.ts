@@ -5,12 +5,11 @@ import { platform } from "#platform";
 const storageKey = (bookKey: string) => `reading-annotations:${bookKey}`;
 const legacyStorageKey = (bookKey: string) => `reading-highlights:${bookKey}`;
 
-/** Local annotation working set with indexes for rendering and list UIs. */
+/** Current book annotations, indexed by identity and text location. */
 class AnnotationRepository {
   #pendingWrite = Promise.resolve();
   readonly #byCfi = new Map<string, ReaderAnnotation>();
   readonly #byId = new Map<string, ReaderAnnotation>();
-  readonly #bySection = new Map<number, Set<ReaderAnnotation>>();
   #bookKey = "";
 
   all() {
@@ -21,7 +20,6 @@ class AnnotationRepository {
   }
 
   getByCfi(cfi: string) { return this.#byCfi.get(cfi); }
-  forSection(index: number) { return [...(this.#bySection.get(index) ?? [])]; }
 
   async load(bookKey: string) {
     if (this.#bookKey === bookKey) return this.all();
@@ -38,13 +36,10 @@ class AnnotationRepository {
   async replace(bookKey: string, annotations: readonly unknown[]) {
     this.#set(bookKey, annotations);
     await this.#persist(bookKey);
-    return this.all();
   }
 
   async put(bookKey: string, annotation: ReaderAnnotation) {
     if (this.#bookKey !== bookKey) await this.load(bookKey);
-    const previous = this.#byId.get(annotation.id) ?? this.#byCfi.get(annotation.value);
-    if (previous) this.#delete(previous);
     this.#add(annotation);
     await this.#persist(bookKey);
   }
@@ -61,7 +56,6 @@ class AnnotationRepository {
     this.#bookKey = "";
     this.#byCfi.clear();
     this.#byId.clear();
-    this.#bySection.clear();
   }
 
   #set(bookKey: string, values: readonly unknown[]) {
@@ -74,25 +68,23 @@ class AnnotationRepository {
   }
 
   #add(annotation: ReaderAnnotation) {
+    // Both identities are unique, including when importing an overlay.
+    const byId = this.#byId.get(annotation.id);
+    const byCfi = this.#byCfi.get(annotation.value);
+    if (byId) this.#delete(byId);
+    if (byCfi && byCfi !== byId) this.#delete(byCfi);
     this.#byId.set(annotation.id, annotation);
     this.#byCfi.set(annotation.value, annotation);
-    if (annotation.index === undefined) return;
-    const section = this.#bySection.get(annotation.index) ?? new Set();
-    section.add(annotation);
-    this.#bySection.set(annotation.index, section);
   }
 
   #delete(annotation: ReaderAnnotation) {
     this.#byId.delete(annotation.id);
-    if (this.#byCfi.get(annotation.value) === annotation) this.#byCfi.delete(annotation.value);
-    if (annotation.index === undefined) return;
-    const section = this.#bySection.get(annotation.index);
-    section?.delete(annotation);
-    if (!section?.size) this.#bySection.delete(annotation.index);
+    this.#byCfi.delete(annotation.value);
   }
 
   #persist(bookKey: string) {
-    const snapshot = this.all();
+    // Storage has no display order; sort only when a consumer requests all().
+    const snapshot = [...this.#byId.values()];
     const result = this.#pendingWrite.then(
       () => platform.writeViewerMetadata(storageKey(bookKey), snapshot),
     );

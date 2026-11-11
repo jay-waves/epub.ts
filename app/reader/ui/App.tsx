@@ -1,3 +1,4 @@
+import type { ViewerPlatform } from "../../platform/types";
 import { LlmPopover } from "./components/llm-popover";
 import { memo, useRef, useState } from "react";
 import type { Ref } from "react";
@@ -10,7 +11,7 @@ import { AnnotationPopover } from "./components/annotation-popover";
 import { TocPage } from "./components/toc-page";
 import { ThemeDialog } from "./components/theme-dialog";
 import { SettingsDialog } from "./components/settings-dialog";
-import type { AdvancedReaderSettings } from "../advanced-settings";
+import type { AdvancedReaderSettings, SettingsActions } from "../advanced-settings";
 import type { ReaderUiActions, ReaderUiState } from "./model";
 
 const StableAnnotationPopover = memo(AnnotationPopover);
@@ -35,10 +36,10 @@ export function App({
   readerRootRef?: Ref<HTMLDivElement>;
   state: ReaderUiState;
   settings: AdvancedReaderSettings;
-  settingsActions: Parameters<typeof SettingsDialog>[0]["actions"];
-  requestAi?: Parameters<typeof SettingsDialog>[0]["requestAi"];
-  getAiConfig?: Parameters<typeof SettingsDialog>[0]["getAiConfig"];
-  setAiConfig?: Parameters<typeof SettingsDialog>[0]["setAiConfig"];
+  settingsActions: SettingsActions;
+  requestAi?: ViewerPlatform["requestAi"];
+  getAiConfig?: ViewerPlatform["getAiConfig"];
+  setAiConfig?: ViewerPlatform["setAiConfig"];
   
 }) {
   return (
